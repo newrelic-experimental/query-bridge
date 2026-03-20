@@ -2875,28 +2875,21 @@ const cases = [
 
   {
     spl: '* | replace "error" WITH "warning" IN message',
-    selectIncludes: ["replace(`message`, 'error', 'warning')"],
-    // FIXME: V2 drops replace silently; V1 maps to replace() in SELECT/FACET
+    v2nrql: "FROM Log SELECT replace(message, 'error', 'warning'), *",
     doc: 'fields-replace',
     verified: false,
   },
   // downstream aggregation → replace applied in FACET
-
   {
     spl: '* | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype',
-    select: ['count(*)'],
-    facet: ["replace(`sourcetype`, 'kube:container:', '')"],
-    // FIXME: V2 drops replace silently; V1 maps to replace() in SELECT/FACET
+    v2nrql: "FROM Log SELECT count(*) FACET replace(sourcetype, 'kube:container:', '')",
     doc: 'fields-replace',
     verified: false,
   },
   // multi-pair replace
   {
     spl: '* | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType',
-    selectIncludes: [
-      "replace(replace(`OperationType`, '%%14674', 'Value Added'), '%%14675', 'Value Deleted')",
-    ],
-    // FIXME: V2 drops replace silently; V1 maps to replace() in SELECT/FACET
+    v2nrql: "FROM Log SELECT replace(replace(OperationType, '%%14674', 'Value Added'), '%%14675', 'Value Deleted'), *",
     doc: 'fields-replace',
     verified: false,
   },

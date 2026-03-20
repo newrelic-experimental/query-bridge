@@ -1,15 +1,9 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | convert num(bytes)',
-  '* | convert rmcomma(total)',
-  '* | convert ctime(timestamp) AS readable',
-  '* | convert mktime(timestr)',
-  '* | convert dur2sec(duration)',
-  '* | convert mstime(elapsed)',
-  '* | convert num(status), rmcomma(total)',
-  '* | convert auto(field)',
-  '* | convert rmunit(field)',
+  '* | replace "error" WITH "warning" IN message',
+  '* | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype',
+  '* | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType',
 ];
 
 describe('V2 show output', () => {
