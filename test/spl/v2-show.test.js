@@ -1,0 +1,24 @@
+import { translateSplToNrqlV2 } from '../../src/translateV2.js';
+
+const queries = [
+  '* | replace "error" WITH "warning" IN message',
+  '* | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype',
+  '* | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType',
+  '* | xyzcommand foo bar',
+  '* | sichart count by host',
+  '| mstats avg(cpu.percent) by host',
+];
+
+describe('V2 show output', () => {
+  queries.forEach((spl, i) => {
+    it(`[${i}] ${spl}`, () => {
+      const v2 = translateSplToNrqlV2(spl);
+      console.log(`  SPL:  ${spl}`);
+      console.log(`  V2:   ${v2.nrql}`);
+      if (v2.warnings.length) console.log(`  W:    ${v2.warnings.join('; ')}`);
+      if (v2.unsupported.length)
+        console.log(`  U:    ${v2.unsupported.join('; ')}`);
+      if (v2.errors.length) console.log(`  E:    ${v2.errors.join('; ')}`);
+    });
+  });
+});

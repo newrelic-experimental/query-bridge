@@ -1,0 +1,1295 @@
+/*
+ * SPL (Search Processing Language) Grammar for PEG.js
+ * ====================================================
+ *
+ * Parses SPL queries into an AST for translation to NRQL.
+ *
+ * Supports:
+ * - Search clauses: field=value, bare keywords, quoted strings, wildcards
+ * - Boolean operators: AND, OR, NOT (implicit AND between terms)
+ * - Comparison operators: =, !=, >, >=, <, <=
+ * - Time parameters: earliest=, latest=
+ * - Metadata fields: index=, sourcetype=, source=, host=
+ * - Parentheses grouping
+ * - Backtick macros (parsed but not expanded)
+ * - Pipe commands: stats, timechart, chart, where, table, fields, sort, head, top, rename
+ * - Catch-all for unsupported commands
+ *
+ * AST node types:
+ *   Pipeline { search, commands }
+ *   BooleanOp { operator, left, right }
+ *   Not { operand }
+ *   Comparison { field, operator, value }
+ *   BareKeyword { value, quoted }
+ *   TimeConstraint { param, value }
+ *   MetadataFilter { field, value }
+ *   Macro { name, args }
+ *   StatsCommand, TimechartCommand, ChartCommand, WhereCommand,
+ *   TableCommand, FieldsCommand, SortCommand, HeadCommand,
+ *   TopCommand, RenameCommand, UnsupportedCommand
+ */
+
+start
+  = _* pipeline:pipeline _* { return pipeline; }
+
+pipeline
+  = search:search_clause? pipes:pipe_command*
+    {
+      return {
+        type: 'Pipeline',
+        search: search || null,
+        commands: pipes
+      };
+    }
+
+pipe_command
+  = _* '|' _* cmd:command { return cmd; }
+
+command
+  = stats_command
+  / timechart_command
+  / chart_command
+  / where_command
+  / search_pipe_command
+  / table_command
+  / fields_command
+  / sort_command
+  / head_command
+  / top_command
+  / rename_command
+  / dedup_command
+  / eval_command
+  / rex_command
+  / bin_command
+  / lookup_command
+  / inputlookup_command
+  / spath_command
+  / join_command
+  / regex_command
+  / fillnull_command
+  / rare_command
+  / reverse_command
+  / strcat_command
+  / uniq_command
+  / convert_command
+  / appendcols_command
+  / appendpipe_command
+  / append_command
+  / eventstats_command
+  / mvexpand_command
+  / replace_command
+  / predict_command
+  / tstats_command
+  / macro_command
+  / unknown_command
+
+/* ============================================================
+   Stats command: | stats fn() [as alias] [, fn() [as alias]]... [by field, ...]
+   ============================================================ */
+stats_command
+  = 'stats'i _+ fns:stats_function_list by:by_clause?
+    {
+      return {
+        type: 'StatsCommand',
+        functions: fns,
+        groupBy: by || []
+      };
+    }
+
+stats_function_list
+  = first:stats_function rest:(stats_function_separator fn:stats_function { return fn; })*
+    {
+      return [first].concat(rest);
+    }
+
+stats_function_separator
+  = _* ',' _*
+  / _+ !('by'i _+ / 'BY' _+)
+
+stats_function
+  = _* name:function_name '(' _* 'eval'i _* '(' _* evalExpr:eval_inner_expr _* ')' _* ')' alias:as_clause?
+    {
+      return { name: name, args: [], alias: alias, evalFilter: evalExpr };
+    }
+  / _* name:function_name '(' _* args:function_args _* ')' alias:as_clause?
+    {
+      return { name: name, args: args, alias: alias };
+    }
+  / _* ('count'i / 'c'i !([a-zA-Z0-9_])) alias:as_clause?
+    {
+      return { name: 'count', args: [], alias: alias };
+    }
+
+eval_inner_expr
+  = parts:eval_inner_part+ { return parts.join(''); }
+
+eval_inner_part
+  = '(' inner:eval_inner_expr ')' { return '(' + inner + ')'; }
+  / chars:[^()]+ { return chars.join(''); }
+
+function_name
+  = chars:[a-zA-Z_0-9]+ { return chars.join('').toLowerCase(); }
+
+function_args
+  = first:function_arg rest:(',' _* arg:function_arg { return arg; })*
+    { return [first].concat(rest); }
+  / '' { return []; }
+
+function_arg
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / "'" chars:single_string_char* "'" { return chars.join(''); }
+  / head:func_arg_atom tail:(_* op:[+\-*/%] _* right:func_arg_atom { return ' ' + op + ' ' + right; })+
+    { return head + tail.join(''); }
+  / func_arg_atom
+
+func_arg_atom
+  = '(' _* expr:function_arg _* ')' { return '(' + expr + ')'; }
+  / chars:[a-zA-Z0-9_.*\\:{}]+ { return chars.join(''); }
+
+as_clause
+  = _+ 'as'i _+ '"' alias:double_string_char* '"' { return alias.join(''); }
+  / _+ 'as'i _+ "'" alias:single_string_char* "'" { return alias.join(''); }
+  / _+ 'as'i _+ alias:field_name { return alias; }
+
+by_clause
+  = _+ 'by'i _+ fields:by_field_list { return fields; }
+
+by_field_list
+  = first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })*
+    { return [first].concat(rest); }
+
+field_list
+  = first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })*
+    { return [first].concat(rest); }
+
+field_name
+  = '*' { return '*'; }
+  / chars:[a-zA-Z0-9_.\-:{}]+ { return chars.join(''); }
+
+/* ============================================================
+   Timechart command: | timechart [span=X] fn() [by field]
+   ============================================================ */
+timechart_command
+  = 'timechart'i _+ span:span_clause? fns:stats_function_list span2:(_+ 'span=' v:span_value { return v; })? trailingAlias:as_clause? by:by_clause? tc_options:timechart_option*
+    {
+      if (trailingAlias && fns.length > 0 && !fns[fns.length - 1].alias) {
+        fns[fns.length - 1].alias = trailingAlias;
+      }
+      return {
+        type: 'TimechartCommand',
+        span: span || span2 || null,
+        functions: fns,
+        groupBy: by || [],
+        options: tc_options
+      };
+    }
+
+timechart_option
+  = _+ 'nullstr'i '=' val:[^ \t\r\n\f|]+ { return { type: 'nullstr', value: val.join('') }; }
+  / _+ 'usenull'i '=' val:[^ \t\r\n\f|]+ { return { type: 'usenull', value: val.join('') }; }
+  / _+ 'useother'i '=' val:[^ \t\r\n\f|]+ { return { type: 'useother', value: val.join('') }; }
+  / _+ 'limit'i '=' val:[0-9]+ { return { type: 'limit', value: parseInt(val.join(''), 10) }; }
+  / _+ 'cont'i '=' val:[^ \t\r\n\f|]+ { return { type: 'cont', value: val.join('') }; }
+  / _+ 'fixedrange'i '=' val:[^ \t\r\n\f|]+ { return { type: 'fixedrange', value: val.join('') }; }
+
+span_clause
+  = 'span=' value:span_value _+
+    { return value; }
+
+span_value
+  = num:[0-9]+ unit:[smhdwMy]
+    { return num.join('') + unit; }
+  / 'day'i { return '1d'; }
+  / 'hour'i { return '1h'; }
+  / 'minute'i { return '1m'; }
+  / 'month'i { return '1M'; }
+  / 'week'i { return '1w'; }
+
+/* ============================================================
+   Chart command: | chart fn() [by field] [over field]
+   ============================================================ */
+chart_command
+  = 'chart'i _+ fns:stats_function_list by:by_clause? over:over_clause?
+    {
+      return {
+        type: 'ChartCommand',
+        functions: fns,
+        groupBy: (by || []).concat(over || [])
+      };
+    }
+
+over_clause
+  = _+ 'over'i _+ field:field_name { return [field]; }
+
+/* ============================================================
+   Where command: | where <expression>
+   ============================================================ */
+where_command
+  = 'where'i _+ expr:where_expression
+    {
+      return {
+        type: 'WhereCommand',
+        expression: expr
+      };
+    }
+
+where_expression
+  = left:where_or_expr { return left; }
+
+where_or_expr
+  = left:where_and_expr rest:(_+ 'OR'i _+ right:where_and_expr { return right; })*
+    {
+      var result = left;
+      for (var i = 0; i < rest.length; i++) {
+        result = { type: 'BooleanOp', operator: 'OR', left: result, right: rest[i] };
+      }
+      return result;
+    }
+
+where_and_expr
+  = left:where_not_expr rest:(_+ 'AND'i _+ right:where_not_expr { return right; })*
+    {
+      var result = left;
+      for (var i = 0; i < rest.length; i++) {
+        result = { type: 'BooleanOp', operator: 'AND', left: result, right: rest[i] };
+      }
+      return result;
+    }
+
+where_not_expr
+  = 'NOT'i _+ expr:where_primary { return { type: 'Not', operand: expr }; }
+  / where_primary
+
+where_primary
+  = '(' _* expr:where_expression _* ')' { return expr; }
+  / where_function_call
+  / where_comparison
+
+where_function_call
+  = name:function_name '(' _* args:function_args _* ')'
+    {
+      return { type: 'FunctionCall', name: name, args: args };
+    }
+
+where_comparison
+  = field:field_name _+ 'like'i _+ value:where_value
+    {
+      return { type: 'Comparison', field: field, operator: 'like', value: value };
+    }
+  / field:field_name _* op:comparison_op _* value:where_value
+    {
+      return { type: 'Comparison', field: field, operator: op, value: value };
+    }
+
+where_value
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / "'" chars:single_string_char* "'" { return chars.join(''); }
+  / chars:[^ \t\r\n\f|(),"']+ { return chars.join(''); }
+
+/* ============================================================
+   Search pipe command: | search <expression>
+   (Same as search clause but used as a pipe command)
+   ============================================================ */
+search_pipe_command
+  = 'search'i _+ expr:or_expr
+    {
+      return {
+        type: 'SearchCommand',
+        expression: expr
+      };
+    }
+
+/* ============================================================
+   Table command: | table field1, field2, ...
+   ============================================================ */
+table_command
+  = 'table'i _+ fields:field_list
+    {
+      return {
+        type: 'TableCommand',
+        fields: fields
+      };
+    }
+
+/* ============================================================
+   Fields command: | fields [+|-] field1, field2, ...
+   ============================================================ */
+fields_command
+  = 'fields'i _+ mode:[+-]? _* fields:field_list
+    {
+      return {
+        type: 'FieldsCommand',
+        mode: mode || '+',
+        fields: fields
+      };
+    }
+
+/* ============================================================
+   Sort command: | sort [-|+]field, ...
+   ============================================================ */
+sort_command
+  = 'sort'i _+ limit:sort_limit? fields:sort_field_list
+    {
+      return {
+        type: 'SortCommand',
+        fields: fields,
+        limit: limit
+      };
+    }
+
+sort_limit
+  = n:[0-9]+ _+
+    { return parseInt(n.join(''), 10); }
+
+sort_field_list
+  = first:sort_field rest:(',' _* f:sort_field { return f; })*
+    { return [first].concat(rest); }
+
+sort_field
+  = _* dir:[-+]? _* name:field_name order:sort_order? _*
+    {
+      var direction = 'asc';
+      if (dir === '-') direction = 'desc';
+      if (order) direction = order;
+      return {
+        field: name,
+        direction: direction
+      };
+    }
+
+sort_order
+  = _+ 'desc'i { return 'desc'; }
+  / _+ 'asc'i { return 'asc'; }
+
+/* ============================================================
+   Head command: | head [N]
+   ============================================================ */
+head_command
+  = 'head'i count:(_+ n:[0-9]+ { return parseInt(n.join(''), 10); })?
+    {
+      return {
+        type: 'HeadCommand',
+        count: count !== null ? count : 10
+      };
+    }
+
+/* ============================================================
+   Top command: | top [N | limit=N] [options] field [by field, ...]
+   Options: limit=N, countfield=X, useother=bool, showperc=bool, showcount=bool
+   ============================================================ */
+top_command
+  = 'top'i _+ opts:top_options field:field_name limit:(_+ 'limit'i '=' n:[0-9]+ { return parseInt(n.join(''), 10); })? by:by_clause?
+    {
+      return {
+        type: 'TopCommand',
+        count: opts.limit !== null ? opts.limit : (limit !== null && limit !== undefined ? limit : 10),
+        field: field,
+        groupBy: by || [],
+        countfield: opts.countfield || null,
+        percentfield: opts.percentfield || null,
+        useother: opts.useother || false,
+        showperc: opts.showperc !== null ? opts.showperc : true
+      };
+    }
+
+top_options
+  = items:top_option*
+    {
+      var result = { limit: null, countfield: null, percentfield: null, useother: false, showperc: null };
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (item.type === 'limit') result.limit = item.value;
+        else if (item.type === 'countfield') result.countfield = item.value;
+        else if (item.type === 'percentfield') result.percentfield = item.value;
+        else if (item.type === 'useother') result.useother = item.value;
+        else if (item.type === 'showperc') result.showperc = item.value;
+      }
+      return result;
+    }
+
+top_option
+  = n:[0-9]+ _+
+    { return { type: 'limit', value: parseInt(n.join(''), 10) }; }
+  / 'limit'i '=' n:[0-9]+ _+
+    { return { type: 'limit', value: parseInt(n.join(''), 10) }; }
+  / 'countfield'i '=' val:option_value _+
+    { return { type: 'countfield', value: val }; }
+  / 'useother'i '=' val:bool_value _+
+    { return { type: 'useother', value: val }; }
+  / 'showperc'i '=' val:bool_value _+
+    { return { type: 'showperc', value: val }; }
+  / 'showcount'i '=' val:bool_value _+
+    { return { type: 'showperc', value: val }; }
+  / 'percentfield'i '=' val:option_value _+
+    { return { type: 'percentfield', value: val }; }
+
+option_value
+  = chars:[a-zA-Z0-9_]+ { return chars.join(''); }
+
+bool_value
+  = 'true'i  { return true; }
+  / 'false'i { return false; }
+  / 't'i     { return true; }
+  / 'f'i     { return false; }
+
+/* ============================================================
+   Rename command: | rename old AS new [, old AS new ...]
+   ============================================================ */
+rename_command
+  = 'rename'i _+ renames:rename_list
+    {
+      return {
+        type: 'RenameCommand',
+        renames: renames
+      };
+    }
+
+rename_list
+  = first:rename_pair rest:((_* ',' _* / _+) pair:rename_pair { return pair; })*
+    { return [first].concat(rest); }
+
+rename_pair
+  = from:rename_field _+ 'as'i _+ to:rename_field
+    { return { from: from, to: to }; }
+
+rename_field
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / "'" chars:single_string_char* "'" { return chars.join(''); }
+  / chars:[a-zA-Z0-9_.\-:{}*]+ { return chars.join(''); }
+
+/* ============================================================
+   Dedup command: | dedup field1, field2, ...
+   ============================================================ */
+dedup_command
+  = 'dedup'i _+ fields:field_list
+    {
+      return {
+        type: 'DedupCommand',
+        fields: fields
+      };
+    }
+
+/* ============================================================
+   Eval command: | eval field=expr [, field=expr ...]
+   Parses simple arithmetic assignments. Falls back to rawText
+   for anything it can't parse (function calls, conditionals, etc.)
+   ============================================================ */
+eval_command
+  = 'eval'i _+ first:eval_assignment rest:(_* ',' _* a:eval_assignment { return a; })* &(_* '|' / _* !.)
+    {
+      return {
+        type: 'EvalCommand',
+        assignments: [first].concat(rest),
+        rawText: null
+      };
+    }
+  / 'eval'i _+ rest:rest_of_command
+    {
+      return {
+        type: 'EvalCommand',
+        assignments: [],
+        rawText: rest
+      };
+    }
+
+eval_assignment
+  = field:field_name _* '=' _* expr:eval_expr
+    { return { field: field, expr: expr }; }
+
+eval_expr
+  = head:eval_term tail:(_* op:[+\-] _* t:eval_term { return { op: op, term: t }; })*
+    {
+      if (tail.length === 0) return head;
+      var result = head;
+      for (var i = 0; i < tail.length; i++) {
+        result = result + ' ' + tail[i].op + ' ' + tail[i].term;
+      }
+      return result;
+    }
+
+eval_term
+  = head:eval_factor tail:(_* op:[*/%] _* f:eval_factor { return { op: op, factor: f }; })*
+    {
+      if (tail.length === 0) return head;
+      var result = head;
+      for (var i = 0; i < tail.length; i++) {
+        result = result + ' ' + tail[i].op + ' ' + tail[i].factor;
+      }
+      return result;
+    }
+
+eval_factor
+  = '(' _* e:eval_expr _* ')' { return '(' + e + ')'; }
+  / n:eval_number { return n; }
+  / eval_func_call
+  / f:field_name { return f; }
+
+eval_func_call
+  = name:function_name '(' _* args:eval_func_args _* ')'
+    { return { type: 'EvalFunc', name: name, args: args }; }
+
+eval_func_args
+  = first:eval_func_arg rest:(_* ',' _* a:eval_func_arg { return a; })*
+    { return [first].concat(rest); }
+  / '' { return []; }
+
+eval_func_arg
+  = left:eval_comparison_arg _* op:eval_bool_op _* right:eval_func_arg
+    { return { type: 'EvalBoolOp', op: op, left: left, right: right }; }
+  / eval_comparison_arg
+
+eval_comparison_arg
+  = left:eval_simple_arg _* op:comparison_op _* right:eval_simple_arg
+    { return { type: 'EvalComparison', op: op, left: left, right: right }; }
+  / eval_simple_arg
+
+eval_bool_op
+  = 'AND'i { return 'AND'; }
+  / 'OR'i { return 'OR'; }
+
+eval_simple_arg
+  = eval_func_call
+  / eval_string_literal
+  / '(' _* a:eval_func_arg _* ')' { return { type: 'EvalParens', inner: a }; }
+  / '(' _* e:eval_expr _* ')' { return '(' + e + ')'; }
+  / n:eval_number { return n; }
+  / f:field_name { return f; }
+
+eval_string_literal
+  = '"' chars:double_string_char* '"' { return { type: 'StringLiteral', value: chars.join('') }; }
+  / "'" chars:single_string_char* "'" { return { type: 'StringLiteral', value: chars.join('') }; }
+
+eval_number
+  = digits:[0-9]+ frac:('.' d:[0-9]+ { return '.' + d.join(''); })?
+    { return digits.join('') + (frac || ''); }
+
+/* ============================================================
+   Rex command: | rex [field=F] "regex" or | rex mode=sed "expr"
+   ============================================================ */
+rex_command
+  = 'rex'i _+ 'mode=sed'i _+ rest:rest_of_command
+    {
+      return {
+        type: 'RexCommand',
+        mode: 'sed',
+        field: null,
+        pattern: null,
+        rawText: rest
+      };
+    }
+  / 'rex'i _+ 'field=' '"' field:double_string_char* '"' _+ opts:rex_option* '"' pattern:rex_string_char* '"' _* trailing:rex_option*
+    {
+      return {
+        type: 'RexCommand',
+        mode: 'extract',
+        field: field.join(''),
+        pattern: pattern.join(''),
+        maxMatch: opts.length > 0 || trailing.length > 0,
+        rawText: null
+      };
+    }
+  / 'rex'i _+ 'field=' field:field_name _+ opts:rex_option* '"' pattern:rex_string_char* '"' _* trailing:rex_option*
+    {
+      return {
+        type: 'RexCommand',
+        mode: 'extract',
+        field: field,
+        pattern: pattern.join(''),
+        maxMatch: opts.length > 0 || trailing.length > 0,
+        rawText: null
+      };
+    }
+  / 'rex'i _+ opts:rex_option* '"' pattern:rex_string_char* '"' _* trailing:rex_option*
+    {
+      return {
+        type: 'RexCommand',
+        mode: 'extract',
+        field: '_raw',
+        pattern: pattern.join(''),
+        maxMatch: opts.length > 0 || trailing.length > 0,
+        rawText: null
+      };
+    }
+  / 'rex'i _+ rest:rest_of_command
+    {
+      return {
+        type: 'RexCommand',
+        mode: 'unknown',
+        field: null,
+        pattern: null,
+        rawText: rest
+      };
+    }
+
+rex_option
+  = 'max_match=' [0-9]+ _*
+  / 'offset_field=' field_name _*
+
+/* Regex string chars: preserves backslash sequences (unlike double_string_char which interprets them) */
+rex_string_char
+  = '\\' ch:. { return '\\' + ch; }
+  / [^"\\]
+
+/* ============================================================
+   Bin command: | bin _time span=X
+   ============================================================ */
+bin_command
+  = ('bin'i / 'bucket'i) _+ '_time' _+ 'span=' span:span_value
+    {
+      return {
+        type: 'BinCommand',
+        field: '_time',
+        span: span,
+        rawText: '_time span=' + span
+      };
+    }
+  / ('bin'i / 'bucket'i) _+ 'span=' span:span_value _+ field:field_name
+    {
+      return {
+        type: 'BinCommand',
+        field: field,
+        span: field === '_time' ? span : null,
+        width: field !== '_time' ? parseInt(span, 10) || null : null,
+        rawText: 'span=' + span + ' ' + field
+      };
+    }
+  / ('bin'i / 'bucket'i) _+ field:field_name _+ 'span=' width:[0-9]+
+    {
+      return {
+        type: 'BinCommand',
+        field: field,
+        span: null,
+        width: parseInt(width.join(''), 10),
+        rawText: field + ' span=' + width.join('')
+      };
+    }
+  / ('bin'i / 'bucket'i) _+ rest:rest_of_command
+    {
+      return {
+        type: 'BinCommand',
+        field: null,
+        span: null,
+        rawText: rest
+      };
+    }
+
+/* ============================================================
+   Lookup command: | lookup tableName keyField [OUTPUT field1, field2, ...]
+   ============================================================ */
+lookup_command
+  = 'lookup'i _+ table:field_name _+ key:field_name alias:as_clause? output:lookup_output?
+    {
+      return {
+        type: 'LookupCommand',
+        table: table,
+        key: key,
+        keyAlias: alias || null,
+        outputFields: output || []
+      };
+    }
+
+lookup_output_field
+  = name:field_name alias:as_clause? { return { name: name, alias: alias || null }; }
+
+lookup_output_field_list
+  = first:lookup_output_field rest:((_* ',' _* / _+) f:lookup_output_field { return f; })*
+    { return [first].concat(rest); }
+
+lookup_output
+  = _+ 'OUTPUT'i _+ fields:lookup_output_field_list
+    { return fields; }
+  / _+ 'OUTPUTNEW'i _+ fields:lookup_output_field_list
+    { return fields; }
+
+/* ============================================================
+   Inputlookup command: | inputlookup [append=true] tablename
+   ============================================================ */
+inputlookup_command
+  = 'inputlookup'i _+ 'append='i [a-zA-Z]+ _+ table:field_name _+ 'where'i _+ condition:rest_of_command
+    {
+      return { type: 'InputlookupCommand', table: table, append: true, where: condition };
+    }
+  / 'inputlookup'i _+ table:field_name _+ 'where'i _+ condition:rest_of_command
+    {
+      return { type: 'InputlookupCommand', table: table, append: false, where: condition };
+    }
+  / 'inputlookup'i _+ 'append='i [a-zA-Z]+ _+ table:field_name
+    {
+      return { type: 'InputlookupCommand', table: table, append: true };
+    }
+  / 'inputlookup'i _+ table:field_name
+    {
+      return { type: 'InputlookupCommand', table: table, append: false };
+    }
+
+/* ============================================================
+   Join command: | join [type=inner|left|outer] field [subsearch]
+   ============================================================ */
+join_command
+  = 'join'i jtype:join_type_option? _+ field:field_name _* '[' subsearch:subsearch_content ']'
+    {
+      return {
+        type: 'JoinCommand',
+        joinType: jtype || 'inner',
+        field: field,
+        subsearch: subsearch
+      };
+    }
+
+join_type_option
+  = _+ 'type=' type:('inner'i / 'left'i / 'outer'i) { return type.toLowerCase(); }
+
+subsearch_content
+  = chars:subsearch_char+ { return chars.join(''); }
+
+subsearch_char
+  = '[' inner:subsearch_content ']' { return '[' + inner + ']'; }
+  / ch:[^\[\]] { return ch; }
+
+/* ============================================================
+   Spath command: | spath [input=field] [path=json.path] [output=alias]
+   ============================================================ */
+spath_command
+  = 'spath'i opts:spath_option* pos:spath_positional?
+    {
+      var input = null, path = null, output = null;
+      for (var i = 0; i < opts.length; i++) {
+        if (opts[i].key === 'input') input = opts[i].value;
+        if (opts[i].key === 'path') path = opts[i].value;
+        if (opts[i].key === 'output') output = opts[i].value;
+      }
+      if (pos && !path) path = pos;
+      return {
+        type: 'SpathCommand',
+        input: input,
+        path: path,
+        output: output
+      };
+    }
+
+spath_option
+  = _+ key:('input'i / 'path'i / 'output'i) '=' value:spath_option_value
+    { return { key: key.toLowerCase(), value: value }; }
+
+spath_option_value
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / "'" chars:single_string_char* "'" { return chars.join(''); }
+  / chars:[^ \t\r\n\f|]+ { return chars.join(''); }
+
+spath_positional
+  = _+ '"' chars:double_string_char* '"' { return chars.join(''); }
+  / _+ "'" chars:single_string_char* "'" { return chars.join(''); }
+  / _+ !('input'i '=' / 'path'i '=' / 'output'i '=') chars:[^ \t\r\n\f|]+ { return chars.join(''); }
+
+/* ============================================================
+   Regex command: | regex [field=F] "pattern" or | regex field!=pattern
+   ============================================================ */
+regex_command
+  = 'regex'i _+ field:field_name '=' '"' pattern:rex_string_char* '"'
+    {
+      return {
+        type: 'RegexCommand',
+        field: field,
+        negate: false,
+        pattern: pattern.join('')
+      };
+    }
+  / 'regex'i _+ field:field_name '!=' '"' pattern:rex_string_char* '"'
+    {
+      return {
+        type: 'RegexCommand',
+        field: field,
+        negate: true,
+        pattern: pattern.join('')
+      };
+    }
+  / 'regex'i _+ '"' pattern:rex_string_char* '"'
+    {
+      return {
+        type: 'RegexCommand',
+        field: '_raw',
+        negate: false,
+        pattern: pattern.join('')
+      };
+    }
+  / 'regex'i _+ rest:rest_of_command
+    {
+      return {
+        type: 'RegexCommand',
+        field: null,
+        negate: false,
+        pattern: null,
+        rawText: rest
+      };
+    }
+
+/* ============================================================
+   Fillnull command: | fillnull [value=X] [field1 field2 ...]
+   ============================================================ */
+fillnull_command
+  = 'fillnull'i val:fillnull_value? fields:((_* ',' _* / _+) f:field_name { return f; })*
+    {
+      return {
+        type: 'FillnullCommand',
+        value: val,
+        fields: fields
+      };
+    }
+
+fillnull_value
+  = _+ 'value=' '"' chars:double_string_char* '"' { return chars.join(''); }
+  / _+ 'value=' "'" chars:single_string_char* "'" { return chars.join(''); }
+  / _+ 'value=' chars:[^ \t\r\n\f|]+ { return chars.join(''); }
+
+/* ============================================================
+   Rare command: | rare [N] field [by field, ...]
+   ============================================================ */
+rare_command
+  = 'rare'i _+ opts:rare_options fields:rare_field_list limit:(_+ 'limit=' n:[0-9]+ { return parseInt(n.join(''), 10); })? by:by_clause?
+    {
+      var effectiveLimit = opts.limit || limit || 10;
+      return {
+        type: 'RareCommand',
+        count: effectiveLimit,
+        field: fields[0],
+        groupBy: fields.slice(1).concat(by || [])
+      };
+    }
+
+rare_options
+  = items:rare_option*
+    {
+      var result = { limit: null };
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type === 'limit') result.limit = items[i].value;
+      }
+      return result;
+    }
+
+rare_option
+  = n:[0-9]+ _+
+    { return { type: 'limit', value: parseInt(n.join(''), 10) }; }
+  / 'limit'i '=' n:[0-9]+ _+
+    { return { type: 'limit', value: parseInt(n.join(''), 10) }; }
+
+rare_field_list
+  = first:rare_field rest:(_+ !('by'i _+ / 'limit'i '=' / 'BY' _+) name:rare_field { return name; })*
+    { return [first].concat(rest); }
+
+rare_field
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / "'" chars:single_string_char* "'" { return chars.join(''); }
+  / field_name
+
+/* ============================================================
+   Reverse command: | reverse
+   ============================================================ */
+reverse_command
+  = 'reverse'i
+    {
+      return { type: 'ReverseCommand' };
+    }
+
+/* ============================================================
+   Strcat command: | strcat field1 field2 ... destField
+   ============================================================ */
+strcat_command
+  = 'strcat'i _+ parts:strcat_parts
+    {
+      return {
+        type: 'StrcatCommand',
+        parts: parts
+      };
+    }
+
+strcat_parts
+  = first:strcat_part rest:(_+ p:strcat_part { return p; })+
+    { return [first].concat(rest); }
+
+strcat_part
+  = '"' chars:double_string_char* '"' { return { type: 'literal', value: chars.join('') }; }
+  / "'" chars:single_string_char* "'" { return { type: 'literal', value: chars.join('') }; }
+  / name:field_name { return { type: 'field', value: name }; }
+
+/* ============================================================
+   Uniq command: | uniq
+   ============================================================ */
+uniq_command
+  = 'uniq'i
+    {
+      return { type: 'UniqCommand' };
+    }
+
+/* ============================================================
+   Mvexpand command: | mvexpand field [limit=N]
+   ============================================================ */
+mvexpand_command
+  = 'mvexpand'i _+ name:function_name '(' _* arg:field_name _* ')' limit:(_+ 'limit=' n:[0-9]+ { return parseInt(n.join(''), 10); })?
+    {
+      return { type: 'MvexpandCommand', field: name + '(' + arg + ')', limit: limit };
+    }
+  / 'mvexpand'i _+ field:field_name limit:(_+ 'limit=' n:[0-9]+ { return parseInt(n.join(''), 10); })?
+    {
+      return { type: 'MvexpandCommand', field: field, limit: limit };
+    }
+
+/* ============================================================
+   Replace command: | replace "old" WITH "new" [, "old2" WITH "new2" ...] IN field
+   ============================================================ */
+replace_command
+  = 'replace'i _+ pairs:replace_pair_list _+ 'IN'i _+ field:field_name
+    {
+      return {
+        type: 'ReplaceCommand',
+        pairs: pairs,
+        oldValue: pairs[0].oldValue,
+        newValue: pairs[0].newValue,
+        field: field
+      };
+    }
+
+replace_pair_list
+  = first:replace_pair rest:(_* ',' _* p:replace_pair { return p; })*
+    { return [first].concat(rest); }
+
+replace_pair
+  = '"' old:double_string_char* '"' _+ 'WITH'i _+ '"' new_val:double_string_char* '"'
+    { return { oldValue: old.join(''), newValue: new_val.join('') }; }
+
+/* ============================================================
+   Predict command: | predict field [as alias] [algorithm=...]
+   ============================================================ */
+predict_command
+  = 'predict'i _+ rest:rest_of_command
+    {
+      return {
+        type: 'PredictCommand',
+        rawText: rest
+      };
+    }
+
+/* ============================================================
+   Tstats command: | tstats ... FROM datamodel=X ...
+   Parsed but not translated — emits actionable unsupported message.
+   ============================================================ */
+tstats_command
+  = 'tstats'i _+ rest:rest_of_command
+    {
+      return {
+        type: 'TstatsCommand',
+        rawText: rest
+      };
+    }
+
+/* ============================================================
+   Append command: | append [subsearch]
+   Only matches append followed by a bracketed subsearch.
+   Bare "append" (no brackets) falls through to unknown_command.
+   ============================================================ */
+append_command
+  = 'append'i _* '[' subsearch:subsearch_content ']'
+    {
+      return {
+        type: 'AppendCommand',
+        subsearch: subsearch
+      };
+    }
+
+/* ============================================================
+   Convert command: | convert func(field) [AS alias] [, func(field) [AS alias] ...]
+   ============================================================ */
+convert_command
+  = 'convert'i _+ first:convert_spec rest:(_* ','? _* s:convert_spec { return s; })* &(_* '|' / _* !.)
+    {
+      return { type: 'ConvertCommand', specs: [first].concat(rest), rawText: null };
+    }
+  / 'convert'i _+ rest:rest_of_command
+    {
+      return { type: 'ConvertCommand', specs: [], rawText: rest };
+    }
+
+convert_spec
+  = name:function_name '(' _* field:field_name _* ')' alias:as_clause?
+    { return { name: name, field: field, alias: alias }; }
+
+/* ============================================================
+   Appendcols command: | appendcols [subsearch]
+   Adds subsearch results as new columns. Same merge logic as append.
+   ============================================================ */
+appendcols_command
+  = 'appendcols'i [^\[]* '[' subsearch:subsearch_content ']'
+    {
+      return {
+        type: 'AppendcolsCommand',
+        subsearch: subsearch
+      };
+    }
+
+/* ============================================================
+   Appendpipe command: | appendpipe [subpipeline]
+   Runs a subpipeline and appends to current results.
+   In practice, used for zero-fill fallbacks — a no-op for NRQL.
+   ============================================================ */
+appendpipe_command
+  = 'appendpipe'i _* '[' subsearch:subsearch_content ']'
+    {
+      return {
+        type: 'AppendpipeCommand',
+        subsearch: subsearch
+      };
+    }
+
+/* ============================================================
+   Eventstats command: | eventstats fn() [as alias] [, ...] [by field, ...]
+   Same syntax as stats but adds aggregated values to every row.
+   ============================================================ */
+eventstats_command
+  = 'eventstats'i _+ fns:stats_function_list by:by_clause?
+    {
+      return {
+        type: 'EventstatsCommand',
+        functions: fns,
+        groupBy: by || []
+      };
+    }
+
+/* ============================================================
+   Unknown/unsupported command catch-all
+   ============================================================ */
+unknown_command
+  = name:command_name rest:(_+ r:rest_of_command { return r; })?
+    {
+      return {
+        type: 'UnsupportedCommand',
+        name: name,
+        rawText: rest || ''
+      };
+    }
+
+command_name
+  = chars:[a-zA-Z]+ { return chars.join('').toLowerCase(); }
+
+rest_of_command
+  = chars:[^|]+ { return chars.join('').trim(); }
+
+/* ============================================================
+   Search clause: boolean expressions of field=value, keywords, etc.
+   ============================================================ */
+search_clause
+  = _* 'search'i _+ expr:or_expr { return expr; }
+  / _* expr:or_expr { return expr; }
+
+or_expr
+  = left:and_expr rest:(_+ 'OR'i _+ right:and_expr { return right; })*
+    {
+      var result = left;
+      for (var i = 0; i < rest.length; i++) {
+        result = { type: 'BooleanOp', operator: 'OR', left: result, right: rest[i] };
+      }
+      return result;
+    }
+
+and_expr
+  = left:not_expr rest:((_+ 'AND'i _+ / _+ !('OR'i _+)) right:not_expr { return right; })*
+    {
+      var result = left;
+      for (var i = 0; i < rest.length; i++) {
+        result = { type: 'BooleanOp', operator: 'AND', left: result, right: rest[i] };
+      }
+      return result;
+    }
+
+not_expr
+  = 'NOT'i _* '(' _* ')' { return null; }
+  / 'NOT'i _* '(' _* expr:or_expr _* ')' { return { type: 'Not', operand: expr }; }
+  / 'NOT'i _+ '[' _* subsearch:[^\]]+ ']' { return { type: 'NotSubsearch', rawText: subsearch.join('') }; }
+  / 'NOT'i _+ expr:primary_expr { return { type: 'Not', operand: expr }; }
+  / primary_expr
+
+primary_expr
+  = '(' _* expr:or_expr _* ')' { return expr; }
+  / macro
+  / time_constraint
+  / in_comparison
+  / comparison
+  / term_directive
+  / template_variable
+  / bare_keyword
+
+template_variable
+  = '$' name:template_var_name '$'
+    { return { type: 'TemplateVariable', name: name }; }
+
+template_var_name
+  = chars:[a-zA-Z0-9_.]+ { return chars.join(''); }
+
+term_directive
+  = 'TERM'i '(' '"' chars:double_string_char* '"' ')'
+    { return { type: 'BareKeyword', value: chars.join('') }; }
+  / 'TERM'i '(' chars:[^)]+ ')'
+    { return { type: 'BareKeyword', value: chars.join('') }; }
+
+macro_command
+  = m:macro
+    {
+      return {
+        type: 'MacroCommand',
+        name: m.name,
+        args: m.args
+      };
+    }
+
+/* ============================================================
+   Backtick macro: `macro_name` or `macro_name(arg1, arg2)`
+   ============================================================ */
+macro
+  = '`' name:macro_name_chars args:macro_args? '`'
+    {
+      return {
+        type: 'Macro',
+        name: name,
+        args: args || []
+      };
+    }
+
+macro_name_chars
+  = chars:[^`(]+ { return chars.join('').trim(); }
+
+macro_args
+  = '(' first:macro_arg rest:(',' _* arg:macro_arg { return arg; })* ')'
+    { return [first].concat(rest); }
+
+macro_arg
+  = _* chars:[^,)`]+ { return chars.join('').trim(); }
+
+/* ============================================================
+   Time constraints: earliest=X, latest=X
+   ============================================================ */
+time_constraint
+  = param:('earliest'i / 'latest'i) '=' value:time_value
+    {
+      return {
+        type: 'TimeConstraint',
+        param: param.toLowerCase(),
+        value: value
+      };
+    }
+
+time_value
+  = chars:[^ \t\r\n\f|()]+ { return chars.join(''); }
+
+/* ============================================================
+   IN comparison: field IN (val1, val2, ...)
+   ============================================================ */
+in_comparison
+  = '"' field:double_string_char* '"' _* 'IN'i _* '(' _* values:in_value_list _* ')'
+    {
+      return {
+        type: 'InComparison',
+        field: field.join(''),
+        values: values
+      };
+    }
+  / field:search_field _* 'IN'i _* '(' _* values:in_value_list _* ')'
+    {
+      return {
+        type: 'InComparison',
+        field: field,
+        values: values
+      };
+    }
+
+in_value_list
+  = first:in_value rest:(',' _* v:in_value { return v; })*
+    { return [first].concat(rest); }
+
+in_value
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / "'" chars:single_string_char* "'" { return chars.join(''); }
+  / '\\"' chars:escaped_quote_inner* '\\"' { return chars.join(''); }
+  / chars:[^,)"' \t]+ { return chars.join(''); }
+
+/* ============================================================
+   Field comparisons: field=value, field!=value, field>=value, etc.
+   ============================================================ */
+comparison
+  = '"' field:double_string_char* '"' _* op:comparison_op _* value:search_value
+    {
+      return {
+        type: 'Comparison',
+        field: field.join(''),
+        operator: op,
+        value: value
+      };
+    }
+  / field:search_field _* op:comparison_op _* value:search_value
+    {
+      return {
+        type: 'Comparison',
+        field: field,
+        operator: op,
+        value: value
+      };
+    }
+
+search_field
+  = first:[a-zA-Z_] rest:[a-zA-Z0-9_.\-:{}]*
+    { return first + rest.join(''); }
+
+comparison_op
+  = '!=' { return '!='; }
+  / '>=' { return '>='; }
+  / '<=' { return '<='; }
+  / '==' { return '=='; }
+  / '>' { return '>'; }
+  / '<' { return '<'; }
+  / '=' { return '='; }
+
+search_value
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / "'" chars:single_string_char* "'" { return chars.join(''); }
+  / '\\"' chars:escaped_quote_inner* '\\"' { return chars.join(''); }
+  / chars:search_value_char+ { return chars.join(''); }
+
+search_value_char
+  = [^ \t\r\n\f|()"]
+
+escaped_quote_inner
+  = '\\' !'"' ch:. { return '\\' + ch; }
+  / !('\\"') ch:. { return ch; }
+
+/* ============================================================
+   Bare keywords (unqualified search terms)
+   ============================================================ */
+bare_keyword
+  = '"' chars:double_string_char* '"'
+    { return { type: 'BareKeyword', value: chars.join(''), quoted: true }; }
+  / "'" chars:single_string_char* "'"
+    { return { type: 'BareKeyword', value: chars.join(''), quoted: true }; }
+  / chars:keyword_char+
+    { return { type: 'BareKeyword', value: chars.join(''), quoted: false }; }
+
+keyword_char
+  = '\\' ch:. { return ch; }
+  / [^ \t\r\n\f|()=!<>"`']
+
+double_string_char
+  = '\\n' { return '\n'; }
+  / '\\t' { return '\t'; }
+  / '\\r' { return '\r'; }
+  / '\\' ch:. { return ch; }
+  / [^"\\]
+
+single_string_char
+  = '\\n' { return '\n'; }
+  / '\\t' { return '\t'; }
+  / '\\r' { return '\r'; }
+  / '\\' ch:. { return ch; }
+  / [^'\\]
+
+/* ============================================================
+   Whitespace
+   ============================================================ */
+_ "whitespace"
+  = '```' [^`]* '```'
+  / [ \t\r\n\f]

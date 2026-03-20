@@ -1,0 +1,38 @@
+{
+  "name": "@datanerd/nr-query-bridge",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "spl2nrql": "./bin/spl2nrql.js"
+  },
+  "files": [
+    "src/",
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git@source.<GHE_DOMAIN>:logging/nr-query-bridge.git"
+  },
+  "author": {
+    "name": "Logging Team",
+    "email": "<PUBLIC_CONTACT>"
+  },
+  "scripts": {
+    "prepublishOnly": "npm test",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --no-coverage --config jest.config.js",
+    "build:parsers": "peggy -o src/input/spl/splParser.js --format es src/input/spl/spl.grammar"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0",
+    "peggy": "^5.1.0"
+  }
+}
