@@ -1,12 +1,7 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | reverse',
-  'error | table message | reverse',
-  '* | rename _time AS "Time"',
-  '* | table _time, host, status, bytes, url',
-  '* | fields _time, host, status',
-  '* | bucket span=5m _time | stats count by _time',
+  '* | top delay limit=10',
 ];
 
 describe('V2 show output', () => {

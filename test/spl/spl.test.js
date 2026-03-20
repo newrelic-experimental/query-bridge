@@ -1886,65 +1886,35 @@ const cases = [
   // percentages, or add a percent subquery. V2 should add a warning about this.
   //
   {
-    // FIXME: V2 top missing percent column; warn about pie chart display for percentages
     spl: '* | top categoryId',
-    select: [
-      'count(*)',
-      "count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent'",
-    ],
-    facet: ['`categoryId`'],
-    limit: 10,
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10",
     doc: 'reports-top',
     verified: false,
   },
   {
-    // FIXME: V2 top missing percent column
     spl: '* | top 20 host',
-    select: [
-      'count(*)',
-      "count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent'",
-    ],
-    limit: 20,
-    facet: ['`host`'],
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20",
     doc: 'reports-top',
     verified: false,
   },
   // limit=N keyword form
   {
-    // FIXME: V2 top missing percent column
     spl: '* | top limit=20 host',
-    select: [
-      'count(*)',
-      "count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent'",
-    ],
-    facet: ['`host`'],
-    limit: 20,
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20",
     doc: 'reports-top',
     verified: false,
   },
   // limit=0 means unlimited → LIMIT MAX
   {
-    // FIXME: V2 emits LIMIT 10 for limit=0; should be LIMIT MAX (unlimited)
     spl: '* | top limit=0 status',
-    select: [
-      'count(*)',
-      "count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent'",
-    ],
-    facet: ['`status`'],
-    limit: 'MAX',
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX",
     doc: 'reports-top',
     verified: false,
   },
   // countfield option renames the count column
   {
-    // FIXME: V2 top ignores countfield option; should alias count(*) AS 'total'
     spl: '* | top limit=5 countfield=total host',
-    select: [
-      "count(*) AS 'total'",
-      "count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent'",
-    ],
-    facet: ['`host`'],
-    limit: 5,
+    v2nrql: "FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
     verified: false,
   },
@@ -1957,48 +1927,30 @@ const cases = [
   },
   // useother=true warns about no NRQL equivalent
   {
-    // FIXME: V2 silently drops useother; should warn that NRQL pie chart
-    // display shows an "Other" category automatically
     spl: '* | top 5 useother=true status',
-    select: [
-      'count(*)',
-      "count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent'",
-    ],
-    facet: ['`status`'],
-    limit: 5,
-    warningIncludes: 'useother',
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5",
+    v2warningIncludes: 'useother',
     doc: 'reports-top',
     verified: false,
   },
   // percentfield option renames the percent column
   {
-    // FIXME: V2 top ignores percentfield option
     spl: '* | top 5 percentfield=pct host',
-    select: [
-      'count(*)',
-      "count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'pct'",
-    ],
-    facet: ['`host`'],
-    limit: 5,
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
     verified: false,
   },
   // limit=N after field name
   {
     spl: '* | top delay limit=10',
-    v2nrql: 'FROM Log SELECT count(*) FACET delay ORDER BY count DESC LIMIT 10',
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // percent subquery includes WHERE from search
   {
-    // FIXME: V2 top missing percent column with WHERE-aware subquery
     spl: 'error | top 5 status',
-    selectIncludes: [
-      "count(*) * 100.0 / (SELECT count(*) FROM Log WHERE message LIKE '%error%') AS 'percent'",
-    ],
-    facet: ['`status`'],
-    limit: 5,
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
     verified: false,
   },
@@ -2006,15 +1958,9 @@ const cases = [
   // ── top with groupby ────────────────────────────────────────────
   //
   {
-    // FIXME: V2 drops by-clause from top; should be FACET status, host
     spl: '* | top 5 status by host',
-    select: [
-      'count(*)',
-      "count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent'",
-    ],
-    facet: ['`status`', '`host`'],
-    limit: 5,
-    warningIncludes: 'top with groupBy',
+    v2nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5",
+    v2warningIncludes: 'top with groupBy',
     doc: 'reports-top-groupby',
     verified: false,
   },

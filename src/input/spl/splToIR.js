@@ -584,12 +584,47 @@ function handleBin(cmd, ir) {
 }
 
 function handleTop(cmd, ir) {
-  ir.select = [Func('count', [])];
+  // count(*) with optional alias from countfield
+  const countExpr = cmd.countfield
+    ? Alias(Func('count', []), cmd.countfield)
+    : Func('count', []);
+  ir.select = [countExpr];
+
+  // Percent column: count(*) * 100.0 / (SELECT count(*) FROM Log [WHERE ...])
+  if (cmd.showperc !== false) {
+    const subqWhere = ir.where ? { ...ir.where } : null;
+    const subquery = SelectQuery({
+      select: [Func('count', [])],
+      where: subqWhere,
+    });
+    const percentExpr = BinOp(
+      '/',
+      BinOp('*', Func('count', []), RawNrql('100.0')),
+      { type: 'SubqueryExpr', query: subquery },
+    );
+    const percentAlias = cmd.percentfield || 'percent';
+    ir.select.push(Alias(percentExpr, percentAlias));
+  }
+
   ir.facet = [Identifier(cmd.field)];
+  if (cmd.groupBy && cmd.groupBy.length > 0) {
+    ir.facet.push(...cmd.groupBy.map(Identifier));
+    ir.warnings.push(
+      'top with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value',
+    );
+  }
   ir.orderBy = OrderBy(Identifier('count'), true);
-  ir.limit = cmd.count || 10;
+
+  // limit=0 means unlimited in SPL
+  ir.limit = cmd.count === 0 ? 'MAX' : (cmd.count || 10);
+
+  if (cmd.useother) {
+    ir.warnings.push(
+      'useother: NRQL pie chart automatically shows an "Other" category for values outside LIMIT',
+    );
+  }
+
   ir._hasAggregation = true;
-  // TODO: proper percent subquery
 }
 
 function handleRare(cmd, ir) {
