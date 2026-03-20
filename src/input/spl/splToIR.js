@@ -133,6 +133,13 @@ export function translateAstToIR(ast) {
     delete ir._fieldReplacements;
   }
 
+  // Remove _time from FACET when TIMESERIES is present (TIMESERIES already groups by time)
+  if (ir.timeseries && ir.facet.length > 0) {
+    ir.facet = ir.facet.filter(
+      (f) => !(f.type === 'Identifier' && (f.name === '_time' || f.name === 'timestamp')),
+    );
+  }
+
   return ir;
 }
 
@@ -421,7 +428,7 @@ function applyCommand(cmd, ir) {
       ir.unsupported.push('uniq has no direct NRQL equivalent');
       return;
     case 'ReverseCommand':
-      ir.unsupported.push('reverse has no NRQL equivalent');
+      ir.orderBy = OrderBy(Identifier('timestamp'), false);
       return;
     case 'UnsupportedCommand':
       ir.unsupported.push(
@@ -494,8 +501,15 @@ function handleEval(cmd, ir) {
   translateEvalExpr(cmd, ir);
 }
 
+// Map SPL metadata field names to NRQL equivalents
+function mapFieldName(name) {
+  if (name === '_time') return 'timestamp';
+  if (name === '_raw') return 'message';
+  return name;
+}
+
 function handleTable(cmd, ir) {
-  ir.select = cmd.fields.map(Identifier);
+  ir.select = cmd.fields.map((f) => Identifier(mapFieldName(f)));
 }
 
 function handleFields(cmd, ir) {
@@ -504,7 +518,7 @@ function handleFields(cmd, ir) {
     // In NRQL, there's no way to exclude fields from SELECT *
     ir.warnings.push('fields - (exclude mode) has limited NRQL support');
   } else {
-    ir.select = cmd.fields.map(Identifier);
+    ir.select = cmd.fields.map((f) => Identifier(mapFieldName(f)));
   }
 }
 
@@ -530,7 +544,7 @@ function handleRename(cmd, ir) {
       );
       continue;
     }
-    ir.select.push(Alias(Identifier(rename.from), rename.to));
+    ir.select.push(Alias(Identifier(mapFieldName(rename.from)), rename.to));
   }
 }
 

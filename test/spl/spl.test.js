@@ -1467,10 +1467,8 @@ const cases = [
     verified: false,
   },
   {
-    // FIXME: _time should map to timestamp in NRQL; bare _time fails compilation
     spl: '* | rename _time AS "Time"',
-    select: ["`_time` AS 'Time'"],
-    v2nrql: "FROM Log SELECT _time AS 'Time'",
+    v2nrql: "FROM Log SELECT timestamp AS 'Time'",
     doc: 'fields-rename',
     verified: false,
   },
@@ -2055,13 +2053,8 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: V2 emits FACET _time alongside TIMESERIES; _time is not a real NRQL attribute
-    // and by _time after bin should be absorbed by TIMESERIES, not emitted as FACET
     spl: '* | bucket span=5m _time | stats count by _time',
-    timeseries: '5 minutes',
-    select: ['count(*)'],
-    unsupported: [],
-    v2nrql: 'FROM Log SELECT count(*) FACET _time TIMESERIES 5 minutes',
+    v2nrql: 'FROM Log SELECT count(*) TIMESERIES 5 minutes',
     doc: 'reports-bin',
     verified: false,
   },
@@ -2334,9 +2327,8 @@ const cases = [
   //
   //
   {
-    // FIXME: V2 emits bare _time which fails MCP; should map to timestamp
     spl: '* | table _time, host, status, bytes, url',
-    select: ['`host`', '`status`', '`bytes`', '`url`'],
+    v2nrql: 'FROM Log SELECT timestamp, host, status, bytes, url',
     doc: 'results-table',
     verified: false,
   },
@@ -2355,9 +2347,8 @@ const cases = [
     verified: 'llm',
   },
   {
-    // FIXME: V2 emits bare _time; should map to timestamp
     spl: '* | fields _time, host, status',
-    select: ['`host`', '`status`'],
+    v2nrql: 'FROM Log SELECT timestamp, host, status',
     doc: 'results-table',
     verified: false,
   },
@@ -2474,17 +2465,14 @@ const cases = [
   //
   //
   {
-    // FIXME: V2 marks reverse as unsupported; should emit ORDER BY timestamp ASC
     spl: '* | reverse',
-    orderBy: ['timestamp ASC'],
+    v2nrql: "FROM Log SELECT * ORDER BY timestamp ASC",
     doc: 'results-reverse',
     verified: false,
   },
   {
-    // FIXME: V2 drops reverse; should emit ORDER BY timestamp ASC
     spl: 'error | table message | reverse',
-    orderBy: ['timestamp ASC'],
-    select: ['`message`'],
+    v2nrql: "FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp ASC",
     doc: 'results-reverse',
     verified: false,
   },

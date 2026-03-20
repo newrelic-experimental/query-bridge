@@ -1,9 +1,12 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | replace "error" WITH "warning" IN message',
-  '* | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype',
-  '* | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType',
+  '* | reverse',
+  'error | table message | reverse',
+  '* | rename _time AS "Time"',
+  '* | table _time, host, status, bytes, url',
+  '* | fields _time, host, status',
+  '* | bucket span=5m _time | stats count by _time',
 ];
 
 describe('V2 show output', () => {
