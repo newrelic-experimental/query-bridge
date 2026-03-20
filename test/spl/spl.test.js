@@ -1503,32 +1503,26 @@ const cases = [
   //
   //
   {
-    // FIXME: V2 doesn't support strcat; V1 correctly translates to concat() in WITH
     spl: '* | strcat host ":" port address',
-    with: ["concat(`host`, ':', `port`) AS `address`"],
+    v2nrql: "FROM Log WITH concat(host, ':', port) AS address SELECT *",
     doc: 'fields-strcat',
     verified: false,
   },
   {
-    // FIXME: V2 doesn't support strcat; V1 correctly translates to concat() in WITH
     spl: '* | strcat first_name last_name full_name',
-    with: ['concat(`first_name`, `last_name`) AS `full_name`'],
+    v2nrql: "FROM Log WITH concat(first_name, last_name) AS full_name SELECT *",
     doc: 'fields-strcat',
     verified: false,
   },
   {
-    // FIXME: V2 doesn't support strcat; V1 correctly translates to concat() in WITH
     spl: '* | strcat protocol "://" host ":" port url',
-    with: ["concat(`protocol`, '://', `host`, ':', `port`) AS `url`"],
+    v2nrql: "FROM Log WITH concat(protocol, '://', host, ':', port) AS url SELECT *",
     doc: 'fields-strcat',
     verified: false,
   },
   {
-    // FIXME: V2 doesn't support strcat; V1 correctly translates to concat() in WITH + FACET
     spl: '* | strcat host ":" port address | stats count by address',
-    withLength: 1,
-    select: ['count(*)'],
-    facet: ['`address`'],
+    v2nrql: "FROM Log WITH concat(host, ':', port) AS address SELECT count(*) FACET address",
     doc: 'fields-strcat',
     verified: false,
   },

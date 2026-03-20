@@ -1013,15 +1013,18 @@ function handleReplace(cmd, ir) {
 
 function handleStrcat(cmd, ir) {
   // strcat field1 "sep" field2 destField
-  // Last element is the destination field, rest are concat args
-  if (!cmd.args || cmd.args.length < 2) {
+  // Grammar produces: { parts: [{type:'field',value:'host'}, {type:'literal',value:':'}, ...] }
+  // Last part is the destination field, rest are concat args
+  const parts = cmd.parts;
+  if (!parts || parts.length < 2) {
     ir.unsupported.push('strcat requires at least 2 arguments');
     return;
   }
-  const destField = cmd.destField;
-  const concatArgs = cmd.args.map((a) => {
-    if (a.type === 'StringLiteral') return Literal(a.value, 'string');
-    return Identifier(a);
+  const destPart = parts[parts.length - 1];
+  const destField = destPart.value;
+  const concatArgs = parts.slice(0, -1).map((p) => {
+    if (p.type === 'literal') return Literal(p.value, 'string');
+    return Identifier(p.value);
   });
   ir.bindings.push(Binding(destField, Func('concat', concatArgs)));
 }

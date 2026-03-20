@@ -1,12 +1,10 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | where match(host, "^web[0-9]+$")',
-  '* | regex message="error\\\\d+"',
-  '* | regex status!="^2\\\\d{2}$"',
-  '* | regex "fatal|critical"',
-  'status=500 | regex message="timeout"',
-  '* | regex uri_path="^/api/v[0-9]+"',
+  '* | strcat host ":" port address',
+  '* | strcat first_name last_name full_name',
+  '* | strcat protocol "://" host ":" port url',
+  '* | strcat host ":" port address | stats count by address',
 ];
 
 describe('V2 show output', () => {
