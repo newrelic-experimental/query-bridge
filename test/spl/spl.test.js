@@ -2761,61 +2761,57 @@ const cases = [
     verified: 'llm',
   },
   {
-    // FIXME: V2 drops convert silently; V1 maps num() to numeric() in WITH
     // '1234567' → 1234567
     spl: '* | convert num(bytes)',
-    with: ['numeric(`bytes`) AS `bytes_converted`'],
-    warningIncludes: 'cannot overwrite a field in-place',
+    v2nrql: "FROM Log WITH numeric(bytes) AS bytes_converted SELECT *",
+    v2warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
     verified: false,
   },
   {
-    // FIXME: V2 drops convert silently; V1 maps rmcomma() to replace+numeric in WITH
     // '1,234,567' → 1234567
     spl: '* | convert rmcomma(total)',
-    with: ["numeric(replace(`total`, ',', '')) AS `total_converted`"],
-    warningIncludes: 'cannot overwrite a field in-place',
+    v2nrql: "FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *",
+    v2warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
     verified: false,
   },
   {
-    // FIXME: V2 drops convert silently; V1 maps ctime() to toDatetime() in WITH
     // 1741916927007 → '2026-03-13T23:48:47.007Z'
     spl: '* | convert ctime(timestamp) AS readable',
-    with: ['toDatetime(`timestamp`) AS `readable`'],
+    v2nrql: "FROM Log WITH toDatetime(timestamp) AS readable SELECT *",
     doc: 'fields-convert',
     verified: false,
   },
   {
-    // FIXME: V2 drops convert silently; V1 maps mktime() to toTimestamp()
     // '2026-03-13T23:48:47.007Z' → 1741916927007
     spl: '* | convert mktime(timestr)',
-    withIncludes: ['toTimestamp('],
+    v2nrql: "FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *",
+    v2warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
     verified: false,
   },
   {
-    // FIXME: V2 drops convert silently; V1 maps dur2sec() to substring arithmetic
-    // '346.319097ms' → 0.346, '5.4712s' → 5.4712, '509.634µs' → 0.000509, '01:30:45' → 5445
+    // '346.319097ms' → 0.346 — V2 uses numeric() approximation (no NRQL duration parser)
     spl: '* | convert dur2sec(duration)',
-    withIncludes: ['numeric(substring('],
-    warningIncludes: 'dur2sec',
+    v2nrql: "FROM Log WITH numeric(duration) AS duration_converted SELECT *",
+    v2warningIncludes: 'dur2sec',
     doc: 'fields-convert',
     verified: false,
   },
   {
-    // FIXME: V2 drops convert silently; V1 maps mstime() to substring arithmetic
-    // '02:30.500' → 150.5
+    // '02:30.500' → 150.5 — V2 uses numeric() approximation (no NRQL mm:ss parser)
     spl: '* | convert mstime(elapsed)',
-    withIncludes: ['numeric(substring('],
+    v2nrql: "FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *",
+    v2warningIncludes: 'mstime',
     doc: 'fields-convert',
     verified: false,
   },
   {
-    // FIXME: V2 drops convert silently; V1 handles multi-function convert
     // num: '200' → 200, rmcomma: '1,000' → 1000
     spl: '* | convert num(status), rmcomma(total)',
-    withLength: 2,
+    v2nrql: "FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, ',', '')) AS total_converted SELECT *",
+    v2nrql: "FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, ',', '')) AS total_converted SELECT *",
     doc: 'fields-convert',
     verified: false,
   },

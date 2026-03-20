@@ -1,10 +1,15 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | strcat host ":" port address',
-  '* | strcat first_name last_name full_name',
-  '* | strcat protocol "://" host ":" port url',
-  '* | strcat host ":" port address | stats count by address',
+  '* | convert num(bytes)',
+  '* | convert rmcomma(total)',
+  '* | convert ctime(timestamp) AS readable',
+  '* | convert mktime(timestr)',
+  '* | convert dur2sec(duration)',
+  '* | convert mstime(elapsed)',
+  '* | convert num(status), rmcomma(total)',
+  '* | convert auto(field)',
+  '* | convert rmunit(field)',
 ];
 
 describe('V2 show output', () => {

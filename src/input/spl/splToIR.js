@@ -958,7 +958,9 @@ function handleLookup(cmd, ir) {
 }
 
 function handleConvert(cmd, ir) {
-  if (!cmd.conversions || cmd.conversions.length === 0) {
+  // Grammar produces: { specs: [{name, field, alias}, ...], rawText: string|null }
+  const specs = cmd.specs;
+  if (!specs || specs.length === 0) {
     if (cmd.rawText) {
       ir.unsupported.push(
         `convert command could not be fully parsed: ${cmd.rawText}`,
@@ -966,28 +968,58 @@ function handleConvert(cmd, ir) {
     }
     return;
   }
-  for (const conv of cmd.conversions) {
-    const { func, field, alias } = conv;
+  for (const spec of specs) {
+    const { name: func, field, alias } = spec;
     const outputName = alias || `${field}_converted`;
     let expr;
-    switch (func) {
+    switch (func.toLowerCase()) {
       case 'num':
         expr = Func('numeric', [Identifier(field)]);
         break;
       case 'auto':
         expr = Func('numeric', [Identifier(field)]);
         break;
+      case 'rmcomma':
+        // '1,234' → numeric(replace(field, ',', ''))
+        expr = Func('numeric', [
+          Func('replace', [Identifier(field), Literal(',', 'string'), Literal('', 'string')]),
+        ]);
+        break;
+      case 'ctime':
+        // epoch ms → datetime string
+        expr = Func('toDatetime', [Identifier(field)]);
+        break;
+      case 'mktime':
+        // datetime string → epoch ms
+        expr = Func('toTimestamp', [Identifier(field)]);
+        break;
+      case 'dur2sec': {
+        // Duration string → seconds. NRQL has no built-in; approximate with warning.
+        ir.warnings.push(
+          `convert dur2sec(${field}): NRQL has no duration parser; using numeric(${field}) as approximation — verify data format`,
+        );
+        expr = Func('numeric', [Identifier(field)]);
+        break;
+      }
+      case 'mstime': {
+        // mm:ss.ms → seconds. NRQL has no built-in; approximate with warning.
+        ir.warnings.push(
+          `convert mstime(${field}): NRQL has no mm:ss.ms parser; using numeric(${field}) as approximation — verify data format`,
+        );
+        expr = Func('numeric', [Identifier(field)]);
+        break;
+      }
       default:
-        ir.unsupported.push(`convert ${func}(${field}) not supported`);
+        ir.unsupported.push(`convert ${func}(${field}) not supported in NRQL`);
         continue;
     }
-    if (alias || outputName !== field) {
+    if (alias) {
+      ir.bindings.push(Binding(alias, expr));
+    } else {
       ir.bindings.push(Binding(outputName, expr));
       ir.warnings.push(
         `convert ${func}(${field}): NRQL cannot overwrite a field in-place; aliased to ${outputName}`,
       );
-    } else {
-      ir.bindings.push(Binding(field, expr));
     }
   }
 }
