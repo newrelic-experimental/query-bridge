@@ -328,7 +328,7 @@ NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | bucket span=5m _time | stats count by _time
 NRQL: FROM Log SELECT count(*) FACET `_time` TIMESERIES 5 minutes
-V2:   FROM Log SELECT count(*) FACET _time TIMESERIES 5 minutes</pre>
+V2:   FROM Log SELECT count(*) TIMESERIES 5 minutes</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -336,7 +336,8 @@ V2:   FROM Log SELECT count(*) FACET _time TIMESERIES 5 minutes</pre>
 <div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | bin size span=10
-NRQL: FROM Log SELECT histogram(`size`, 10)</pre>
+NRQL: FROM Log SELECT histogram(`size`, 10)
+V2:   FROM Log SELECT histogram(size, 10)</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -375,7 +376,7 @@ Converts field values between formats. Translates to NRQL `WITH` expressions. No
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert num(bytes)
 NRQL: FROM Log WITH numeric(`bytes`) AS `bytes_converted` SELECT *
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log WITH numeric(bytes) AS bytes_converted SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert num(bytes): NRQL cannot overwrite a field in-place; aliased to bytes_converted</div>
@@ -385,7 +386,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert rmcomma(total)
 NRQL: FROM Log WITH numeric(replace(`total`, ',', '')) AS `total_converted` SELECT *
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted</div>
@@ -395,7 +396,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert ctime(timestamp) AS readable
 NRQL: FROM Log WITH toDatetime(`timestamp`) AS `readable` SELECT *
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log WITH toDatetime(timestamp) AS readable SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -404,7 +405,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert mktime(timestr)
 NRQL: FROM Log WITH toTimestamp(`timestr`) AS `timestr_converted` SELECT *
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ mktime translated to toTimestamp(); expects ISO 8601 or epoch format in NRQL</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ convert mktime(timestr): NRQL cannot overwrite a field in-place; aliased to timestr_converted</div>
@@ -414,7 +415,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert dur2sec(duration)
 NRQL: FROM Log WITH if(`duration` LIKE '%:%', numeric(substring(`duration`, 0, position(`duration`, ':', 0))) * 3600 + numeric(substring(`duration`, position(`duration`, ':', 0) + 1, position(`duration`, ':', 1) - position(`duration`, ':', 0) - 1)) * 60 + numeric(substring(`duration`, position(`duration`, ':', 1) + 1)), if(`duration` LIKE '%µs', numeric(substring(`duration`, 0, length(`duration`) - 3)) / 1000000, if(`duration` LIKE '%ms', numeric(substring(`duration`, 0, length(`duration`) - 2)) / 1000, if(`duration` LIKE '%s', numeric(substring(`duration`, 0, length(`duration`) - 1)), numeric(`duration`))))) AS `duration_converted` SELECT *
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log WITH numeric(duration) AS duration_converted SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ dur2sec translated with multi-branch if(); supports Go-style durations (µs/ms/s) and HH:MM:SS format</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ convert dur2sec(duration): NRQL cannot overwrite a field in-place; aliased to duration_converted</div>
@@ -424,7 +425,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert mstime(elapsed)
 NRQL: FROM Log WITH numeric(substring(`elapsed`, 0, position(`elapsed`, ':', 0))) * 60 + numeric(substring(`elapsed`, position(`elapsed`, ':', 0) + 1)) AS `elapsed_converted` SELECT *
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert mstime(elapsed): NRQL cannot overwrite a field in-place; aliased to elapsed_converted</div>
@@ -434,7 +435,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert num(status), rmcomma(total)
 NRQL: FROM Log WITH numeric(`status`) AS `status_converted`, numeric(replace(`total`, ',', '')) AS `total_converted` SELECT *
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, ',', '')) AS total_converted SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert num(status): NRQL cannot overwrite a field in-place; aliased to status_converted</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted</div>
@@ -444,7 +445,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert auto(field)
 NRQL: 
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log WITH numeric(field) AS field_converted SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
 </div>
 <div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ auto not supported; use num() for explicit numeric conversion</div>
@@ -453,8 +454,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert rmunit(field)
-NRQL: 
-V2:   FROM Log SELECT *</pre>
+NRQL: </pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
 </div>
 <div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ rmunit not supported; NRQL numeric() can't strip arbitrary unit suffixes. Consider normalizing units at ingest time</div>
@@ -463,8 +463,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | convert memk(field)
-NRQL: 
-V2:   FROM Log SELECT *</pre>
+NRQL: </pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
 </div>
 <div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ memk not supported; memory data in New Relic is typically already numeric (bytes). Consider normalizing at ingest time</div>
@@ -684,7 +683,7 @@ V2:   FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur' FACET host L
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | eventstats count AS total
 NRQL: FROM Log SELECT (SELECT count(*) FROM Log) AS 'total'
-V2:   FROM Log WITH count(*) AS total SELECT *</pre>
+V2:   FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -693,7 +692,7 @@ V2:   FROM Log WITH count(*) AS total SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | stats count as appCount by app | eventstats sum(appCount) as namespaceCount
 NRQL: FROM Log SELECT count(*) AS 'appCount', (SELECT sum(appCount) FROM Log) AS 'namespaceCount' FACET `app`
-V2:   FROM Log WITH sum(appCount) AS namespaceCount SELECT count(*) AS 'appCount' FACET app</pre>
+V2:   FROM Log SELECT count(*) AS 'appCount', (FROM Log SELECT sum(appCount)) AS 'namespaceCount' FACET app</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -752,7 +751,7 @@ Selects which fields to include in the results. Both `table` and `fields` transl
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | table _time, host, status, bytes, url
 NRQL: FROM Log SELECT `host`, `status`, `bytes`, `url`
-V2:   FROM Log SELECT _time, host, status, bytes, url</pre>
+V2:   FROM Log SELECT timestamp, host, status, bytes, url</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -778,7 +777,7 @@ V2:   FROM Log SELECT host, status</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | fields _time, host, status
 NRQL: FROM Log SELECT `host`, `status`
-V2:   FROM Log SELECT _time, host, status</pre>
+V2:   FROM Log SELECT timestamp, host, status</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -934,7 +933,7 @@ V2:   FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'other' FACET host L
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | join type=left src_ip [search index=geo | table src_ip, country]
 NRQL: FROM Log JOIN LEFT (SELECT `src_ip`, `country` FROM Log WHERE `index` = 'geo' LIMIT MAX) ON `src_ip` = `src_ip` SELECT *
-V2:   FROM Log JOIN LEFT (FROM Log SELECT src_ip, country WHERE index = 'geo' LIMIT MAX) ON src_ip = src_ip SELECT *</pre>
+V2:   FROM Log LEFT JOIN (FROM Log SELECT src_ip, country WHERE index = 'geo' LIMIT MAX) ON src_ip = src_ip SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
@@ -1265,7 +1264,7 @@ V2:   FROM Log SELECT average(bytes) AS 'avg_bytes', avg_bytes AS 'average_bytes
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | rename _time AS "Time"
 NRQL: FROM Log SELECT `_time` AS 'Time'
-V2:   FROM Log SELECT _time AS 'Time'</pre>
+V2:   FROM Log SELECT timestamp AS 'Time'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1339,7 +1338,7 @@ Replaces field values using wildcards or exact matches. NRQL has no in-place fie
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | replace "error" WITH "warning" IN message
 NRQL: FROM Log SELECT replace(`message`, 'error', 'warning')
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log SELECT replace(message, 'error', 'warning'), *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1348,7 +1347,7 @@ V2:   FROM Log SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype
 NRQL: FROM Log SELECT count(*) FACET replace(`sourcetype`, 'kube:container:', '')
-V2:   FROM Log SELECT count(*) FACET sourcetype</pre>
+V2:   FROM Log SELECT count(*) FACET replace(sourcetype, 'kube:container:', '')</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1357,7 +1356,7 @@ V2:   FROM Log SELECT count(*) FACET sourcetype</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType
 NRQL: FROM Log SELECT replace(replace(`OperationType`, '%%14674', 'Value Added'), '%%14675', 'Value Deleted')
-V2:   FROM Log SELECT *</pre>
+V2:   FROM Log SELECT replace(replace(OperationType, '%%14674', 'Value Added'), '%%14675', 'Value Deleted'), *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1835,7 +1834,8 @@ Concatenates string values. Translates to NRQL `concat()` in a WITH clause.
 <div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | strcat host ":" port address
-NRQL: FROM Log WITH concat(`host`, ':', `port`) AS `address` SELECT *</pre>
+NRQL: FROM Log WITH concat(`host`, ':', `port`) AS `address` SELECT *
+V2:   FROM Log WITH concat(host, ':', port) AS address SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1843,7 +1843,8 @@ NRQL: FROM Log WITH concat(`host`, ':', `port`) AS `address` SELECT *</pre>
 <div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | strcat first_name last_name full_name
-NRQL: FROM Log WITH concat(`first_name`, `last_name`) AS `full_name` SELECT *</pre>
+NRQL: FROM Log WITH concat(`first_name`, `last_name`) AS `full_name` SELECT *
+V2:   FROM Log WITH concat(first_name, last_name) AS full_name SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1851,7 +1852,8 @@ NRQL: FROM Log WITH concat(`first_name`, `last_name`) AS `full_name` SELECT *</p
 <div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | strcat protocol "://" host ":" port url
-NRQL: FROM Log WITH concat(`protocol`, '://', `host`, ':', `port`) AS `url` SELECT *</pre>
+NRQL: FROM Log WITH concat(`protocol`, '://', `host`, ':', `port`) AS `url` SELECT *
+V2:   FROM Log WITH concat(protocol, '://', host, ':', port) AS url SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1860,7 +1862,7 @@ NRQL: FROM Log WITH concat(`protocol`, '://', `host`, ':', `port`) AS `url` SELE
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | strcat host ":" port address | stats count by address
 NRQL: FROM Log WITH concat(`host`, ':', `port`) AS `address` SELECT count(*) FACET `address`
-V2:   FROM Log SELECT count(*) FACET address</pre>
+V2:   FROM Log WITH concat(host, ':', port) AS address SELECT count(*) FACET address</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1948,8 +1950,7 @@ V2:   FROM Log SELECT count(*) TIMESERIES 30 minutes PREDICT</pre>
 <div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | stats count | predict count
-NRQL: FROM Log SELECT count(*)
-V2:   FROM Log SELECT count(*) PREDICT</pre>
+NRQL: FROM Log SELECT count(*)</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ PREDICT requires TIMESERIES; add a timechart or bin _time before predict</div>
@@ -1982,7 +1983,7 @@ Shows the most common values of a field. Translates to NRQL `SELECT count(*) FAC
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top categoryId
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent' FACET `categoryId` LIMIT 10
-V2:   FROM Log SELECT count(*) FACET categoryId ORDER BY count DESC LIMIT 10</pre>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -1991,7 +1992,7 @@ V2:   FROM Log SELECT count(*) FACET categoryId ORDER BY count DESC LIMIT 10</pr
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top 20 host
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent' FACET `host` LIMIT 20
-V2:   FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 20</pre>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2000,7 +2001,7 @@ V2:   FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 20</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top limit=20 host
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent' FACET `host` LIMIT 20
-V2:   FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 20</pre>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2009,7 +2010,7 @@ V2:   FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 20</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top limit=0 status
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent' FACET `status` LIMIT MAX
-V2:   FROM Log SELECT count(*) FACET status ORDER BY count DESC LIMIT 10</pre>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2018,7 +2019,7 @@ V2:   FROM Log SELECT count(*) FACET status ORDER BY count DESC LIMIT 10</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top limit=5 countfield=total host
 NRQL: FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent' FACET `host` LIMIT 5
-V2:   FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5</pre>
+V2:   FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2036,7 +2037,7 @@ V2:   FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 10</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top 5 useother=true status
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent' FACET `status` LIMIT 5
-V2:   FROM Log SELECT count(*) FACET status ORDER BY count DESC LIMIT 5</pre>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ useother=true not supported; NRQL FACET has no "OTHER" bucket</div>
@@ -2046,7 +2047,7 @@ V2:   FROM Log SELECT count(*) FACET status ORDER BY count DESC LIMIT 5</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top 5 percentfield=pct host
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'pct' FACET `host` LIMIT 5
-V2:   FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5</pre>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2055,8 +2056,8 @@ V2:   FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top delay limit=10
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent' FACET `delay` LIMIT 10
-V2:   FROM Log SELECT count(*) FACET delay ORDER BY count DESC LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10</pre>
+<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
 
@@ -2064,7 +2065,7 @@ V2:   FROM Log SELECT count(*) FACET delay ORDER BY count DESC LIMIT 10</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  error | top 5 status
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET `status` LIMIT 5
-V2:   FROM Log SELECT count(*) WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5</pre>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2079,7 +2080,7 @@ Top values per group. SPL `top 5 status by host` returns the top 5 statuses **pe
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | top 5 status by host
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (SELECT count(*) FROM Log) AS 'percent' FACET `status`, `host` LIMIT 5
-V2:   FROM Log SELECT count(*) FACET status ORDER BY count DESC LIMIT 5</pre>
+V2:   FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ top with groupBy approximated as global FACET; SPL top returns top 5 per group</div>
@@ -2216,7 +2217,7 @@ V2:   FROM Log SELECT * WHERE numeric(count) &gt; 100</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | where like(host, "web*")
 NRQL: FROM Log SELECT * WHERE `host` LIKE 'web%'
-V2:   FROM Log SELECT * WHERE host LIKE '[object Object]'</pre>
+V2:   FROM Log SELECT * WHERE host LIKE 'web%'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2243,7 +2244,7 @@ V2:   FROM Log SELECT * WHERE host RLIKE r'^web[0-9]+$'</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | where cidrmatch("10.0.0.0/8", src_ip)
 NRQL: FROM Log SELECT * WHERE cidrAddress(`src_ip`, 8) = '10.0.0.0/8'
-V2:   FROM Log SELECT * WHERE cidrmatch(`10.0.0.0/8`, src_ip)</pre>
+V2:   FROM Log SELECT * WHERE cidrAddress(src_ip, 8) = '10.0.0.0/8'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2671,7 +2672,7 @@ V2:   FROM Log WITH sqrt(val) AS x SELECT *</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | eval x=round(val, 2)
 NRQL: FROM Log WITH round(`val`, 2) AS `x` SELECT *
-V2:   FROM Log WITH round(val, 2) AS x SELECT *</pre>
+V2:   FROM Log WITH round(val, 0.01) AS x SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2743,8 +2744,7 @@ V2:   FROM Log WITH string(val) AS x SELECT *</pre>
 <div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | eval x=typeof(val)
-NRQL: FROM Log WITH typeof(`val`) AS `x` SELECT *
-V2:   FROM Log WITH typeof(val) AS x SELECT *</pre>
+NRQL: FROM Log WITH typeof(`val`) AS `x` SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ eval function typeof() has no NRQL equivalent</div>
@@ -2753,8 +2753,7 @@ V2:   FROM Log WITH typeof(val) AS x SELECT *</pre>
 <div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | eval x=isbool(val)
-NRQL: FROM Log WITH isbool(`val`) AS `x` SELECT *
-V2:   FROM Log WITH isbool(val) AS x SELECT *</pre>
+NRQL: FROM Log WITH isbool(`val`) AS `x` SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ eval function isbool() has no NRQL equivalent</div>
@@ -2763,8 +2762,7 @@ V2:   FROM Log WITH isbool(val) AS x SELECT *</pre>
 <div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | eval x=isstr(val)
-NRQL: FROM Log WITH isstr(`val`) AS `x` SELECT *
-V2:   FROM Log WITH isstr(val) AS x SELECT *</pre>
+NRQL: FROM Log WITH isstr(`val`) AS `x` SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ eval function isstr() has no NRQL equivalent</div>
@@ -3224,7 +3222,7 @@ NRQL: FROM Log SELECT * ORDER BY timestamp ASC</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  error | table message | reverse
 NRQL: FROM Log SELECT `message` WHERE message LIKE '%error%' ORDER BY timestamp ASC
-V2:   FROM Log SELECT message WHERE message LIKE '%error%'</pre>
+V2:   FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp ASC</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -3650,8 +3648,7 @@ Forecasts future values using time series algorithms. NRQL has no built-in forec
 <div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | predict count
-NRQL: FROM Log SELECT *
-V2:   FROM Log SELECT * PREDICT</pre>
+NRQL: FROM Log SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ PREDICT requires TIMESERIES; add a timechart or bin _time before predict</div>
