@@ -397,8 +397,9 @@ function applyCommand(cmd, ir) {
     case 'LookupCommand':
       return handleLookup(cmd, ir);
     case 'PredictCommand':
-      ir.predict = true;
-      if (!ir.timeseries) {
+      if (ir.timeseries) {
+        ir.predict = true;
+      } else {
         ir.warnings.push(
           'PREDICT requires TIMESERIES; add a timechart or bin _time before predict',
         );
@@ -576,6 +577,11 @@ function handleBin(cmd, ir) {
     if (ir.select.length === 0) {
       ir.select.push(Func('count', []));
     }
+  } else if (cmd.field && (cmd.span || cmd.width)) {
+    // Numeric bin → histogram(field, width)
+    const width = cmd.width || Number(cmd.span);
+    ir.select = [Func('histogram', [Identifier(cmd.field), Literal(width, 'number')])];
+    ir._hasAggregation = true;
   } else {
     ir.unsupported.push(
       'bin command not fully supported; use TIMESERIES for time or histogram() for numeric fields',
@@ -1562,9 +1568,40 @@ function walkEvalFunc(node, ir) {
 
     case 'like': {
       const field = walkEvalExpr(args[0], ir);
-      const pattern = walkEvalExpr(args[1], ir);
-      if (field && pattern)
-        return Like(field, pattern.value || String(pattern));
+      // Pattern arg may be a raw string (from where-pipe FunctionCall)
+      const rawPat = args[1];
+      const patStr =
+        typeof rawPat === 'string'
+          ? rawPat
+          : rawPat?.type === 'StringLiteral'
+            ? rawPat.value
+            : walkEvalExpr(rawPat, ir)?.value ?? String(rawPat);
+      if (field && patStr) {
+        // Convert SPL wildcards to NRQL: * → %
+        const nrqlPattern = patStr.replace(/\*/g, '%');
+        return Like(field, nrqlPattern);
+      }
+      return null;
+    }
+
+    case 'cidrmatch': {
+      // cidrmatch("10.0.0.0/8", src_ip) → cidrAddress(src_ip, 8) = '10.0.0.0/8'
+      const rawCidr = args[0];
+      const cidrStr =
+        typeof rawCidr === 'string'
+          ? rawCidr
+          : rawCidr?.type === 'StringLiteral'
+            ? rawCidr.value
+            : walkEvalExpr(rawCidr, ir)?.value ?? String(rawCidr);
+      const ipField = walkEvalExpr(args[1], ir);
+      if (cidrStr && ipField) {
+        const prefixMatch = cidrStr.match(/\/(\d+)$/);
+        const prefix = prefixMatch ? Number(prefixMatch[1]) : 24;
+        return BinOp('=',
+          Func('cidrAddress', [ipField, Literal(prefix, 'number')]),
+          Literal(cidrStr, 'string'),
+        );
+      }
       return null;
     }
 

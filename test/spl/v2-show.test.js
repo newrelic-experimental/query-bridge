@@ -1,7 +1,12 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | top delay limit=10',
+  '* | where like(host, "web*")',
+  '* | where cidrmatch("10.0.0.0/8", src_ip)',
+  '* | join type=left src_ip [search index=geo | table src_ip, country]',
+  '* | stats count | predict count',
+  '* | bin size span=10',
+  '* | fillnull value=0',
 ];
 
 describe('V2 show output', () => {

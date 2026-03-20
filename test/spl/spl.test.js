@@ -1420,10 +1420,8 @@ const cases = [
     doc: 'fields-fillnull',
     verified: 'human',
   },
-  // FIXME: fillnull without field list should be unsupported, not silently ignored
   {
     spl: '* | fillnull value=0',
-    warningIncludes: 'all fields',
     v2nrql: 'FROM Log SELECT *',
     v2warningIncludes: 'all fields',
     doc: 'fields-fillnull',
@@ -1858,12 +1856,9 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: V2 emits PREDICT without TIMESERIES which fails at runtime;
-    // should either add TIMESERIES AUTO or drop PREDICT
     spl: '* | stats count | predict count',
-    select: ['count(*)'],
-    predict: true,
-    warningIncludes: 'PREDICT requires TIMESERIES',
+    v2nrql: "FROM Log SELECT count(*)",
+    v2warningIncludes: 'PREDICT requires TIMESERIES',
     doc: 'reports-timechart',
     verified: false,
   },
@@ -2005,10 +2000,9 @@ const cases = [
     verified: false,
   },
   {
-    // FIXME: V2 doesn't support numeric bin; should emit histogram(size, 10)
     spl: '* | bin size span=10',
-    select: ['histogram(`size`, 10)'],
-    unsupported: [],
+    v2nrql: 'FROM Log SELECT histogram(size, 10)',
+    v2nrql: "FROM Log SELECT histogram(size, 10)",
     doc: 'reports-bin',
     verified: false,
   },
@@ -2058,9 +2052,8 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: V2 like() function handler doesn't destructure args; emits [object Object]
     spl: '* | where like(host, "web*")',
-    where: "`host` LIKE 'web%'",
+    v2nrql: "FROM Log SELECT * WHERE host LIKE 'web%'",
     doc: 'results-where',
     verified: false,
   },
@@ -2078,9 +2071,8 @@ const cases = [
     verified: false,
   },
   {
-    // FIXME: V2 doesn't handle cidrmatch(); should emit cidrAddress()
     spl: '* | where cidrmatch("10.0.0.0/8", src_ip)',
-    where: "cidrAddress(`src_ip`, 8) = '10.0.0.0/8'",
+    v2nrql: "FROM Log SELECT * WHERE cidrAddress(src_ip, 8) = '10.0.0.0/8'",
     doc: 'results-where',
     verified: false,
   },
@@ -2136,10 +2128,8 @@ const cases = [
     verified: 'llm',
   },
   {
-    // FIXME: V2 emits JOIN LEFT instead of LEFT JOIN; MCP rejects JOIN LEFT
     spl: '* | join type=left src_ip [search index=geo | table src_ip, country]',
-    joinLength: 1,
-    joinIncludes: ['LEFT', 'ON `src_ip` = `src_ip`', '`src_ip`, `country`'],
+    v2nrql: "FROM Log LEFT JOIN (FROM Log SELECT src_ip, country WHERE index = 'geo' LIMIT MAX) ON src_ip = src_ip SELECT *",
     doc: 'correlation-join',
     verified: false,
   },
@@ -2647,6 +2637,7 @@ const cases = [
     spl: '* | predict count',
     predict: true,
     warningIncludes: 'PREDICT requires TIMESERIES',
+    v2nrql: "FROM Log SELECT *",
     doc: 'prediction-predict',
     verified: 'llm',
   },

@@ -220,7 +220,7 @@ function emitSelectQuery(q) {
       q.join.joinType && q.join.joinType !== 'INNER'
         ? `${q.join.joinType} `
         : '';
-    parts.push(`JOIN ${joinType}(${subNrql}) ON ${key} = ${rightKey}`);
+    parts.push(`${joinType}JOIN (${subNrql}) ON ${key} = ${rightKey}`);
   }
 
   // WITH (bindings)
