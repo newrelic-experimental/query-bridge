@@ -2139,9 +2139,8 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: V2 emits match() which doesn't exist in NRQL; should use RLIKE
     spl: '* | where match(host, "^web[0-9]+$")',
-    where: "`host` RLIKE '^web[0-9]+$'",
+    v2nrql: "FROM Log SELECT * WHERE host RLIKE r'^web[0-9]+$'",
     doc: 'results-where',
     verified: false,
   },
@@ -2305,38 +2304,33 @@ const cases = [
   //
   //
   {
-    // FIXME: V2 emits match() which doesn't exist in NRQL; should use RLIKE
     spl: '* | regex message="error\\\\d+"',
-    whereIncludes: [/`message` RLIKE 'error\\\\d\+'/],
+    v2nrql: "FROM Log SELECT * WHERE message RLIKE r'error\\\\d+'",
     doc: 'results-regex',
     verified: false,
   },
   {
-    // FIXME: V2 emits NOT match() — should use NOT RLIKE
     spl: '* | regex status!="^2\\\\d{2}$"',
-    whereIncludes: [/`status` NOT RLIKE/],
+    v2nrql: "FROM Log SELECT * WHERE status NOT RLIKE r'^2\\\\d{2}$'",
     doc: 'results-regex',
     verified: false,
   },
   {
-    // FIXME: V2 emits match() — should use RLIKE
     spl: '* | regex "fatal|critical"',
-    whereIncludes: [/`message` RLIKE/],
+    v2nrql: "FROM Log SELECT * WHERE message RLIKE r'fatal|critical'",
     doc: 'results-regex',
     verified: false,
   },
   {
-    // FIXME: V2 emits match() — should use RLIKE
     spl: 'status=500 | regex message="timeout"',
-    where:
-      "(`status` = '500' OR numeric(`status`) = 500) AND `message` RLIKE 'timeout'",
+    v2nrql:
+      "FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'timeout'",
     doc: 'results-regex',
     verified: false,
   },
   {
-    // FIXME: V2 emits match() — should use RLIKE
     spl: '* | regex uri_path="^/api/v[0-9]+"',
-    whereIncludes: [/`uri_path` RLIKE/],
+    v2nrql: "FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'",
     doc: 'results-regex',
     verified: false,
   },

@@ -2234,7 +2234,7 @@ V2:   FROM Log SELECT * WHERE name LIKE '%test%'</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | where match(host, "^web[0-9]+$")
 NRQL: FROM Log SELECT * WHERE `host` RLIKE '^web[0-9]+$'
-V2:   FROM Log SELECT * WHERE match(host, numeric(web))</pre>
+V2:   FROM Log SELECT * WHERE host RLIKE r'^web[0-9]+$'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2898,7 +2898,7 @@ Filters results by matching a field against a regular expression. Translates to 
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | regex message="error\\d+"
 NRQL: FROM Log SELECT * WHERE `message` RLIKE 'error\\d+'
-V2:   FROM Log SELECT * WHERE match(message, r'error\\d+')</pre>
+V2:   FROM Log SELECT * WHERE message RLIKE r'error\\d+'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2907,7 +2907,7 @@ V2:   FROM Log SELECT * WHERE match(message, r'error\\d+')</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | regex status!="^2\\d{2}$"
 NRQL: FROM Log SELECT * WHERE `status` NOT RLIKE '^2\\d{2}$'
-V2:   FROM Log SELECT * WHERE NOT match(status, r'^2\\d{2}$')</pre>
+V2:   FROM Log SELECT * WHERE status NOT RLIKE r'^2\\d{2}$'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2916,7 +2916,7 @@ V2:   FROM Log SELECT * WHERE NOT match(status, r'^2\\d{2}$')</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | regex "fatal|critical"
 NRQL: FROM Log SELECT * WHERE `message` RLIKE 'fatal|critical'
-V2:   FROM Log SELECT * WHERE match(message, r'fatal|critical')</pre>
+V2:   FROM Log SELECT * WHERE message RLIKE r'fatal|critical'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2925,7 +2925,7 @@ V2:   FROM Log SELECT * WHERE match(message, r'fatal|critical')</pre>
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  status=500 | regex message="timeout"
 NRQL: FROM Log SELECT * WHERE (`status` = '500' OR numeric(`status`) = 500) AND `message` RLIKE 'timeout'
-V2:   FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND match(message, r'timeout')</pre>
+V2:   FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'timeout'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
@@ -2934,7 +2934,7 @@ V2:   FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND match(
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | regex uri_path="^/api/v[0-9]+"
 NRQL: FROM Log SELECT * WHERE `uri_path` RLIKE '^/api/v[0-9]+'
-V2:   FROM Log SELECT * WHERE match(uri_path, r'^/api/v[0-9]+')</pre>
+V2:   FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>

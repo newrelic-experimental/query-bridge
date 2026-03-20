@@ -32,6 +32,10 @@ export function emitExpr(node) {
       if (node.child.type === 'IsNull') {
         return `${emitExpr(node.child.child)} IS NOT NULL`;
       }
+      // NOT(Rlike) → field NOT RLIKE r'pattern'
+      if (node.child.type === 'Rlike') {
+        return `${emitExpr(node.child.field)} NOT RLIKE r'${node.child.pattern}'`;
+      }
       const inner = emitExpr(node.child);
       // Parenthesize compound expressions under NOT
       const needsParens = node.child.type === 'BinOp';
@@ -56,6 +60,9 @@ export function emitExpr(node) {
 
     case 'Like':
       return `${emitExpr(node.field)} LIKE '${node.pattern}'`;
+
+    case 'Rlike':
+      return `${emitExpr(node.field)} RLIKE r'${node.pattern}'`;
 
     case 'In':
       return `${emitExpr(node.field)} IN (${node.values.map(emitExpr).join(', ')})`;

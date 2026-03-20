@@ -32,6 +32,8 @@ export const SubqueryExpr = (query) => ({ type: 'SubqueryExpr', query });
 
 export const Regex = (pattern) => ({ type: 'Regex', pattern });
 
+export const Rlike = (field, pattern) => ({ type: 'Rlike', field, pattern });
+
 export const RawNrql = (nrql) => ({ type: 'RawNrql', nrql });
 
 // ── Data source nodes ─────────────────────────────────────────

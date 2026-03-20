@@ -17,6 +17,7 @@ import {
   In,
   Wildcard,
   Regex,
+  Rlike,
   RawNrql,
   Binding,
   JoinClause,
@@ -632,12 +633,11 @@ function handleRegex(cmd, ir) {
   const fieldId = field === '_raw' ? Identifier('message') : Identifier(field);
   const pattern = cmd.pattern;
   if (cmd.negate) {
-    ir.where = ir.where
-      ? BinOp('AND', ir.where, Not(Func('match', [fieldId, Regex(pattern)])))
-      : Not(Func('match', [fieldId, Regex(pattern)]));
+    const rlike = Not(Rlike(fieldId, pattern));
+    ir.where = ir.where ? BinOp('AND', ir.where, rlike) : rlike;
   } else {
-    const matchExpr = Func('match', [fieldId, Regex(pattern)]);
-    ir.where = ir.where ? BinOp('AND', ir.where, matchExpr) : matchExpr;
+    const rlike = Rlike(fieldId, pattern);
+    ir.where = ir.where ? BinOp('AND', ir.where, rlike) : rlike;
   }
 }
 
@@ -1451,9 +1451,17 @@ function walkEvalFunc(node, ir) {
 
     case 'match': {
       const field = walkEvalExpr(args[0], ir);
-      const pattern = walkEvalExpr(args[1], ir);
-      if (field && pattern) {
-        return Func('match', [field, pattern]);
+      // Pattern arg may be a raw string (from where-pipe FunctionCall)
+      // or a StringLiteral/Literal node (from eval AST)
+      const rawPattern = args[1];
+      const patternStr =
+        typeof rawPattern === 'string'
+          ? rawPattern
+          : rawPattern?.type === 'StringLiteral'
+            ? rawPattern.value
+            : walkEvalExpr(rawPattern, ir)?.value ?? String(rawPattern);
+      if (field && patternStr) {
+        return Rlike(field, patternStr);
       }
       return null;
     }

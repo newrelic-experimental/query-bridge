@@ -1,12 +1,12 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | replace "error" WITH "warning" IN message',
-  '* | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype',
-  '* | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType',
-  '* | xyzcommand foo bar',
-  '* | sichart count by host',
-  '| mstats avg(cpu.percent) by host',
+  '* | where match(host, "^web[0-9]+$")',
+  '* | regex message="error\\\\d+"',
+  '* | regex status!="^2\\\\d{2}$"',
+  '* | regex "fatal|critical"',
+  'status=500 | regex message="timeout"',
+  '* | regex uri_path="^/api/v[0-9]+"',
 ];
 
 describe('V2 show output', () => {
