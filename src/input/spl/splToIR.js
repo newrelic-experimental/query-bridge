@@ -975,25 +975,25 @@ function handleEventstats(cmd, ir) {
   if (subSelect.length === 0) return;
 
   if (cmd.groupBy.length === 0) {
-    // eventstats without BY → global aggregate
-    // Use nested aggregation: wrap current IR as inner, eventstats functions
-    // become re-aggregations in the outer query.
-    // e.g., eventstats sum(appCount) as total →
-    //   FROM (FROM Log SELECT count(*) AS appCount FACET app LIMIT MAX)
-    //   SELECT appCount, sum(appCount) AS total FACET app
-    //
-    // The downstream eval can then compute appCount / total * 100.
-    // We don't wrap yet — instead, mark the eventstats aggregations as
-    // "available in outer scope" so the next stats/eval can reference them.
-    // For now, add them as bindings that reference the aggregation.
+    // eventstats without BY → scalar subquery in SELECT
+    // e.g., eventstats count AS total → (SELECT count(*) FROM Log) AS 'total'
+    // NRQL WITH clause cannot contain aggregate functions, so we use
+    // scalar subqueries appended to SELECT instead.
+    const subquery = SelectQuery({
+      dataSource: { ...ir.dataSource },
+      select: subSelect.map((s) => s.expr),
+      where: ir.where ? { ...ir.where } : null,
+    });
+    // Preserve existing SELECT (or add * if empty) so original fields are kept
+    if (ir.select.length === 0) {
+      ir.select.push(Wildcard());
+    }
     for (const s of subSelect) {
-      // The aggregation (e.g., sum(appCount)) will be available after
-      // subquery wrapping. Store as a binding for downstream eval to use.
-      ir.bindings.push(Binding(s.name, s.expr));
+      ir.select.push(Alias({ type: 'SubqueryExpr', query: subquery }, s.name));
     }
     ir.warnings.push(
-      'eventstats without BY translated as binding; downstream eval can reference the aggregated value. ' +
-        'For percentage calculations, consider using nested aggregation: FROM (inner) SELECT field, field / sum(field) * 100 FACET ...',
+      'eventstats without BY translated as scalar subquery in SELECT; ' +
+        'for percentage calculations, use the subquery result in downstream eval',
     );
     return;
   }
@@ -1498,8 +1498,20 @@ function walkEvalFunc(node, ir) {
       return Func(name, args.map((a) => walkEvalExpr(a, ir)).filter(Boolean));
 
     case 'round': {
-      const translated = args.map((a) => walkEvalExpr(a, ir)).filter(Boolean);
-      return Func('round', translated);
+      const val = walkEvalExpr(args[0], ir);
+      if (!val) return null;
+      if (args.length >= 2) {
+        // SPL round(val, N) = N decimal places
+        // NRQL round(val, N) = nearest multiple of N
+        // Convert: round(val, 2) → round(val, 0.01)
+        const decPlaces = walkEvalExpr(args[1], ir);
+        const decVal = decPlaces?.type === 'Literal' ? decPlaces.value : null;
+        if (decVal != null && typeof decVal === 'number') {
+          return Func('round', [val, Literal(Math.pow(10, -decVal), 'number')]);
+        }
+        return Func('round', [val, decPlaces]);
+      }
+      return Func('round', [val]);
     }
 
     case 'len':
@@ -1719,6 +1731,13 @@ function walkEvalFunc(node, ir) {
       // Convert Splunk {} array notation to [] for jparse
       path = path.replace(/\{(\d*)\}/g, (_, n) => (n ? `[${n}]` : '[*]'));
       return Func('jparse', [fieldArg, Literal(path, 'string')]);
+    }
+
+    case 'typeof':
+    case 'isbool':
+    case 'isstr': {
+      ir.unsupported.push(`eval function ${name}() has no NRQL equivalent`);
+      return null;
     }
 
     default: {

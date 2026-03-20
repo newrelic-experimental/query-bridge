@@ -950,11 +950,10 @@ const cases = [
     doc: 'eval-math',
     verified: 'human',
   })),
-  // FIXME: round(val, 2) in NRQL rounds to nearest multiple of 2, not 2 decimal places
-  // SPL round(val, 2) = 2 decimal places → NRQL should be round(val, 0.01)
   {
+    // SPL round(val, 2) = 2 decimal places → NRQL round(val, 0.01)
     spl: '* | eval x=round(val, 2)',
-    v2nrql: 'FROM Log WITH round(val, 2) AS x SELECT *',
+    v2nrql: 'FROM Log WITH round(val, 0.01) AS x SELECT *',
     doc: 'eval-math',
     verified: false,
   },
@@ -1013,27 +1012,21 @@ const cases = [
     doc: 'eval-type',
     verified: false,
   },
-  // FIXME: typeof() does not exist in NRQL — passes through, fails at runtime
   {
     spl: '* | eval x=typeof(val)',
-    unsupportedIncludes: 'typeof()',
-    v2nrql: 'FROM Log WITH typeof(val) AS x SELECT *',
+    v2unsupportedIncludes: 'typeof()',
     doc: 'eval-type',
     verified: false,
   },
-  // FIXME: isbool() does not exist in NRQL — passes through, fails at runtime
   {
     spl: '* | eval x=isbool(val)',
-    unsupportedIncludes: 'isbool()',
-    v2nrql: 'FROM Log WITH isbool(val) AS x SELECT *',
+    v2unsupportedIncludes: 'isbool()',
     doc: 'eval-type',
     verified: false,
   },
-  // FIXME: isstr() does not exist in NRQL — passes through, fails at runtime
   {
     spl: '* | eval x=isstr(val)',
-    unsupportedIncludes: 'isstr()',
-    v2nrql: 'FROM Log WITH isstr(val) AS x SELECT *',
+    v2unsupportedIncludes: 'isstr()',
     doc: 'eval-type',
     verified: false,
   },
@@ -2461,19 +2454,17 @@ const cases = [
   },
   // eventstats without BY → scalar subquery in SELECT
   {
-    // FIXME: V2 uses WITH count(*) AS total which fails — aggregate functions
-    // can't go in WITH clause. Should use scalar subquery: (SELECT count(*) FROM Log) AS 'total'
     spl: '* | eventstats count AS total',
-    selectIncludes: ["(SELECT count(*) FROM Log) AS 'total'"],
+    v2nrql: "FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'",
     doc: 'reports-eventstats',
     verified: false,
   },
   // real-world pattern: stats then eventstats (chained aggregation, no BY)
-  // eventstats after stats without BY → scalar subquery
   {
-    // FIXME: V2 uses WITH sum(appCount) which fails — same aggregate-in-WITH bug
+    // FIXME: V2 eventstats subquery references appCount from FROM Log, but appCount
+    // only exists after the stats aggregation — subquery should wrap the inner stats
     spl: '* | stats count as appCount by app | eventstats sum(appCount) as namespaceCount',
-    selectIncludes: ["(SELECT sum(appCount) FROM Log) AS 'namespaceCount'"],
+    v2nrql: "FROM Log SELECT count(*) AS 'appCount', (FROM Log SELECT sum(appCount)) AS 'namespaceCount' FACET app",
     doc: 'reports-eventstats',
     verified: false,
   },

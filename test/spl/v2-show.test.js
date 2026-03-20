@@ -1,12 +1,12 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | where like(host, "web*")',
-  '* | where cidrmatch("10.0.0.0/8", src_ip)',
-  '* | join type=left src_ip [search index=geo | table src_ip, country]',
-  '* | stats count | predict count',
-  '* | bin size span=10',
-  '* | fillnull value=0',
+  '* | eval x=typeof(val)',
+  '* | eval x=isbool(val)',
+  '* | eval x=isstr(val)',
+  '* | eval x=round(val, 2)',
+  '* | eventstats count AS total',
+  '* | stats count as appCount by app | eventstats sum(appCount) as namespaceCount',
 ];
 
 describe('V2 show output', () => {
