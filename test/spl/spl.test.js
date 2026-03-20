@@ -1421,6 +1421,7 @@ const cases = [
     verified: 'human',
   },
   {
+    // FIXME: fillnull without field list silently drops null-filling; NRQL can't do this dynamically
     spl: '* | fillnull value=0',
     v2nrql: 'FROM Log SELECT *',
     v2warningIncludes: 'all fields',
@@ -1856,6 +1857,7 @@ const cases = [
     verified: 'human',
   },
   {
+    // FIXME: V2 drops PREDICT entirely when no TIMESERIES; ideally would add TIMESERIES AUTO
     spl: '* | stats count | predict count',
     v2nrql: "FROM Log SELECT count(*)",
     v2warningIncludes: 'PREDICT requires TIMESERIES',
