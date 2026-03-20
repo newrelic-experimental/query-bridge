@@ -2128,6 +2128,7 @@ const cases = [
     verified: 'llm',
   },
   {
+    // FIXME: NRQL rejects subquery that SELECTs the join key — needs FACET-based subquery instead
     spl: '* | join type=left src_ip [search index=geo | table src_ip, country]',
     v2nrql: "FROM Log LEFT JOIN (FROM Log SELECT src_ip, country WHERE index = 'geo' LIMIT MAX) ON src_ip = src_ip SELECT *",
     doc: 'correlation-join',
