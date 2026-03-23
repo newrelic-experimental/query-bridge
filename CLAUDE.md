@@ -42,7 +42,7 @@ SPL → Peggy parser → AST → splToIR.js → IR → irToNrql.js → NRQL
 ```
 
 ### IR Nodes (src/ir/nodes.js)
-Plain objects with `type` field. `SelectQuery`, `Union`, `NestedAggregation` at query level. `Identifier`, `Literal`, `BinOp`, `Func`, `Alias`, etc. at expression level.
+Plain objects with `type` field. `SelectQuery`, `NestedAggregation` at query level. `Identifier`, `Literal`, `BinOp`, `Func`, `Alias`, etc. at expression level.
 
 ### Key Design Decisions
 - **Smart backticking**: Only backtick identifiers with dots/dashes/spaces/colons/curlies. Simple names bare. Macros (`$name`) pass through.
