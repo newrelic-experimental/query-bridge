@@ -291,72 +291,67 @@ export function translateSearchExpr(node) {
   return { expr, warnings, unsupported, since, until };
 }
 
-// ── Command handlers ─────────────────────────────────────────
+// ── Command dispatch ─────────────────────────────────────────
+
+const handlers = {
+  // Aggregation
+  StatsCommand: handleStats,
+  TimechartCommand: handleTimechart,
+  ChartCommand: handleStats, // chart is structurally same as stats
+  TopCommand: handleTop,
+  RareCommand: handleRare,
+  TableCommand: handleTable,
+  EventstatsCommand: handleEventstats,
+
+  // Enrichment
+  JoinCommand: handleJoin,
+  AppendpipeCommand: handleAppendpipe,
+  InputlookupCommand: handleInputlookup,
+  LookupCommand: handleLookup,
+
+  // Extraction
+  RexCommand: handleRex,
+  SpathCommand: handleSpath,
+  RegexCommand: handleRegex,
+  SearchCommand: handleSearchPipe,
+
+  // Eval
+  EvalCommand: handleEval,
+  WhereCommand: handleWhere,
+
+  // Row transforms
+  FieldsCommand: handleFields,
+  SortCommand: handleSort,
+  HeadCommand: handleHead,
+  RenameCommand: handleRename,
+  DedupCommand: handleDedup,
+  BinCommand: handleBin,
+  ReverseCommand: handleReverse,
+  FillnullCommand: handleFillnull,
+  StrcatCommand: handleStrcat,
+  ConvertCommand: handleConvert,
+  ReplaceCommand: handleReplace,
+  MvexpandCommand: handleMvexpand,
+  UniqCommand: handleUniq,
+};
 
 function applyCommand(cmd, ir) {
+  const handler = handlers[cmd.type];
+  if (handler) {
+    handler(cmd, ir);
+    return;
+  }
+
+  // Commands with inline logic that doesn't fit the handler pattern
   switch (cmd.type) {
-    case 'StatsCommand':
-      return handleStats(cmd, ir);
-    case 'WhereCommand':
-      return handleWhere(cmd, ir);
-    case 'EvalCommand':
-      return handleEval(cmd, ir);
-    case 'TableCommand':
-      return handleTable(cmd, ir);
-    case 'FieldsCommand':
-      return handleFields(cmd, ir);
-    case 'SortCommand':
-      return handleSort(cmd, ir);
-    case 'HeadCommand':
-      handleHead(cmd, ir);
-      return;
-    case 'RenameCommand':
-      return handleRename(cmd, ir);
-    case 'DedupCommand':
-      return handleDedup(cmd, ir);
-    case 'TimechartCommand':
-      return handleTimechart(cmd, ir);
-    case 'ChartCommand':
-      return handleStats(cmd, ir); // chart is structurally same as stats
-    case 'BinCommand':
-      return handleBin(cmd, ir);
-    case 'TopCommand':
-      return handleTop(cmd, ir);
-    case 'RareCommand':
-      return handleRare(cmd, ir);
-    case 'RexCommand':
-      return handleRex(cmd, ir);
-    case 'SpathCommand':
-      return handleSpath(cmd, ir);
-    case 'RegexCommand':
-      return handleRegex(cmd, ir);
-    case 'SearchCommand':
-      return handleSearchPipe(cmd, ir);
-    case 'JoinCommand':
-      return handleJoin(cmd, ir);
     case 'AppendCommand':
     case 'AppendcolsCommand':
-      return handleAppend(
+      handleAppend(
         cmd,
         ir,
         cmd.type === 'AppendcolsCommand' ? 'appendcols' : 'append',
       );
-    case 'AppendpipeCommand':
-      return handleAppendpipe(cmd, ir);
-    case 'EventstatsCommand':
-      return handleEventstats(cmd, ir);
-    case 'ConvertCommand':
-      return handleConvert(cmd, ir);
-    case 'ReplaceCommand':
-      return handleReplace(cmd, ir);
-    case 'StrcatCommand':
-      return handleStrcat(cmd, ir);
-    case 'FillnullCommand':
-      return handleFillnull(cmd, ir);
-    case 'InputlookupCommand':
-      return handleInputlookup(cmd, ir);
-    case 'LookupCommand':
-      return handleLookup(cmd, ir);
+      return;
     case 'PredictCommand':
       ir.predict = true;
       if (!ir.timeseries) {
@@ -384,15 +379,6 @@ function applyCommand(cmd, ir) {
       ir.where = ir.where ? BinOp('AND', ir.where, macroExpr) : macroExpr;
       return;
     }
-    case 'MvexpandCommand':
-      handleMvexpand(cmd, ir);
-      return;
-    case 'UniqCommand':
-      handleUniq(cmd, ir);
-      return;
-    case 'ReverseCommand':
-      handleReverse(cmd, ir);
-      return;
     case 'UnsupportedCommand':
       ir.unsupported.push(
         `SPL command '${cmd.name}' has no known NRQL equivalent`,
