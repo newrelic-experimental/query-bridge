@@ -25,17 +25,31 @@ import {
 import { parseSplTime } from './splTime.js';
 import * as parser from './splParser.js';
 import {
-  mapFieldName,
   mapFunction,
   formatSpan,
   buildComparison,
   buildJparseComparison,
   coerceValue,
-  looksLikeNumber,
   escapeWildcard,
   wrapAsSubquery,
 } from './splExprUtils.js';
 import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
+import {
+  handleTable,
+  handleFields,
+  handleSort,
+  handleHead,
+  handleRename,
+  handleDedup,
+  handleBin,
+  handleReverse,
+  handleFillnull,
+  handleConvert,
+  handleReplace,
+  handleStrcat,
+  handleMvexpand,
+  handleUniq,
+} from './rowHandlers.js';
 
 /**
  * Main entry: translate a parsed SPL AST into an IR query plan.
@@ -285,7 +299,7 @@ function applyCommand(cmd, ir) {
     case 'SortCommand':
       return handleSort(cmd, ir);
     case 'HeadCommand':
-      ir.limit = cmd.count;
+      handleHead(cmd, ir);
       return;
     case 'RenameCommand':
       return handleRename(cmd, ir);
@@ -362,15 +376,13 @@ function applyCommand(cmd, ir) {
       return;
     }
     case 'MvexpandCommand':
-      ir.warnings.push(
-        `mvexpand ${cmd.field} skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work`,
-      );
+      handleMvexpand(cmd, ir);
       return;
     case 'UniqCommand':
-      ir.unsupported.push('uniq has no direct NRQL equivalent');
+      handleUniq(cmd, ir);
       return;
     case 'ReverseCommand':
-      ir.orderBy = OrderBy(Identifier('timestamp'), false);
+      handleReverse(cmd, ir);
       return;
     case 'UnsupportedCommand':
       ir.unsupported.push(
@@ -424,109 +436,9 @@ function handleStats(cmd, ir) {
   ir._hasAggregation = true;
 }
 
-function handleTable(cmd, ir) {
-  ir.select = cmd.fields.map((f) => Identifier(mapFieldName(f)));
-}
-
-function handleFields(cmd, ir) {
-  if (cmd.mode === '-') {
-    // fields - X removes X from select (if explicit) or is a no-op
-    // In NRQL, there's no way to exclude fields from SELECT *
-    ir.warnings.push('fields - (exclude mode) has limited NRQL support');
-  } else {
-    ir.select = cmd.fields.map((f) => Identifier(mapFieldName(f)));
-  }
-}
-
-function handleSort(cmd, ir) {
-  if (cmd.fields.length > 0) {
-    const first = cmd.fields[0];
-    ir.orderBy = OrderBy(Identifier(first.field), first.direction === 'desc');
-  }
-  // Additional sort fields become ORDER BY field1 DESC, field2 ASC
-  // NRQL only supports single ORDER BY — warn if multiple
-  if (cmd.fields.length > 1) {
-    ir.warnings.push(
-      'NRQL ORDER BY supports only one field; additional sort fields ignored',
-    );
-  }
-}
-
-function handleRename(cmd, ir) {
-  let added = 0;
-  for (const rename of cmd.renames) {
-    if (rename.from.includes('*') || rename.to.includes('*')) {
-      ir.unsupported.push(
-        `Wildcard rename (${rename.from} as ${rename.to}) not supported in NRQL; rename specific fields`,
-      );
-      continue;
-    }
-    if (/[()]/.test(rename.from)) {
-      ir.unsupported.push(
-        `Cannot rename field with parentheses in name: "${rename.from}"`,
-      );
-      continue;
-    }
-    // If renaming a stats alias, fold into the existing alias instead of adding a new one
-    const existingIdx = ir.select.findIndex(
-      (s) => s.type === 'Alias' && s.name === rename.from,
-    );
-    if (existingIdx >= 0) {
-      ir.select[existingIdx] = Alias(ir.select[existingIdx].expr, rename.to);
-    } else {
-      ir.select.push(Alias(Identifier(mapFieldName(rename.from)), rename.to));
-    }
-    added++;
-  }
-  // Keep all other fields — NRQL has no rename-and-drop-original
-  if (added > 0 && !ir._hasAggregation) {
-    ir.select.push(Wildcard());
-    ir.warnings.push(
-      'NRQL rename keeps original field names alongside aliases',
-    );
-  }
-}
-
-function handleDedup(cmd, ir) {
-  for (const field of cmd.fields) {
-    const id = Identifier(field);
-    if (!ir.facet.some((f) => f.name === field)) {
-      ir.facet.push(id);
-    }
-  }
-  if (ir.select.length === 0) {
-    ir.select.push(Func('latest', [Identifier('timestamp')]));
-  }
-  ir.limit = 'MAX';
-  ir._hasAggregation = true;
-  ir.warnings.push(
-    'dedup translated to FACET; add latest(field) for each field you want to keep',
-  );
-}
-
 function handleTimechart(cmd, ir) {
   handleStats(cmd, ir);
   ir.timeseries = cmd.span ? formatSpan(cmd.span) : 'AUTO';
-}
-
-function handleBin(cmd, ir) {
-  if (cmd.field === '_time' && cmd.span) {
-    ir.timeseries = formatSpan(cmd.span);
-    if (ir.select.length === 0) {
-      ir.select.push(Func('count', []));
-    }
-  } else if (cmd.field && (cmd.span || cmd.width)) {
-    // Numeric bin → histogram(field, width)
-    const width = cmd.width || Number(cmd.span);
-    ir.select = [
-      Func('histogram', [Identifier(cmd.field), Literal(width, 'number')]),
-    ];
-    ir._hasAggregation = true;
-  } else {
-    ir.unsupported.push(
-      'bin command not fully supported; use TIMESERIES for time or histogram() for numeric fields',
-    );
-  }
 }
 
 function handleTop(cmd, ir) {
@@ -774,27 +686,6 @@ function handleJoin(cmd, ir) {
  * The current select/facet/where/bindings become the inner query,
  * and the IR is reset for the outer query.
  */
-function handleFillnull(cmd, ir) {
-  const fillValue = cmd.value || '0';
-  // SPL fillnull default is string '0', not numeric 0 — only use numeric
-  // when the user explicitly provided a value= that looks like a number
-  const litValue =
-    cmd.value && looksLikeNumber(fillValue)
-      ? Literal(Number(fillValue), 'number')
-      : Literal(fillValue, 'string');
-  if (cmd.fields && cmd.fields.length > 0) {
-    // Store substitutions — downstream references to these fields get (field OR default) inlined
-    if (!ir._fillnullMap) ir._fillnullMap = {};
-    for (const field of cmd.fields) {
-      ir._fillnullMap[field] = litValue;
-    }
-  } else {
-    ir.unsupported.push(
-      'fillnull without field list not supported — NRQL requires explicit field names',
-    );
-  }
-}
-
 function handleAppendpipe(cmd, ir) {
   // appendpipe forks current results and runs a sub-pipeline on the copy.
   // Common patterns:
@@ -1033,112 +924,4 @@ function handleLookup(cmd, ir) {
   ir.warnings.push(
     `Ensure lookup table '${cmd.table}' is uploaded via the Lookups UI`,
   );
-}
-
-function handleConvert(cmd, ir) {
-  // Grammar produces: { specs: [{name, field, alias}, ...], rawText: string|null }
-  const specs = cmd.specs;
-  if (!specs || specs.length === 0) {
-    if (cmd.rawText) {
-      ir.unsupported.push(
-        `convert command could not be fully parsed: ${cmd.rawText}`,
-      );
-    }
-    return;
-  }
-  for (const spec of specs) {
-    const { name: func, field, alias } = spec;
-    const outputName = alias || `${field}_converted`;
-    let expr;
-    switch (func.toLowerCase()) {
-      case 'num':
-        expr = Func('numeric', [Identifier(field)]);
-        break;
-      case 'auto':
-        expr = Func('numeric', [Identifier(field)]);
-        break;
-      case 'rmcomma':
-        // '1,234' → numeric(replace(field, ',', ''))
-        expr = Func('numeric', [
-          Func('replace', [
-            Identifier(field),
-            Literal(',', 'string'),
-            Literal('', 'string'),
-          ]),
-        ]);
-        break;
-      case 'ctime':
-        // epoch ms → datetime string
-        expr = Func('toDatetime', [Identifier(field)]);
-        break;
-      case 'mktime':
-        // datetime string → epoch ms
-        expr = Func('toTimestamp', [Identifier(field)]);
-        break;
-      case 'dur2sec': {
-        // Duration string → seconds. NRQL has no built-in; approximate with warning.
-        ir.warnings.push(
-          `convert dur2sec(${field}): NRQL has no duration parser; using numeric(${field}) as approximation — verify data format`,
-        );
-        expr = Func('numeric', [Identifier(field)]);
-        break;
-      }
-      case 'mstime': {
-        // mm:ss.ms → seconds. NRQL has no built-in; approximate with warning.
-        ir.warnings.push(
-          `convert mstime(${field}): NRQL has no mm:ss.ms parser; using numeric(${field}) as approximation — verify data format`,
-        );
-        expr = Func('numeric', [Identifier(field)]);
-        break;
-      }
-      default:
-        ir.unsupported.push(`convert ${func}(${field}) not supported in NRQL`);
-        continue;
-    }
-    if (alias) {
-      ir.bindings.push(Binding(alias, expr));
-    } else {
-      ir.bindings.push(Binding(outputName, expr));
-      ir.warnings.push(
-        `convert ${func}(${field}): NRQL cannot overwrite a field in-place; aliased to ${outputName}`,
-      );
-    }
-  }
-}
-
-function handleReplace(cmd, ir) {
-  const field = cmd.field;
-  const pairs = cmd.pairs || [
-    { oldValue: cmd.oldValue, newValue: cmd.newValue },
-  ];
-
-  let expr = Identifier(field);
-  for (const pair of pairs) {
-    expr = Func('replace', [
-      expr,
-      Literal(pair.oldValue, 'string'),
-      Literal(pair.newValue, 'string'),
-    ]);
-  }
-  // Store as field replacement — will be applied to FACET or SELECT
-  ir._fieldReplacements = ir._fieldReplacements || {};
-  ir._fieldReplacements[field] = expr;
-}
-
-function handleStrcat(cmd, ir) {
-  // strcat field1 "sep" field2 destField
-  // Grammar produces: { parts: [{type:'field',value:'host'}, {type:'literal',value:':'}, ...] }
-  // Last part is the destination field, rest are concat args
-  const parts = cmd.parts;
-  if (!parts || parts.length < 2) {
-    ir.unsupported.push('strcat requires at least 2 arguments');
-    return;
-  }
-  const destPart = parts[parts.length - 1];
-  const destField = destPart.value;
-  const concatArgs = parts.slice(0, -1).map((p) => {
-    if (p.type === 'literal') return Literal(p.value, 'string');
-    return Identifier(p.value);
-  });
-  ir.bindings.push(Binding(destField, Func('concat', concatArgs)));
 }
