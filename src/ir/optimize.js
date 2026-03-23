@@ -5,6 +5,7 @@
  * AST→IR translation and NRQL emission.
  */
 import { transformTree } from './transform.js';
+import { Identifier, BinOp, Wildcard } from './nodes.js';
 
 // ── Pass 1: Double-NOT elimination ──────────────────────────
 
@@ -65,9 +66,42 @@ function eliminateTautologies(ir) {
   });
 }
 
+// ── Pass 4: Fillnull substitution ───────────────────────────
+
+function applyFillnull(ir) {
+  if (!ir._fillnullMap) return ir;
+  const map = ir._fillnullMap;
+  const substituted = new Set();
+
+  const walked = transformTree(ir, (node) => {
+    if (node.type === 'Identifier' && map[node.name]) {
+      substituted.add(node.name);
+      return BinOp('OR', node, map[node.name]);
+    }
+    return node;
+  });
+
+  const unreferenced = Object.entries(map).filter(([f]) => !substituted.has(f));
+  if (unreferenced.length > 0) {
+    const fillExprs = unreferenced.map(([field, litValue]) =>
+      BinOp('OR', Identifier(field), litValue),
+    );
+    const rest = walked.select.length === 0 ? [Wildcard()] : walked.select;
+    walked.select = [...fillExprs, ...rest];
+  }
+
+  delete walked._fillnullMap;
+  return walked;
+}
+
 // ── Pipeline ────────────────────────────────────────────────
 
-const passes = [eliminateDoubleNot, foldConstants, eliminateTautologies];
+const passes = [
+  eliminateDoubleNot,
+  foldConstants,
+  eliminateTautologies,
+  applyFillnull,
+];
 
 export function optimize(ir) {
   return passes.reduce((node, pass) => pass(node), ir);

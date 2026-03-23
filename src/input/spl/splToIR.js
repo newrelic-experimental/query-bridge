@@ -58,46 +58,6 @@ export function translateAstToIR(ast) {
     applyCommand(cmd, ir);
   }
 
-  // Apply fillnull substitutions: replace Identifier(field) with (field OR default)
-  if (ir._fillnullMap) {
-    const map = ir._fillnullMap;
-    const substituted = new Set();
-    const subst = (node) => {
-      if (!node) return node;
-      if (node.type === 'Identifier' && map[node.name]) {
-        substituted.add(node.name);
-        return BinOp('OR', node, map[node.name]);
-      }
-      if (node.type === 'BinOp')
-        return { ...node, left: subst(node.left), right: subst(node.right) };
-      if (node.type === 'Not') return { ...node, child: subst(node.child) };
-      if (node.type === 'Function')
-        return { ...node, args: node.args.map(subst) };
-      if (node.type === 'Alias') return { ...node, expr: subst(node.expr) };
-      if (node.type === 'IsNull') return { ...node, child: subst(node.child) };
-      if (node.type === 'Like') return { ...node, field: subst(node.field) };
-      if (node.type === 'In') return { ...node, field: subst(node.field) };
-      return node;
-    };
-    ir.select = ir.select.map(subst);
-    ir.where = subst(ir.where);
-    ir.facet = ir.facet.map(subst);
-    ir.bindings = ir.bindings.map((b) => ({ ...b, expr: subst(b.expr) }));
-    // Fields not referenced downstream — prepend to SELECT so filled values appear in output
-    const unreferenced = Object.entries(map).filter(
-      ([f]) => !substituted.has(f),
-    );
-    if (unreferenced.length > 0) {
-      const fillExprs = unreferenced.map(([field, litValue]) =>
-        BinOp('OR', Identifier(field), litValue),
-      );
-      // Preserve * if select was empty (wildcard)
-      const rest = ir.select.length === 0 ? [Wildcard()] : ir.select;
-      ir.select = [...fillExprs, ...rest];
-    }
-    delete ir._fillnullMap;
-  }
-
   // Apply replace command substitutions: replace Identifier(field) with replace() expression
   if (ir._fieldReplacements) {
     const map = ir._fieldReplacements;
