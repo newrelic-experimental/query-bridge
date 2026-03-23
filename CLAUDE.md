@@ -11,20 +11,23 @@ Multi-language query translator. SPL/Lucene/PromQL/PPL → NRQL/Trino. Pure ESM 
 * Commit messages: lowercase subject, max 72 chars.
 * Conventional commits required (`feat:`, `fix:`, `chore:`).
 * Commit with `ASDF_NODEJS_VERSION=24.14.0 git commit` (hooks need Node 24).
-* Push with `--no-verify` (pre-push runs full repo lint which has pre-existing errors).
 
 ## Build & Test
 
-Requires Node 20: `ASDF_NODEJS_VERSION=20.19.0 <command>`
+Requires Node 24: `ASDF_NODEJS_VERSION=24.14.0 <command>`
 
 ```
-# Run from repo root:
-ASDF_NODEJS_VERSION=20.19.0 NODE_OPTIONS='--experimental-vm-modules' packages/nr-query-bridge/node_modules/.bin/jest --no-coverage --config packages/nr-query-bridge/jest.config.js
+npm run test                    # unit tests (Jest, --experimental-vm-modules)
+npm run lint                    # ESLint
+npm run lint:fix                # ESLint with auto-fix
+npm run format                  # Prettier write
+npm run format:check            # Prettier check
+npm run types:check             # TypeScript checkJs (no emit)
+npm run build:parsers           # regenerate Peggy parser after grammar changes
+```
 
-# Regenerate PEG parser (after grammar changes):
-ASDF_NODEJS_VERSION=20.19.0 ./node_modules/.bin/peggy -o src/input/spl/splParser.js --format es src/input/spl/spl.grammar
-
-# CLI:
+CLI:
+```
 node bin/spl2nrql.js "index=web status=500 | stats count by host"
 echo "index=web | stats count" | node bin/spl2nrql.js
 node bin/spl2nrql.js -i   # interactive REPL
@@ -71,7 +74,7 @@ Plain objects with `type` field. `SelectQuery`, `Union`, `NestedAggregation` at 
 - `.claude/rules/claude-md.md` — CLAUDE.md structure standard
 
 ### Style & Lint
-No package-level lint config. Linting runs via `npm run lint` (`nr1 nerdpack:lint`) at the repo root.
+ESLint (flat config), Prettier, TypeScript checkJs. Husky pre-commit runs lint-staged; pre-push runs full lint + types:check. commitlint enforces conventional commits. Generated parser (`splParser.js`) excluded from all checks.
 
 ### Test Verification Levels
 - `verified: 'human'` — reviewed and approved by human

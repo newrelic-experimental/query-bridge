@@ -80,6 +80,10 @@ export const SelectQuery = (overrides = {}) => ({
   warnings: [],
   unsupported: [],
   errors: [],
+  /** @type {Object|undefined} internal: fillnull default-value map, consumed during IR build */
+  _fillnullMap: undefined,
+  /** @type {Map<string,string>|undefined} internal: field rename map, consumed during IR build */
+  _fieldReplacements: undefined,
   ...overrides,
 });
 
