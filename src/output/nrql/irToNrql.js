@@ -79,6 +79,16 @@ export function emitExpr(node) {
     case 'SubqueryExpr':
       return `(${emitQuery(node.query)})`;
 
+    case 'DualCheck': {
+      // Defensive: expand inline if a DualCheck reaches the emitter unexpanded
+      const field = emitExpr(node.field);
+      const strVal = escapeStringLiteralForNrql(String(node.value.value));
+      const str = `${field} ${node.op} '${strVal}'`;
+      const num = `numeric(${field}) ${node.op} ${node.value.value}`;
+      const join = node.op === '=' ? 'OR' : 'AND';
+      return `${str} ${join} ${num}`;
+    }
+
     default:
       return `/* unknown expression: ${node.type} */`;
   }
