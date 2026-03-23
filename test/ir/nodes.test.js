@@ -19,6 +19,7 @@ import {
   Binding,
   JoinClause,
   OrderBy,
+  DualCheck,
 } from '../../src/ir/nodes.js';
 
 describe('IR expression nodes', () => {
@@ -108,6 +109,16 @@ describe('IR expression nodes', () => {
   it('Regex', () => {
     const node = Regex('error|fail');
     expect(node).toEqual({ type: 'Regex', pattern: 'error|fail' });
+  });
+
+  it('DualCheck', () => {
+    const node = DualCheck(Identifier('status'), '=', Literal(500, 'number'));
+    expect(node).toEqual({
+      type: 'DualCheck',
+      field: Identifier('status'),
+      op: '=',
+      value: Literal(500, 'number'),
+    });
   });
 });
 

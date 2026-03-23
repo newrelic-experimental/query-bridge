@@ -18,6 +18,7 @@ import {
   SubquerySource,
   Binding,
   OrderBy,
+  DualCheck,
 } from '../../src/ir/nodes.js';
 
 describe('transformTree', () => {
@@ -197,5 +198,16 @@ describe('transformTree', () => {
       return node;
     });
     expect(result.field.name).toBe('y');
+  });
+
+  it('transforms DualCheck field but not op/value', () => {
+    const tree = DualCheck(Identifier('x'), '=', Literal(500, 'number'));
+    const result = transformTree(tree, (node) => {
+      if (node.type === 'Identifier') return Identifier('y');
+      return node;
+    });
+    expect(result.field.name).toBe('y');
+    expect(result.op).toBe('=');
+    expect(result.value).toEqual(Literal(500, 'number'));
   });
 });

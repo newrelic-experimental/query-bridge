@@ -67,6 +67,9 @@ function transformChildren(node, fn) {
     case 'Rlike':
       return { ...node, field: transformTree(node.field, fn) };
 
+    case 'DualCheck':
+      return { ...node, field: transformTree(node.field, fn) };
+
     // ── Structural nodes ──
     case 'OrderBy':
       return { ...node, field: transformTree(node.field, fn) };

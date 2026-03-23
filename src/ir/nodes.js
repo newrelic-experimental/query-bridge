@@ -36,6 +36,13 @@ export const Rlike = (field, pattern) => ({ type: 'Rlike', field, pattern });
 
 export const RawNrql = (nrql) => ({ type: 'RawNrql', nrql });
 
+export const DualCheck = (field, op, value) => ({
+  type: 'DualCheck',
+  field,
+  op,
+  value,
+});
+
 // ── Data source nodes ─────────────────────────────────────────
 
 export const EventType = (names) => ({ type: 'EventType', names });
