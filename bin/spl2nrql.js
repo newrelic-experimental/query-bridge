@@ -18,8 +18,15 @@ function translate(spl) {
       process.stderr.write(`warning: ${w}\n`);
     }
   }
-  if (result.error) {
-    process.stderr.write(`error: ${result.error}\n`);
+  if (result.unsupported?.length) {
+    for (const u of result.unsupported) {
+      process.stderr.write(`unsupported: ${u}\n`);
+    }
+  }
+  if (result.errors?.length) {
+    for (const e of result.errors) {
+      process.stderr.write(`error: ${e}\n`);
+    }
     process.exitCode = 1;
   }
 }
