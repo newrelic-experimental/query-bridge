@@ -1597,9 +1597,24 @@ function walkEvalFunc(node, ir) {
         args[1].type === 'StringLiteral'
       ) {
         const pattern = args[1].value;
-        if (/[\\[\](){}.*+?|^$]/.test(pattern)) {
-          ir.warnings.push(
-            `replace() pattern '${pattern}' looks like regex; NRQL replace() is literal-only — result may differ`,
+        // URLs/paths use ? and + as literals — skip word-quantifier
+        // check for strings that look like URLs or paths
+        const isUrlOrPath = /^\/|:\/\//.test(pattern);
+        // Detect regex syntax in the post-parse value. The parser already
+        // interprets escapes (\t→tab, \d→d), so we check for structural
+        // patterns: char classes, groups, dot-quantifiers, brace repetition,
+        // anchors, alternation, quantifiers after word/group/class chars.
+        // For URL/path patterns, skip \w[+*?] to avoid false positives
+        // on query strings (?key=val) and encoded spaces (+)
+        const regexCoreRe =
+          /\[.*\]|\(.*\)|\.[*+?]|\{\d+[,}]|^\^|\$$|\||\)[+*?]|\][+*?]/;
+        const wordQuantifierRe = /\w[+*?]/;
+        if (
+          regexCoreRe.test(pattern) ||
+          (!isUrlOrPath && wordQuantifierRe.test(pattern))
+        ) {
+          ir.unsupported.push(
+            `replace() with regex pattern '${pattern}' not supported — NRQL replace() is literal-only`,
           );
         }
       }

@@ -1021,6 +1021,73 @@ const cases = [
     doc: 'eval-string',
     verified: 'llm',
   },
+  // replace() regex detection — quantifiers after word chars
+  {
+    spl: '* | eval x=replace(name, "\\d+", "")',
+    unsupportedIncludes: 'regex',
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: '* | eval x=replace(name, "foo+", "")',
+    unsupportedIncludes: 'regex',
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: '* | eval x=replace(name, "x?y", "")',
+    unsupportedIncludes: 'regex',
+    doc: 'eval-string',
+    verified: false,
+  },
+  // replace() regex detection — alternation
+  {
+    spl: '* | eval x=replace(name, "foo|bar", "")',
+    unsupportedIncludes: 'regex',
+    doc: 'eval-string',
+    verified: false,
+  },
+  // replace() regex detection — \s+ parsed as s+ (parser strips backslash)
+  {
+    spl: '* | eval x=replace(name, "\\s+", " ")',
+    unsupportedIncludes: 'regex',
+    doc: 'eval-string',
+    verified: false,
+  },
+  // replace() with literal dot in hostname — should NOT flag as regex
+  {
+    spl: '* | eval x=replace(name, "old.host.com", "new.host.com")',
+    nrql: "FROM Log WITH replace(name, 'old.host.com', 'new.host.com') AS x SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  // replace() with literal hyphen — should NOT flag as regex
+  {
+    spl: '* | eval x=replace(name, "foo-bar", "baz")',
+    nrql: "FROM Log WITH replace(name, 'foo-bar', 'baz') AS x SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  // replace() with URL containing ? and + — should NOT flag as regex
+  {
+    spl: '* | eval x=replace(uri, "https://old.com/api?key=val", "https://new.com/api")',
+    nrql: "FROM Log WITH replace(uri, 'https://old.com/api?key=val', 'https://new.com/api') AS x SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: '* | eval x=replace(uri, "/path/to+file", "/path/to_file")',
+    nrql: "FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  // replace() with URL that also has real regex — should still flag
+  {
+    spl: '* | eval x=replace(uri, "https://example.com/.*", "")',
+    unsupportedIncludes: 'regex',
+    doc: 'eval-string',
+    verified: false,
+  },
   // where with infix like operator — exact output
   {
     spl: '* | where name like "test%"',
