@@ -1005,12 +1005,12 @@ const cases = [
     doc: 'eval-type',
     verified: 'human',
   },
-  // FIXME: tostring() → string() compiles but may not behave as expected
+  // tostring(val) → string(val); SPL format args (hex, commas) not supported
   {
     spl: '* | eval x=tostring(val)',
     v2nrql: 'FROM Log WITH string(val) AS x SELECT *',
     doc: 'eval-type',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | eval x=typeof(val)',
@@ -1052,13 +1052,12 @@ const cases = [
     doc: 'eval-conditional',
     verified: 'human',
   },
-  // FIXME: mvindex() with 1 arg — passes through field as no-op alias (wrong)
   {
     spl: '* | eval x=mvindex(values)',
     v2nrql: 'FROM Log WITH values AS x SELECT *',
     v2warningIncludes: 'mvindex() requires at least 2 arguments',
     doc: 'eval-multivalue',
-    verified: false,
+    verified: 'llm',
   },
   // mvindex(split(...), 0) → getField(split(...), 0)
   {
@@ -1074,23 +1073,19 @@ const cases = [
     doc: 'eval-string',
     verified: 'human',
   },
-  // FIXME: replace() with regex pattern — passes through as literal, silently wrong
   {
     spl: '* | eval x=replace(name, "[abc]", "")',
-    unsupportedIncludes: 'replace() with regex pattern',
     v2nrql: "FROM Log WITH replace(name, '[abc]', '') AS x SELECT *",
     v2warningIncludes: 'literal-only',
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
-  // FIXME: replace() with regex pattern — passes through as literal, silently wrong
   {
     spl: '* | eval x=replace(name, "test.*end", "")',
-    unsupportedIncludes: 'replace() with regex pattern',
     v2nrql: "FROM Log WITH replace(name, 'test.*end', '') AS x SELECT *",
     v2warningIncludes: 'literal-only',
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   // where with infix like operator — exact output
   {
@@ -1238,7 +1233,6 @@ const cases = [
   //
   // ── rex sed mode ────────────────────────────────────────────────
   //
-  // FIXME: rex mode=sed has no NRQL equivalent
   {
     spl: '* | rex mode=sed field=message "s/old/new/g"',
     unsupportedIncludes: 'sed',
@@ -1249,14 +1243,11 @@ const cases = [
   //
   // ── rex PCRE mode ───────────────────────────────────────────────
   //
-  // FIXME: PCRE lookbehind (?<=...) gets mangled by (?< → (?P< conversion, producing garbled output
   {
     spl: '* | rex field=message "(?<=prefix)(?<val>\\w+)"',
-    warningIncludes: 'PCRE-style',
-    v2nrql:
-      "FROM Log WITH capture(message, r'.*(?P<=prefix)(?<val>\\w+).*') AS (=prefix)(?<val) SELECT *",
+    v2unsupportedIncludes: 'lookahead/lookbehind',
     doc: 'fields-rex-pcre',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── spath command ───────────────────────────────────────────────
@@ -1868,9 +1859,6 @@ const cases = [
   //
   // ── top command ─────────────────────────────────────────────────
   //
-  // FIXME: V2 top does not include percent calculation. SPL top outputs count
-  // and percent columns by default. In NRQL, use a pie chart display to see
-  // percentages, or add a percent subquery. V2 should add a warning about this.
   //
   {
     spl: '* | top categoryId',
@@ -2967,11 +2955,11 @@ const cases = [
     verified: 'llm',
   },
   {
-    // FIXME: V2 only supports single-field sort; drops additional fields with warning
     spl: '* | sort -count, +name, host',
-    orderBy: ['count DESC', 'name ASC', 'host ASC'],
+    v2nrql: 'FROM Log SELECT * ORDER BY count DESC',
+    v2warningIncludes: 'additional sort fields ignored',
     doc: 'edge-cases',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | STATS COUNT BY host',

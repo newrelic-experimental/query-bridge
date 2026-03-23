@@ -1,11 +1,7 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | stats count | predict count',
-  '* | lookup ip_to_country src_ip OUTPUT country',
-  '* | lookup users_lookup username AS user OUTPUT department',
-  '* | join type=left src_ip [search index=geo | table src_ip, country]',
-  '* | lookup geo_table src_ip',
+  '* | rex field=message "(?<=prefix)(?<val>\\\\w+)"',
 ];
 
 describe('V2 show output', () => {

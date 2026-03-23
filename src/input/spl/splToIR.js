@@ -657,8 +657,8 @@ function handleRex(cmd, ir) {
     return;
   }
 
-  // Extract named group names
-  const groupRegex = /\(\?(?:P<|<)([^>]+)>/g;
+  // Extract named group names — match (?P<name>) or (?<name>) but NOT (?<=) or (?<!)
+  const groupRegex = /\(\?(?:P<|<)([a-zA-Z_]\w*)>/g;
   const names = [];
   let match;
   while ((match = groupRegex.exec(cmd.pattern)) !== null) {
@@ -678,10 +678,19 @@ function handleRex(cmd, ir) {
     );
   }
 
+  // Detect PCRE lookbehind/lookahead — NRQL capture() rejects these
+  if (/\(\?<=|\(\?<!|\(\?=|\(\?!/.test(cmd.pattern)) {
+    ir.unsupported.push(
+      'rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround',
+    );
+    return;
+  }
+
   // Build capture() expression
   const field = cmd.field === '_raw' ? 'message' : cmd.field;
   // Convert (?<name>) to (?P<name>) — NRQL capture() uses Python regex syntax
-  const normalizedPattern = cmd.pattern.replace(/\(\?<([^>]+)>/g, '(?P<$1>');
+  // Only convert named groups ((?<identifier>)), not lookbehind (?<=) or lookahead (?=)
+  const normalizedPattern = cmd.pattern.replace(/\(\?<([a-zA-Z_]\w*)>/g, '(?P<$1>');
   // Avoid redundant .* when pattern already anchors with .* or .+
   const prefix = /^\.[*+]/.test(normalizedPattern) ? '' : '.*';
   const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '.*';
