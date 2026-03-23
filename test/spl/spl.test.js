@@ -1153,7 +1153,7 @@ const cases = [
     doc: 'results-inputlookup',
     verified: 'human',
   },
-  // TODO: expand to include a real search before | to test the join case
+  // TODO: join host [inputlookup servers.csv] — grammar doesn't parse inputlookup inside join brackets yet
   {
     spl: '| inputlookup users.csv where role="admin"',
     nrql: "FROM lookup(users.csv) SELECT * WHERE role = 'admin'",
@@ -1176,10 +1176,10 @@ const cases = [
     doc: 'fields-rex',
     verified: 'human',
   },
-  // FIXME: multi-capture AS `(from, to)` creates one weird field name instead of two separate fields
+  // multi-capture rex: one capture() call per named group
   {
     spl: '* | rex field=_raw "From: <(?<from>.*)> To: <(?<to>.*)>"',
-    nrql: "FROM Log WITH capture(message, r'.*From: <(?P<from>.*)> To: <(?P<to>.*)>.*') AS `(from, to)` SELECT *",
+    nrql: "FROM Log WITH capture(message, r'.*From: <(?P<from>.*)> To: <(?:.*)>.*') AS `from`, capture(message, r'.*From: <(?:.*)> To: <(?P<to>.*)>.*') AS to SELECT *",
     doc: 'fields-rex',
     verified: false,
   },
@@ -2364,10 +2364,8 @@ const cases = [
   },
   // real-world pattern: stats then eventstats (chained aggregation, no BY)
   {
-    // FIXME: eventstats subquery references appCount from FROM Log, but appCount
-    // only exists after the stats aggregation — subquery should wrap the inner stats
     spl: '* | stats count as appCount by app | eventstats sum(appCount) as namespaceCount',
-    nrql: "FROM Log SELECT count(*) AS 'appCount', (FROM Log SELECT sum(appCount)) AS 'namespaceCount' FACET app",
+    nrql: "FROM Log SELECT count(*) AS 'appCount', (FROM (FROM Log SELECT count(*) AS 'appCount' FACET app LIMIT MAX) SELECT sum(appCount)) AS 'namespaceCount' FACET app",
     doc: 'reports-eventstats',
     verified: false,
   },

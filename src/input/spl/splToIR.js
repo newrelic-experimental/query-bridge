@@ -715,7 +715,7 @@ function handleRex(cmd, ir) {
     return;
   }
 
-  // Build capture() expression
+  // Build capture() expression(s)
   const field = cmd.field === '_raw' ? 'message' : cmd.field;
   // Convert (?<name>) to (?P<name>) — NRQL capture() uses Python regex syntax
   // Only convert named groups ((?<identifier>)), not lookbehind (?<=) or lookahead (?=)
@@ -726,12 +726,30 @@ function handleRex(cmd, ir) {
   // Avoid redundant .* when pattern already anchors with .* or .+
   const prefix = /^\.[*+]/.test(normalizedPattern) ? '' : '.*';
   const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '.*';
-  const pattern = `${prefix}${normalizedPattern}${suffix}`;
-  const captureExpr = Func('capture', [Identifier(field), Regex(pattern)]);
+  const fullPattern = `${prefix}${normalizedPattern}${suffix}`;
 
-  // Create binding with multi-capture alias
-  const aliasName = `(${names.join(', ')})`;
-  ir.bindings.push(Binding(aliasName, captureExpr));
+  if (names.length === 1) {
+    // Single capture group — one binding
+    const captureExpr = Func('capture', [
+      Identifier(field),
+      Regex(fullPattern),
+    ]);
+    ir.bindings.push(Binding(`(${names[0]})`, captureExpr));
+  } else {
+    // Multiple capture groups — one capture() call per group.
+    // Each call keeps one (?P<name>...) and converts the rest to non-capturing (?:...).
+    for (const targetName of names) {
+      const perGroupPattern = fullPattern.replace(
+        /\(\?P<([a-zA-Z_]\w*)>/g,
+        (match, name) => (name === targetName ? match : '(?:'),
+      );
+      const captureExpr = Func('capture', [
+        Identifier(field),
+        Regex(perGroupPattern),
+      ]);
+      ir.bindings.push(Binding(targetName, captureExpr));
+    }
+  }
 }
 
 function handleSpath(cmd, ir) {
@@ -1038,11 +1056,28 @@ function handleEventstats(cmd, ir) {
     // e.g., eventstats count AS total → (SELECT count(*) FROM Log) AS 'total'
     // NRQL WITH clause cannot contain aggregate functions, so we use
     // scalar subqueries appended to SELECT instead.
-    const subquery = SelectQuery({
-      dataSource: { ...ir.dataSource },
-      select: subSelect.map((s) => s.expr),
-      where: ir.where ? { ...ir.where } : null,
-    });
+    let subquery;
+    if (ir._hasAggregation) {
+      // After stats: the eventstats references aggregated fields (e.g., sum(appCount)),
+      // so the subquery must wrap the current stats as a nested aggregation
+      const innerQuery = SelectQuery({
+        dataSource: { ...ir.dataSource },
+        select: [...ir.select],
+        where: ir.where ? { ...ir.where } : null,
+        facet: [...ir.facet],
+        limit: 'MAX',
+      });
+      subquery = SelectQuery({
+        dataSource: { type: 'SubquerySource', query: innerQuery },
+        select: subSelect.map((s) => s.expr),
+      });
+    } else {
+      subquery = SelectQuery({
+        dataSource: { ...ir.dataSource },
+        select: subSelect.map((s) => s.expr),
+        where: ir.where ? { ...ir.where } : null,
+      });
+    }
     // Preserve existing SELECT (or add * if empty) so original fields are kept
     if (ir.select.length === 0) {
       ir.select.push(Wildcard());

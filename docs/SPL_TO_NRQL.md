@@ -661,7 +661,7 @@ NRQL: FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'</pre>
 <div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | stats count as appCount by app | eventstats sum(appCount) as namespaceCount
-NRQL: FROM Log SELECT count(*) AS 'appCount', (FROM Log SELECT sum(appCount)) AS 'namespaceCount' FACET app</pre>
+NRQL: FROM Log SELECT count(*) AS 'appCount', (FROM (FROM Log SELECT count(*) AS 'appCount' FACET app LIMIT MAX) SELECT sum(appCount)) AS 'namespaceCount' FACET app</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 <div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ eventstats without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval</div>
@@ -1317,7 +1317,7 @@ NRQL: FROM Log WITH capture(message, r'.*user=(?P&lt;username&gt;\w+).*') AS (us
 <div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
 <pre style="margin: 0; flex: 1;">SPL:  * | rex field=_raw "From: &lt;(?&lt;from&gt;.*)&gt; To: &lt;(?&lt;to&gt;.*)&gt;"
-NRQL: FROM Log WITH capture(message, r'.*From: &lt;(?P&lt;from&gt;.*)&gt; To: &lt;(?P&lt;to&gt;.*)&gt;.*') AS `(from, to)` SELECT *</pre>
+NRQL: FROM Log WITH capture(message, r'.*From: &lt;(?P&lt;from&gt;.*)&gt; To: &lt;(?:.*)&gt;.*') AS `from`, capture(message, r'.*From: &lt;(?:.*)&gt; To: &lt;(?P&lt;to&gt;.*)&gt;.*') AS to SELECT *</pre>
 <span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
 </div>
 </div>
