@@ -655,9 +655,9 @@ const cases = [
   // eval if() function call
   {
     spl: '* | eval x = if(status=200, "ok", "err")',
-    nrql: "FROM Log WITH if(status = 200, 'ok', 'err') AS x SELECT *",
+    nrql: "FROM Log WITH if(status = '200' OR numeric(status) = 200, 'ok', 'err') AS x SELECT *",
     doc: 'eval-conditional',
-    verified: 'human',
+    verified: false,
   },
   // Eval piped to stats + eval chained (two eval commands)
   {
@@ -709,11 +709,10 @@ const cases = [
     doc: 'eval-string',
     verified: 'human',
   },
-  // Unsupported eval: string concat with dots
-  // TODO: should translate to concat(first, ' ', last) once strcat/concat is implemented
+  // eval dot-concat → concat()
   {
     spl: '* | eval full = first . " " . last',
-    unsupportedIncludes: 'eval expression not supported',
+    nrql: "FROM Log WITH concat(first, ' ', last) AS full SELECT *",
     doc: 'eval-string',
     verified: false,
   },
@@ -724,13 +723,12 @@ const cases = [
     doc: 'eval-multivalue',
     verified: 'human',
   },
-  // eval mvjoin() → skipped, field passed through
-  // TODO: mvjoin has no NRQL equivalent; current translation is a no-op alias (incorrect)
+  // eval mvjoin() → unsupported (NRQL can't join array elements)
   {
     spl: '* | eval joined = mvjoin(tags, ", ")',
-    nrql: 'FROM Log WITH tags AS joined SELECT *',
+    unsupportedIncludes: 'mvjoin',
     doc: 'eval-multivalue',
-    verified: false,
+    verified: 'llm',
   },
   // eval if() with comparison
   {
@@ -780,16 +778,16 @@ const cases = [
   // case() with multiple conditions and 1=1 default (equality comparisons)
   {
     spl: '* | eval x=case(a=1, "one", b=2, "two", 1=1, "other")',
-    nrql: "FROM Log WITH if(a = 1, 'one', if(b = 2, 'two', 'other')) AS x SELECT *",
+    nrql: "FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', 'other')) AS x SELECT *",
     doc: 'eval-conditional',
-    verified: 'human',
+    verified: false,
   },
   // case() with even args and no default → NULL fallback
   {
     spl: '* | eval x=case(a=1, "one", b=2, "two")',
-    nrql: "FROM Log WITH if(a = 1, 'one', if(b = 2, 'two', NULL)) AS x SELECT *",
+    nrql: "FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', NULL)) AS x SELECT *",
     doc: 'eval-conditional',
-    verified: 'human',
+    verified: false,
   },
   // eval if() with OR condition
   {
@@ -842,17 +840,17 @@ const cases = [
   },
   // eval trim() → capture with regex (NRQL has no trim)
   // FIXME: multiple trim() calls would collide on (?P<t>...) named group
+  // eval trim() → capture with regex (alias name used as group name to avoid collision)
   {
     spl: '* | eval x=trim(name)',
-    nrql: "FROM Log WITH capture(name, r'^\\s*(?P<t>.*\\S)\\s*$') AS x SELECT *",
+    nrql: "FROM Log WITH capture(name, r'^\\s*(?P<x>.*\\S)\\s*$') AS x SELECT *",
     doc: 'eval-string',
     verified: false,
   },
   // eval ltrim() → capture with leading whitespace strip
-  // FIXME: same (?P<t>...) collision issue as trim()
   {
     spl: '* | eval x=ltrim(name)',
-    nrql: "FROM Log WITH capture(name, r'^\\s*(?P<t>.*)$') AS x SELECT *",
+    nrql: "FROM Log WITH capture(name, r'^\\s*(?P<x>.*)$') AS x SELECT *",
     doc: 'eval-string',
     verified: false,
   },
@@ -863,14 +861,12 @@ const cases = [
     doc: 'eval-string',
     verified: 'human',
   },
-  // eval replace() with regex pattern → literal replace with warning
-  // FIXME: passes regex through as literal — silently produces wrong results
+  // eval replace() with regex pattern → unsupported (NRQL replace is literal-only)
   {
     spl: '* | eval x=replace(name, "\\\\d+", "")',
-    nrql: "FROM Log WITH replace(name, '\\\\d+', '') AS x SELECT *",
-    warningIncludes: 'literal-only',
+    unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   // eval replace() simple deletion
   {
@@ -1009,15 +1005,13 @@ const cases = [
   },
   {
     spl: '* | eval x=replace(name, "[abc]", "")',
-    nrql: "FROM Log WITH replace(name, '[abc]', '') AS x SELECT *",
-    warningIncludes: 'literal-only',
+    unsupportedIncludes: 'regex',
     doc: 'eval-string',
     verified: 'llm',
   },
   {
     spl: '* | eval x=replace(name, "test.*end", "")',
-    nrql: "FROM Log WITH replace(name, 'test.*end', '') AS x SELECT *",
-    warningIncludes: 'literal-only',
+    unsupportedIncludes: 'regex',
     doc: 'eval-string',
     verified: 'llm',
   },
@@ -1104,9 +1098,10 @@ const cases = [
   },
   {
     spl: '* | eval kb = bytes / 1024 | rename kb as kilobytes',
-    nrql: "FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes'",
+    nrql: "FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *",
+    warningIncludes: 'original field names',
     doc: 'fields-eval-arithmetic',
-    verified: 'human',
+    verified: false,
   },
   //
   // ── lookup command ──────────────────────────────────────────────
@@ -1161,10 +1156,10 @@ const cases = [
   // TODO: expand to include a real search before | to test the join case
   {
     spl: '| inputlookup users.csv where role="admin"',
-    nrql: 'FROM lookup(users.csv) SELECT * WHERE role="admin"',
+    nrql: "FROM lookup(users.csv) SELECT * WHERE role = 'admin'",
     warningIncludes: 'inputlookup WHERE',
     doc: 'results-inputlookup',
-    verified: 'llm',
+    verified: false,
   },
   //
   // ── rex command ─────────────────────────────────────────────────
@@ -1204,7 +1199,6 @@ const cases = [
   // max_match=0 parsed but unsupported — capture() returns first match only
   {
     spl: '* | rex field=message "(?<skus>\\d{6,})" max_match=0',
-    nrql: "FROM Log WITH capture(message, r'.*(?P<skus>\\d{6,}).*') AS (skus) SELECT *",
     unsupportedIncludes: 'max_match',
     doc: 'fields-rex',
     verified: 'human',
@@ -1377,12 +1371,10 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: fillnull without field list silently drops null-filling; NRQL can't do this dynamically
     spl: '* | fillnull value=0',
-    nrql: 'FROM Log SELECT *',
-    warningIncludes: 'all fields',
+    unsupportedIncludes: 'field list',
     doc: 'fields-fillnull',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | fillnull value="unknown" host',
@@ -1409,23 +1401,24 @@ const cases = [
   //
   {
     spl: '* | rename src_ip AS source_address',
-    nrql: "FROM Log SELECT src_ip AS 'source_address'",
+    nrql: "FROM Log SELECT src_ip AS 'source_address', *",
+    warningIncludes: 'original field names',
     doc: 'fields-rename',
-    verified: 'human',
+    verified: false,
   },
   {
-    // FIXME: rename-after-stats emits broken double-alias (avg_bytes + average_bytes in SELECT);
-    // should fold rename into the stats alias: average(bytes) AS 'average_bytes'
+    // rename-after-stats: fold rename into stats alias
     spl: '* | stats avg(bytes) as avg_bytes by host | rename avg_bytes AS average_bytes',
-    nrql: "FROM Log SELECT average(bytes) AS 'avg_bytes', avg_bytes AS 'average_bytes' FACET host",
+    nrql: "FROM Log SELECT average(bytes) AS 'average_bytes' FACET host",
     doc: 'fields-rename',
     verified: false,
   },
   {
     spl: '* | rename _time AS "Time"',
-    nrql: "FROM Log SELECT timestamp AS 'Time'",
+    nrql: "FROM Log SELECT timestamp AS 'Time', *",
+    warningIncludes: 'original field names',
     doc: 'fields-rename',
-    verified: 'llm',
+    verified: false,
   },
   {
     spl: '* | rename properties.* as *',
@@ -1434,17 +1427,15 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: rename drops non-renamed fields; NRQL has no rename-and-keep-all equivalent
     spl: '* | rename src_ip as src user_name as user',
-    nrql: "FROM Log SELECT src_ip AS 'src', user_name AS 'user'",
+    nrql: "FROM Log SELECT src_ip AS 'src', user_name AS 'user', *",
+    warningIncludes: 'original field names',
     doc: 'fields-rename',
     verified: false,
   },
   {
-    // FIXME: quoted field name with parens — emits IsOutlier(count) as a function call,
-    // but it's a field name. NRQL can't reference fields with parens; should be unsupported.
     spl: '* | rename "IsOutlier(count)" as isOutlier',
-    nrql: "FROM Log SELECT IsOutlier(count) AS 'isOutlier'",
+    unsupportedIncludes: 'parentheses',
     doc: 'fields-rename',
     verified: false,
   },
@@ -1566,17 +1557,14 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: missing numeric() wrapper on status in filter condition for range comparison
     spl: '* | stats count(eval(status>=400)) as errors',
-    nrql: "FROM Log SELECT filter(count(*), WHERE status>=400) AS 'errors'",
+    nrql: "FROM Log SELECT filter(count(*), WHERE numeric(status) >= 400) AS 'errors'",
     doc: 'reports-stats',
     verified: false,
   },
   {
-    // FIXME: missing dual-check for equality inside filter() — should be
-    // EventCode = '4648' OR numeric(EventCode) = 4648
     spl: '* | stats count(eval(EventCode=4648)) as attempts, count(eval(EventCode=4624)) as successes',
-    nrql: "FROM Log SELECT filter(count(*), WHERE EventCode=4648) AS 'attempts', filter(count(*), WHERE EventCode=4624) AS 'successes'",
+    nrql: "FROM Log SELECT filter(count(*), WHERE EventCode = '4648' OR numeric(EventCode) = 4648) AS 'attempts', filter(count(*), WHERE EventCode = '4624' OR numeric(EventCode) = 4624) AS 'successes'",
     doc: 'reports-stats',
     verified: false,
   },
@@ -2500,7 +2488,6 @@ const cases = [
     spl: '* | stats count as total | appendcols [search * | stats count by host]',
     unsupportedIncludes:
       'appendcols with subsearch cannot be automatically translated',
-    nrql: "FROM Log SELECT count(*) AS 'total'",
     doc: 'correlation-appendcols',
     verified: 'llm',
   },
@@ -2575,14 +2562,12 @@ const cases = [
   {
     spl: '* | stats count by host | transpose',
     unsupportedIncludes: 'transpose',
-    nrql: 'FROM Log SELECT count(*) FACET host',
     doc: 'results-transpose',
     verified: 'llm',
   },
   {
     spl: '* | timechart count | timewrap 1d',
     unsupportedIncludes: 'timewrap',
-    nrql: 'FROM Log SELECT count(*) TIMESERIES AUTO',
     doc: 'reports-timewrap',
     verified: 'llm',
   },
@@ -2936,7 +2921,6 @@ const cases = [
     spl: '* | stats count as total | append [search * | stats avg(duration) by host]',
     unsupportedIncludes:
       'append with subsearch cannot be automatically translated; the main query and subsearch group by different fields',
-    nrql: "FROM Log SELECT count(*) AS 'total'",
     doc: 'correlation-append',
     verified: 'llm',
   },

@@ -545,6 +545,7 @@ function handleSort(cmd, ir) {
 }
 
 function handleRename(cmd, ir) {
+  let added = 0;
   for (const rename of cmd.renames) {
     if (rename.from.includes('*') || rename.to.includes('*')) {
       ir.unsupported.push(
@@ -552,7 +553,29 @@ function handleRename(cmd, ir) {
       );
       continue;
     }
-    ir.select.push(Alias(Identifier(mapFieldName(rename.from)), rename.to));
+    if (/[()]/.test(rename.from)) {
+      ir.unsupported.push(
+        `Cannot rename field with parentheses in name: "${rename.from}"`,
+      );
+      continue;
+    }
+    // If renaming a stats alias, fold into the existing alias instead of adding a new one
+    const existingIdx = ir.select.findIndex(
+      (s) => s.type === 'Alias' && s.name === rename.from,
+    );
+    if (existingIdx >= 0) {
+      ir.select[existingIdx] = Alias(ir.select[existingIdx].expr, rename.to);
+    } else {
+      ir.select.push(Alias(Identifier(mapFieldName(rename.from)), rename.to));
+    }
+    added++;
+  }
+  // Keep all other fields — NRQL has no rename-and-drop-original
+  if (added > 0 && !ir._hasAggregation) {
+    ir.select.push(Wildcard());
+    ir.warnings.push(
+      'NRQL rename keeps original field names alongside aliases',
+    );
   }
 }
 
@@ -857,8 +880,8 @@ function handleFillnull(cmd, ir) {
       ir._fillnullMap[field] = litValue;
     }
   } else {
-    ir.warnings.push(
-      'fillnull without field list applies to all fields; specify fields for NRQL translation',
+    ir.unsupported.push(
+      'fillnull without field list not supported — NRQL requires explicit field names',
     );
   }
 }
@@ -1371,6 +1394,8 @@ function translateWhereExpr(expr, ir) {
 
 function translateEvalExpr(cmd, ir) {
   if (cmd.rawText) {
+    // Try dot-concat: field = expr . expr . ...
+    if (tryParseDotConcat(cmd.rawText, ir)) return null;
     ir.unsupported.push(`eval expression not supported: ${cmd.rawText}`);
     return null;
   }
@@ -1378,6 +1403,7 @@ function translateEvalExpr(cmd, ir) {
   // (cmd has assignments array from the PEG grammar)
   if (cmd.assignments) {
     for (const assignment of cmd.assignments) {
+      ir._currentAlias = assignment.field;
       const expr = walkEvalExpr(assignment.expr, ir);
       if (expr) {
         // NRQL WITH clause can't alias to a field that the expression references
@@ -1399,16 +1425,76 @@ function translateEvalExpr(cmd, ir) {
 }
 
 /**
+ * Try to parse a rawText eval as dot-concat: field = expr . expr . ...
+ * SPL uses `.` (with spaces) as string concatenation operator.
+ * Returns null if the rawText doesn't match this pattern.
+ */
+function tryParseDotConcat(rawText, ir) {
+  // Match: field = stuff . stuff [. stuff ...]
+  const eqIdx = rawText.indexOf('=');
+  if (eqIdx < 0) return null;
+  const field = rawText.slice(0, eqIdx).trim();
+  const rhs = rawText.slice(eqIdx + 1).trim();
+  // Split on ` . ` (space-dot-space) to distinguish from field.name dots
+  const parts = rhs.split(/\s+\.\s+/);
+  if (parts.length < 2) return null;
+  const concatArgs = parts.map((p) => {
+    const trimmed = p.trim();
+    // Quoted string
+    const strMatch = trimmed.match(/^"(.*)"$|^'(.*)'$/);
+    if (strMatch) return Literal(strMatch[1] || strMatch[2] || '', 'string');
+    // Number
+    if (looksLikeNumber(trimmed)) return Literal(Number(trimmed), 'number');
+    // Field name
+    return Identifier(trimmed === '_time' ? 'timestamp' : trimmed);
+  });
+  ir.bindings.push(Binding(field, Func('concat', concatArgs)));
+  return true; // signal success; bindings added directly
+}
+
+/**
  * Walk an eval expression AST node and produce an IR expression.
  * Handles: EvalFunc, EvalComparison, EvalBoolOp, EvalParens, StringLiteral, bare strings.
  */
 function walkEvalExpr(node, ir) {
   if (!node) return null;
 
-  // Bare string — could be field name, number, or arithmetic expression
+  // Bare string — could be field name, number, comparison, or arithmetic expression
   if (typeof node === 'string') {
     if (looksLikeNumber(node)) return Literal(Number(node), 'number');
     if (node === '_time') return Identifier('timestamp');
+    // Comparison operators in raw strings (from eval_inner_expr): status>=400, EventCode=4648
+    const cmpMatch = node.match(
+      /^([a-zA-Z_][\w.]*)\s*(>=|<=|!=|>|<|==|=)\s*(.+)$/,
+    );
+    if (cmpMatch) {
+      const [, field, rawOp, rawValue] = cmpMatch;
+      const op = rawOp === '==' ? '=' : rawOp;
+      const fieldId = Identifier(field === '_time' ? 'timestamp' : field);
+      // Strip surrounding quotes from value if present
+      const value =
+        (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+        (rawValue.startsWith("'") && rawValue.endsWith("'"))
+          ? rawValue.slice(1, -1)
+          : rawValue;
+      if (isNumeric(value)) {
+        if (op === '=' || op === '!=') {
+          const strCmp = BinOp(op, fieldId, Literal(value, 'string'));
+          const numCmp = BinOp(
+            op,
+            Func('numeric', [fieldId]),
+            Literal(Number(value), 'number'),
+          );
+          return BinOp(op === '=' ? 'OR' : 'AND', strCmp, numCmp);
+        }
+        return BinOp(
+          op,
+          Func('numeric', [fieldId]),
+          Literal(Number(value), 'number'),
+        );
+      }
+      return BinOp(op, fieldId, Literal(value, 'string'));
+    }
     // If the string contains arithmetic operators, parse it into a BinOp tree
     if (/[+\-*/%]/.test(node) && /[a-zA-Z]/.test(node)) {
       return buildArithmeticExpr(node);
@@ -1437,6 +1523,22 @@ function walkEvalExpr(node, ir) {
           ? Func('numeric', [right])
           : right;
         return BinOp(op, numLeft, numRight);
+      }
+      // Equality with numeric value: dual-check (string match OR numeric match)
+      if (
+        (op === '=' || op === '!=') &&
+        right.type === 'Literal' &&
+        right.kind === 'number' &&
+        left.type === 'Identifier'
+      ) {
+        const strCompare = BinOp(
+          op,
+          left,
+          Literal(String(right.value), 'string'),
+        );
+        const numCompare = BinOp(op, Func('numeric', [left]), right);
+        const joinOp = op === '=' ? 'OR' : 'AND';
+        return BinOp(joinOp, strCompare, numCompare);
       }
       return BinOp(op, left, right);
     }
@@ -1514,18 +1616,23 @@ function walkEvalFunc(node, ir) {
 
     case 'trim': {
       const child = walkEvalExpr(args[0], ir);
+      const gn = ir._currentAlias || '_t';
       return child
-        ? Func('capture', [child, Regex('^\\s*(?P<t>.*\\S)\\s*$')])
+        ? Func('capture', [child, Regex(`^\\s*(?P<${gn}>.*\\S)\\s*$`)])
         : null;
     }
     case 'ltrim': {
       const child = walkEvalExpr(args[0], ir);
-      return child ? Func('capture', [child, Regex('^\\s*(?P<t>.*)$')]) : null;
+      const gn = ir._currentAlias || '_t';
+      return child
+        ? Func('capture', [child, Regex(`^\\s*(?P<${gn}>.*)$`)])
+        : null;
     }
     case 'rtrim': {
       const child = walkEvalExpr(args[0], ir);
+      const gn = ir._currentAlias || '_t';
       return child
-        ? Func('capture', [child, Regex('^(?P<t>.*\\S)\\s*$')])
+        ? Func('capture', [child, Regex(`^(?P<${gn}>.*\\S)\\s*$`)])
         : null;
     }
 
@@ -1709,13 +1816,11 @@ function walkEvalFunc(node, ir) {
     case 'true':
       return Func('true', []);
 
-    case 'mvjoin': {
-      // mvjoin(field, delim) → just pass through the field
-      ir.warnings.push(
-        'mvjoin() skipped; NRQL subquery FACET on uniques() already groups by value combination',
+    case 'mvjoin':
+      ir.unsupported.push(
+        'mvjoin() has no NRQL equivalent — NRQL cannot join array elements into a delimited string',
       );
       return walkEvalExpr(args[0], ir);
-    }
 
     case 'mvappend':
       return Func(

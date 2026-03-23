@@ -38,16 +38,8 @@ export function translateSplToNrql(spl) {
   // TODO: Optimization pass goes here
   // const optimized = optimize(ir);
 
-  // When a query is fully unsupported with no meaningful output,
-  // return empty string
-  if (
-    ir.unsupported.length > 0 &&
-    ir.select.length === 0 &&
-    !ir.where &&
-    ir.bindings.length === 0 &&
-    !ir.join &&
-    ir.facet.length === 0
-  ) {
+  // Unsupported or errors → no NRQL output
+  if (ir.unsupported.length > 0 || ir.errors.length > 0) {
     return {
       nrql: '',
       warnings: ir.warnings,

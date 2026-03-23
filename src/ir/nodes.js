@@ -87,8 +87,6 @@ export const SelectQuery = (overrides = {}) => ({
   ...overrides,
 });
 
-export const Union = (queries) => ({ type: 'Union', queries });
-
 export const NestedAggregation = (layers, dataQuery) => ({
   type: 'NestedAggregation',
   layers,

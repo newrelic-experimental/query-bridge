@@ -72,6 +72,16 @@ Plain objects with `type` field. `SelectQuery`, `Union`, `NestedAggregation` at 
 ### Style & Lint
 ESLint (flat config), Prettier, TypeScript checkJs. Husky pre-commit runs lint-staged; pre-push runs full lint + types:check. commitlint enforces conventional commits. Generated parser (`splParser.js`) excluded from all checks.
 
+### Test Case Fields
+- `spl` — input SPL query
+- `nrql` — expected NRQL output
+- `errorIncludes` — substring expected in errors
+- `warningIncludes` — substring expected in warnings
+- `unsupportedIncludes` — substring expected in unsupported messages
+- `doc` — tag linking to SPL_TO_NRQL.md section (required)
+- `verified` — verification level (see below)
+- `skip` — skip this test case
+
 ### Test Verification Levels
 - `verified: 'human'` — reviewed and approved by human
 - `verified: 'llm'` — reviewed by expert agents + MCP validation, not yet human-approved

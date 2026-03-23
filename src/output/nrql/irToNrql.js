@@ -196,8 +196,6 @@ export function emitQuery(node) {
   switch (node.type) {
     case 'SelectQuery':
       return emitSelectQuery(node);
-    case 'Union':
-      return emitUnion(node);
     case 'NestedAggregation':
       return emitNestedAggregation(node);
     default:
@@ -290,11 +288,6 @@ function emitDataSource(ds) {
     default:
       return 'Log';
   }
-}
-
-function emitUnion(node) {
-  // NRQL doesn't have UNION — emit as separate queries with comment
-  return node.queries.map(emitSelectQuery).join('\n/* UNION */\n');
 }
 
 function emitNestedAggregation(node) {
