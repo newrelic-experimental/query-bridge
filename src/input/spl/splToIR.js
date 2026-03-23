@@ -397,12 +397,15 @@ function applyCommand(cmd, ir) {
     case 'LookupCommand':
       return handleLookup(cmd, ir);
     case 'PredictCommand':
-      if (ir.timeseries) {
-        ir.predict = true;
-      } else {
+      ir.predict = true;
+      if (!ir.timeseries) {
+        ir.timeseries = 'AUTO';
         ir.warnings.push(
-          'PREDICT requires TIMESERIES; add a timechart or bin _time before predict',
+          'PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically',
         );
+      }
+      if (ir.select.length === 0) {
+        ir.select.push(Func('count', []));
       }
       return;
     case 'TstatsCommand':
@@ -767,13 +770,28 @@ function handleJoin(cmd, ir) {
 
   const key = Identifier(cmd.field);
   const joinType = (cmd.joinType || 'inner').toUpperCase();
+
+  // NRQL requires the join key in FACET, not SELECT.
+  // If the subsearch used table/fields (explicit SELECT, no FACET),
+  // move the join key from SELECT to FACET.
+  let subSelect = subIR.select.length > 0 ? subIR.select : [Wildcard()];
+  let subFacet = subIR.facet;
+  if (subFacet.length === 0) {
+    // Remove join key from SELECT if present, add to FACET
+    subSelect = subSelect.filter(
+      (s) => !(s.type === 'Identifier' && s.name === cmd.field),
+    );
+    if (subSelect.length === 0) subSelect = [Wildcard()];
+    subFacet = [key];
+  }
+
   ir.join = JoinClause(
     SelectQuery({
       dataSource: subIR.dataSource,
       bindings: subIR.bindings,
-      select: subIR.select.length > 0 ? subIR.select : [Wildcard()],
+      select: subSelect,
       where: subIR.where,
-      facet: subIR.facet,
+      facet: subFacet,
       limit: subIR.limit || 'MAX',
     }),
     key,
@@ -1023,17 +1041,20 @@ function handleEventstats(cmd, ir) {
 function handleLookup(cmd, ir) {
   // lookup table keyField [AS eventField] [OUTPUT outField1, outField2]
   // Translate as subquery JOIN on the key field
+  // NRQL JOIN requires the join key to be produced by FACET in the subquery
   const eventField = cmd.keyAlias || cmd.key;
   const lookupKey = cmd.key;
   const outputFields = cmd.outputFields || [];
+  const selectExprs =
+    outputFields.length > 0
+      ? outputFields.map((f) =>
+          f.alias ? Alias(Identifier(f.name), f.alias) : Identifier(f.name),
+        )
+      : [Wildcard()];
   const subquery = SelectQuery({
     dataSource: { type: 'Lookup', name: cmd.table },
-    select:
-      outputFields.length > 0
-        ? outputFields.map((f) =>
-            f.alias ? Alias(Identifier(f.name), f.alias) : Identifier(f.name),
-          )
-        : [Wildcard()],
+    select: selectExprs,
+    facet: [Identifier(lookupKey)],
     limit: 'MAX',
   });
   const join = JoinClause(subquery, Identifier(eventField));

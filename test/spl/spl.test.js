@@ -1122,28 +1122,26 @@ const cases = [
   {
     spl: '* | lookup geo_table src_ip',
     v2nrql:
-      'FROM Log JOIN (FROM lookup(geo_table) SELECT * LIMIT MAX) ON src_ip = src_ip SELECT *',
+      'FROM Log JOIN (FROM lookup(geo_table) SELECT * FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *',
     v2warningIncludes: 'lookup table',
     doc: 'correlation-lookup',
-    verified: 'human',
+    verified: false,
   },
-  // FIXME: JOIN subquery must select at least 2 values — needs join key in SELECT
   {
     spl: '* | lookup ip_to_country src_ip OUTPUT country',
     v2nrql:
-      'FROM Log JOIN (FROM lookup(ip_to_country) SELECT country LIMIT MAX) ON src_ip = src_ip SELECT *',
+      'FROM Log JOIN (FROM lookup(ip_to_country) SELECT country FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *',
     v2warningIncludes: 'lookup table',
     doc: 'correlation-lookup',
-    verified: false,
+    verified: 'llm',
   },
-  // FIXME: JOIN subquery must select at least 2 values — needs join key in SELECT
   {
     spl: '* | lookup users_lookup username AS user OUTPUT department',
     v2nrql:
-      'FROM Log JOIN (FROM lookup(users_lookup) SELECT department LIMIT MAX) ON user = username SELECT *',
+      'FROM Log JOIN (FROM lookup(users_lookup) SELECT department FACET username LIMIT MAX) ON user = username SELECT *',
     v2warningIncludes: 'lookup table',
     doc: 'correlation-lookup',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── inputlookup command ─────────────────────────────────────────
@@ -1850,12 +1848,11 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: V2 drops PREDICT entirely when no TIMESERIES; ideally would add TIMESERIES AUTO
     spl: '* | stats count | predict count',
-    v2nrql: "FROM Log SELECT count(*)",
+    v2nrql: "FROM Log SELECT count(*) TIMESERIES AUTO PREDICT",
     v2warningIncludes: 'PREDICT requires TIMESERIES',
     doc: 'reports-timechart',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── chart command ───────────────────────────────────────────────
@@ -2123,11 +2120,10 @@ const cases = [
     verified: 'llm',
   },
   {
-    // FIXME: NRQL rejects subquery that SELECTs the join key — needs FACET-based subquery instead
     spl: '* | join type=left src_ip [search index=geo | table src_ip, country]',
-    v2nrql: "FROM Log LEFT JOIN (FROM Log SELECT src_ip, country WHERE index = 'geo' LIMIT MAX) ON src_ip = src_ip SELECT *",
+    v2nrql: "FROM Log LEFT JOIN (FROM Log SELECT country WHERE index = 'geo' FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *",
     doc: 'correlation-join',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | join type=outer host [search * | stats count by host]',
@@ -2138,7 +2134,7 @@ const cases = [
   {
     spl: '* | join host [search status=500 | table host, message]',
     v2nrql:
-      "FROM Log JOIN (FROM Log SELECT host, message WHERE status = '500' OR numeric(status) = 500 LIMIT MAX) ON host = host SELECT *",
+      "FROM Log JOIN (FROM Log SELECT message WHERE status = '500' OR numeric(status) = 500 FACET host LIMIT MAX) ON host = host SELECT *",
     v2warningIncludes: 'JOIN',
     doc: 'correlation-join',
     verified: 'llm',
@@ -2162,10 +2158,10 @@ const cases = [
   {
     spl: '* | join host [search status=200 host=web*]',
     v2nrql:
-      "FROM Log JOIN (FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND host LIKE 'web%' LIMIT MAX) ON host = host SELECT *",
+      "FROM Log JOIN (FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND host LIKE 'web%' FACET host LIMIT MAX) ON host = host SELECT *",
     v2warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: false,
   },
   {
     spl: 'status=500 | join host [search * | stats count by host]',
@@ -2186,10 +2182,10 @@ const cases = [
   {
     spl: '* | join user [search * | table user, role]',
     v2nrql:
-      'FROM Log JOIN (FROM Log SELECT user, role LIMIT MAX) ON user = user SELECT *',
+      'FROM Log JOIN (FROM Log SELECT role FACET user LIMIT MAX) ON user = user SELECT *',
     v2warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: false,
   },
   //
   // ── dedup command ───────────────────────────────────────────────
@@ -2629,9 +2625,8 @@ const cases = [
   },
   {
     spl: '* | predict count',
-    predict: true,
-    warningIncludes: 'PREDICT requires TIMESERIES',
-    v2nrql: "FROM Log SELECT *",
+    v2nrql: "FROM Log SELECT count(*) TIMESERIES AUTO PREDICT",
+    v2warningIncludes: 'PREDICT requires TIMESERIES',
     doc: 'prediction-predict',
     verified: 'llm',
   },
@@ -2938,13 +2933,12 @@ const cases = [
     verified: 'llm',
   },
   {
-    // FIXME: V2 nested parens with AND/OR don't preserve SPL grouping correctly;
-    // inner (b=2 AND (c=3 OR d=4)) loses AND grouping due to OR-tighter precedence
+    // Grouping preserved via NRQL OR-tighter precedence — no explicit inner parens needed
     spl: '(a=1 OR (b=2 AND (c=3 OR d=4)))',
-    where:
-      "(`a` = '1' OR numeric(`a`) = 1) OR ((`b` = '2' OR numeric(`b`) = 2) AND ((`c` = '3' OR numeric(`c`) = 3) OR (`d` = '4' OR numeric(`d`) = 4)))",
+    v2nrql:
+      "FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3 OR d = '4' OR numeric(d) = 4)",
     doc: 'edge-cases',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'status IN (200)',

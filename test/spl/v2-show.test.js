@@ -1,12 +1,11 @@
 import { translateSplToNrqlV2 } from '../../src/translateV2.js';
 
 const queries = [
-  '* | eval x=typeof(val)',
-  '* | eval x=isbool(val)',
-  '* | eval x=isstr(val)',
-  '* | eval x=round(val, 2)',
-  '* | eventstats count AS total',
-  '* | stats count as appCount by app | eventstats sum(appCount) as namespaceCount',
+  '* | stats count | predict count',
+  '* | lookup ip_to_country src_ip OUTPUT country',
+  '* | lookup users_lookup username AS user OUTPUT department',
+  '* | join type=left src_ip [search index=geo | table src_ip, country]',
+  '* | lookup geo_table src_ip',
 ];
 
 describe('V2 show output', () => {
