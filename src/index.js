@@ -2,11 +2,11 @@
  * nr-query-bridge — Multi-language query translator.
  */
 
-// V1 translator (current)
-export { translateSplToNrql, parseSplTime } from './input/spl/spl.js';
+// SPL → NRQL translator
+export { translateSplToNrql } from './translate.js';
 
-// V2 translator (IR-based, in development)
-export { translateSplToNrqlV2 } from './translateV2.js';
+// Time parsing utility
+export { parseSplTime } from './input/spl/splTime.js';
 
 // IR node constructors
 export * from './ir/nodes.js';

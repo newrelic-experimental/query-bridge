@@ -25,7 +25,7 @@ import {
 } from '../../ir/nodes.js';
 import { escapeStringWildcardForNrql } from '../../output/nrql/nrqlEncoding.js';
 
-import { parseSplTime } from './spl.js';
+import { parseSplTime } from './splTime.js';
 import * as parser from './splParser.js';
 
 /**
@@ -136,7 +136,11 @@ export function translateAstToIR(ast) {
   // Remove _time from FACET when TIMESERIES is present (TIMESERIES already groups by time)
   if (ir.timeseries && ir.facet.length > 0) {
     ir.facet = ir.facet.filter(
-      (f) => !(f.type === 'Identifier' && (f.name === '_time' || f.name === 'timestamp')),
+      (f) =>
+        !(
+          f.type === 'Identifier' &&
+          (f.name === '_time' || f.name === 'timestamp')
+        ),
     );
   }
 
@@ -440,7 +444,7 @@ function applyCommand(cmd, ir) {
       );
       return;
     default:
-      ir.unsupported.push(`V2: command '${cmd.type}' not yet implemented`);
+      ir.unsupported.push(`command '${cmd.type}' not yet implemented`);
       return;
   }
 }
@@ -583,7 +587,9 @@ function handleBin(cmd, ir) {
   } else if (cmd.field && (cmd.span || cmd.width)) {
     // Numeric bin → histogram(field, width)
     const width = cmd.width || Number(cmd.span);
-    ir.select = [Func('histogram', [Identifier(cmd.field), Literal(width, 'number')])];
+    ir.select = [
+      Func('histogram', [Identifier(cmd.field), Literal(width, 'number')]),
+    ];
     ir._hasAggregation = true;
   } else {
     ir.unsupported.push(
@@ -625,7 +631,7 @@ function handleTop(cmd, ir) {
   ir.orderBy = OrderBy(Identifier('count'), true);
 
   // limit=0 means unlimited in SPL
-  ir.limit = cmd.count === 0 ? 'MAX' : (cmd.count || 10);
+  ir.limit = cmd.count === 0 ? 'MAX' : cmd.count || 10;
 
   if (cmd.useother) {
     ir.warnings.push(
@@ -690,7 +696,10 @@ function handleRex(cmd, ir) {
   const field = cmd.field === '_raw' ? 'message' : cmd.field;
   // Convert (?<name>) to (?P<name>) — NRQL capture() uses Python regex syntax
   // Only convert named groups ((?<identifier>)), not lookbehind (?<=) or lookahead (?=)
-  const normalizedPattern = cmd.pattern.replace(/\(\?<([a-zA-Z_]\w*)>/g, '(?P<$1>');
+  const normalizedPattern = cmd.pattern.replace(
+    /\(\?<([a-zA-Z_]\w*)>/g,
+    '(?P<$1>',
+  );
   // Avoid redundant .* when pattern already anchors with .* or .+
   const prefix = /^\.[*+]/.test(normalizedPattern) ? '' : '.*';
   const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '.*';
@@ -1102,7 +1111,11 @@ function handleConvert(cmd, ir) {
       case 'rmcomma':
         // '1,234' → numeric(replace(field, ',', ''))
         expr = Func('numeric', [
-          Func('replace', [Identifier(field), Literal(',', 'string'), Literal('', 'string')]),
+          Func('replace', [
+            Identifier(field),
+            Literal(',', 'string'),
+            Literal('', 'string'),
+          ]),
         ]);
         break;
       case 'ctime':
@@ -1617,7 +1630,7 @@ function walkEvalFunc(node, ir) {
           ? rawPat
           : rawPat?.type === 'StringLiteral'
             ? rawPat.value
-            : walkEvalExpr(rawPat, ir)?.value ?? String(rawPat);
+            : (walkEvalExpr(rawPat, ir)?.value ?? String(rawPat));
       if (field && patStr) {
         // Convert SPL wildcards to NRQL: * → %
         const nrqlPattern = patStr.replace(/\*/g, '%');
@@ -1634,12 +1647,13 @@ function walkEvalFunc(node, ir) {
           ? rawCidr
           : rawCidr?.type === 'StringLiteral'
             ? rawCidr.value
-            : walkEvalExpr(rawCidr, ir)?.value ?? String(rawCidr);
+            : (walkEvalExpr(rawCidr, ir)?.value ?? String(rawCidr));
       const ipField = walkEvalExpr(args[1], ir);
       if (cidrStr && ipField) {
         const prefixMatch = cidrStr.match(/\/(\d+)$/);
         const prefix = prefixMatch ? Number(prefixMatch[1]) : 24;
-        return BinOp('=',
+        return BinOp(
+          '=',
           Func('cidrAddress', [ipField, Literal(prefix, 'number')]),
           Literal(cidrStr, 'string'),
         );
@@ -1657,7 +1671,7 @@ function walkEvalFunc(node, ir) {
           ? rawPattern
           : rawPattern?.type === 'StringLiteral'
             ? rawPattern.value
-            : walkEvalExpr(rawPattern, ir)?.value ?? String(rawPattern);
+            : (walkEvalExpr(rawPattern, ir)?.value ?? String(rawPattern));
       if (field && patternStr) {
         return Rlike(field, patternStr);
       }

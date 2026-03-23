@@ -12,7 +12,6 @@ import {
   Wildcard,
   Regex,
   SelectQuery,
-  Union,
   NestedAggregation,
   EventType,
   LookupSource,

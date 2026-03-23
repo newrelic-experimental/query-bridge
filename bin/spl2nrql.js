@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { translateSplToNrqlV2 } from '../src/index.js';
+import { translateSplToNrql } from '../src/index.js';
 import { createInterface } from 'node:readline';
 
 const usage = `Usage:
@@ -9,7 +9,7 @@ const usage = `Usage:
   spl2nrql -i                     # interactive REPL`;
 
 function translate(spl) {
-  const result = translateSplToNrqlV2(spl);
+  const result = translateSplToNrql(spl);
   if (result.nrql) {
     process.stdout.write(result.nrql + '\n');
   }
@@ -50,7 +50,9 @@ function readStdin() {
   return new Promise((resolve) => {
     let data = '';
     process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('data', (chunk) => {
+      data += chunk;
+    });
     process.stdin.on('end', () => resolve(data.trim()));
   });
 }

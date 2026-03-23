@@ -37,12 +37,9 @@ Native ESM — no babel, no transpilation. Jest runs with `--experimental-vm-mod
 
 ## Architecture
 
-Two pipelines run in parallel (V1 and V2):
 ```
-SPL → Peggy parser → AST → V1 (spl.js, flat accumulator) → NRQL
-                          → V2 (splToIR.js → IR → irToNrql.js) → NRQL
+SPL → Peggy parser → AST → splToIR.js → IR → irToNrql.js → NRQL
 ```
-V1 stays until V2 is reviewed and trusted. V1 is NOT necessarily correct.
 
 ### IR Nodes (src/ir/nodes.js)
 Plain objects with `type` field. `SelectQuery`, `Union`, `NestedAggregation` at query level. `Identifier`, `Literal`, `BinOp`, `Func`, `Alias`, etc. at expression level.
@@ -56,15 +53,14 @@ Plain objects with `type` field. `SelectQuery`, `Union`, `NestedAggregation` at 
 
 ### Source
 - `src/ir/` — IR node types and optimization
-- `src/input/spl/` — SPL parser, grammar, V1 translator, V2 AST→IR translator
+- `src/input/spl/` — SPL parser, grammar, AST→IR translator, time parsing
 - `src/output/nrql/` — IR→NRQL emitter and encoding utilities
-- `src/translateV2.js` — V2 entry point: parse → IR → emit
+- `src/translate.js` — Entry point: parse → IR → emit
 
 ### Tests
-- `test/spl/spl.test.js` — V1 unit tests + V2 unit tests + V1/V2 real-world comparison
-- `test/spl/spl-real-world.json` — 339 real-world SPL queries for V1/V2 comparison
-- `test/spl/v2-debug.test.js` — Auto-patches missing v2nrql into spl.test.js; also dumps divergences
-- `test/spl/v2-show.test.js` — Quick V2 output viewer: edit queries array, run, see NRQL + warnings
+- `test/spl/spl.test.js` — Unit tests + real-world regression suite
+- `test/spl/spl-real-world.json` — 339 real-world SPL queries for regression testing
+- `test/spl/v2-show.test.js` — Quick output viewer: edit queries array, run, see NRQL + warnings
 - `test/ir/` and `test/output/` — IR and emitter unit tests
 
 ### Docs & References
@@ -80,15 +76,6 @@ ESLint (flat config), Prettier, TypeScript checkJs. Husky pre-commit runs lint-s
 - `verified: 'human'` — reviewed and approved by human
 - `verified: 'llm'` — reviewed by expert agents + MCP validation, not yet human-approved
 - `verified: false` — unverified or has known FIXME
-
-### Test Migration Pattern
-To migrate a test from V1 to V2: remove V1 assertions (`where`, `select`, `facet`), add `v2nrql` field. Validate V2 NRQL via MCP (`execute_nrql_query` on account 1) before migrating.
-
-### V2 Comparison Metrics
-- **exact**: Identical NRQL output
-- **semantic**: Differ only by backtick style
-- **divergence**: Real structural difference
-- **regression**: V2 errors where V1 worked (must be zero)
 
 ## Translation Analysis Process
 

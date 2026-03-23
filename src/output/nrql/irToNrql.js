@@ -143,8 +143,8 @@ function smartEscape(name) {
 // NRQL precedence (OR binds TIGHTER than AND — opposite of SQL/SPL):
 //   OR  > AND > comparisons > addition > multiplication
 const NRQL_PRECEDENCE = {
-  'AND': 1, // lowest boolean precedence in NRQL
-  'OR': 2, // OR binds tighter than AND in NRQL
+  AND: 1, // lowest boolean precedence in NRQL
+  OR: 2, // OR binds tighter than AND in NRQL
   '=': 3,
   '!=': 3,
   '<': 3,

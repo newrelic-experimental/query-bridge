@@ -1,5 +1,5 @@
 /**
- * V2 translator entry point.
+ * SPL → NRQL translator entry point.
  *
  * SPL string → parse → IR → optimize → emit → NRQL string
  */
@@ -7,7 +7,7 @@ import * as parser from './input/spl/splParser.js';
 import { translateAstToIR } from './input/spl/splToIR.js';
 import { emitQuery } from './output/nrql/irToNrql.js';
 
-export function translateSplToNrqlV2(spl) {
+export function translateSplToNrql(spl) {
   if (!spl || !spl.trim()) {
     return {
       nrql: 'FROM Log SELECT *',
@@ -17,7 +17,7 @@ export function translateSplToNrqlV2(spl) {
     };
   }
 
-  // Strip YAML multiline indicators (same as V1)
+  // Strip YAML multiline indicators
   spl = spl.replace(/^>-?\s*\n/, '');
 
   let ast;
@@ -39,7 +39,7 @@ export function translateSplToNrqlV2(spl) {
   // const optimized = optimize(ir);
 
   // When a query is fully unsupported with no meaningful output,
-  // return empty string (same as V1's __none__ handling)
+  // return empty string
   if (
     ir.unsupported.length > 0 &&
     ir.select.length === 0 &&

@@ -1,19 +1,18 @@
-import { translateSplToNrqlV2 } from '../../src/translateV2.js';
+import { translateSplToNrql } from '../../src/translate.js';
 
-const queries = [
-  '* | rex field=message "(?<=prefix)(?<val>\\\\w+)"',
-];
+const queries = ['* | stats count by host'];
 
-describe('V2 show output', () => {
+describe('show output', () => {
   queries.forEach((spl, i) => {
     it(`[${i}] ${spl}`, () => {
-      const v2 = translateSplToNrqlV2(spl);
+      const r = translateSplToNrql(spl);
       console.log(`  SPL:  ${spl}`);
-      console.log(`  V2:   ${v2.nrql}`);
-      if (v2.warnings.length) console.log(`  W:    ${v2.warnings.join('; ')}`);
-      if (v2.unsupported.length)
-        console.log(`  U:    ${v2.unsupported.join('; ')}`);
-      if (v2.errors.length) console.log(`  E:    ${v2.errors.join('; ')}`);
+      console.log(`  NRQL: ${JSON.stringify(r.nrql)}`);
+      if (r.warnings.length)
+        console.log(`  W:    ${JSON.stringify(r.warnings)}`);
+      if (r.unsupported.length)
+        console.log(`  U:    ${JSON.stringify(r.unsupported)}`);
+      if (r.errors.length) console.log(`  E:    ${JSON.stringify(r.errors)}`);
     });
   });
 });
