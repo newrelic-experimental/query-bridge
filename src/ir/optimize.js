@@ -94,6 +94,31 @@ function applyFillnull(ir) {
   return walked;
 }
 
+// ── Pass 5: Field replacement substitution ──────────────────
+
+function applyFieldReplacements(ir) {
+  if (!ir._fieldReplacements) return ir;
+  const map = ir._fieldReplacements;
+  const substituted = new Set();
+
+  const walked = transformTree(ir, (node) => {
+    if (node.type === 'Identifier' && map[node.name]) {
+      substituted.add(node.name);
+      return map[node.name];
+    }
+    return node;
+  });
+
+  const unreferenced = Object.entries(map).filter(([f]) => !substituted.has(f));
+  if (unreferenced.length > 0) {
+    const rest = walked.select.length === 0 ? [Wildcard()] : walked.select;
+    walked.select = [...unreferenced.map(([, expr]) => expr), ...rest];
+  }
+
+  delete walked._fieldReplacements;
+  return walked;
+}
+
 // ── Pipeline ────────────────────────────────────────────────
 
 const passes = [
@@ -101,6 +126,7 @@ const passes = [
   foldConstants,
   eliminateTautologies,
   applyFillnull,
+  applyFieldReplacements,
 ];
 
 export function optimize(ir) {
