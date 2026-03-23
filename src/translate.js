@@ -6,6 +6,7 @@
 import * as parser from './input/spl/splParser.js';
 import { translateAstToIR } from './input/spl/splToIR.js';
 import { emitQuery } from './output/nrql/irToNrql.js';
+import { optimize } from './ir/optimize.js';
 
 export function translateSplToNrql(spl) {
   if (!spl || !spl.trim()) {
@@ -35,26 +36,26 @@ export function translateSplToNrql(spl) {
   // Pass 1: SPL AST → IR
   const ir = translateAstToIR(ast);
 
-  // TODO: Optimization pass goes here
-  // const optimized = optimize(ir);
+  // Pass 2: Optimize IR
+  const optimized = optimize(ir);
 
   // Unsupported or errors → no NRQL output
-  if (ir.unsupported.length > 0 || ir.errors.length > 0) {
+  if (optimized.unsupported.length > 0 || optimized.errors.length > 0) {
     return {
       nrql: '',
-      warnings: ir.warnings,
-      unsupported: ir.unsupported,
-      errors: ir.errors,
+      warnings: optimized.warnings,
+      unsupported: optimized.unsupported,
+      errors: optimized.errors,
     };
   }
 
-  // Pass 2: IR → NRQL string
-  const nrql = emitQuery(ir);
+  // Pass 3: IR → NRQL string
+  const nrql = emitQuery(optimized);
 
   return {
     nrql,
-    warnings: ir.warnings,
-    unsupported: ir.unsupported,
-    errors: ir.errors,
+    warnings: optimized.warnings,
+    unsupported: optimized.unsupported,
+    errors: optimized.errors,
   };
 }
