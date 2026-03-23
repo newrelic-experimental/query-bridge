@@ -22,6 +22,7 @@ import {
   Binding,
   JoinClause,
   OrderBy,
+  DualCheck,
 } from '../../ir/nodes.js';
 import { escapeStringWildcardForNrql } from '../../output/nrql/nrqlEncoding.js';
 
@@ -1491,14 +1492,7 @@ function walkEvalExpr(node, ir) {
         right.kind === 'number' &&
         left.type === 'Identifier'
       ) {
-        const strCompare = BinOp(
-          op,
-          left,
-          Literal(String(right.value), 'string'),
-        );
-        const numCompare = BinOp(op, Func('numeric', [left]), right);
-        const joinOp = op === '=' ? 'OR' : 'AND';
-        return BinOp(joinOp, strCompare, numCompare);
+        return DualCheck(left, op, right);
       }
       return BinOp(op, left, right);
     }
@@ -1899,14 +1893,7 @@ function buildJparseComparison(jparsedExpr, op, value) {
 function buildExprComparison(fieldExpr, op, value) {
   if (isNumeric(value)) {
     if (op === '=' || op === '!=') {
-      const strCompare = BinOp(op, fieldExpr, Literal(value, 'string'));
-      const numCompare = BinOp(
-        op,
-        Func('numeric', [fieldExpr]),
-        Literal(Number(value), 'number'),
-      );
-      const joinOp = op === '=' ? 'OR' : 'AND';
-      return BinOp(joinOp, strCompare, numCompare);
+      return DualCheck(fieldExpr, op, Literal(Number(value), 'number'));
     }
     return BinOp(
       op,
