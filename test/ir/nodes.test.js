@@ -12,7 +12,6 @@ import {
   SubqueryExpr,
   Regex,
   SelectQuery,
-  NestedAggregation,
   EventType,
   LookupSource,
   SubquerySource,
@@ -170,13 +169,6 @@ describe('IR query nodes', () => {
     const src = SubquerySource(inner);
     expect(src.type).toBe('SubquerySource');
     expect(src.query.type).toBe('SelectQuery');
-  });
-
-  it('NestedAggregation', () => {
-    const n = NestedAggregation([SelectQuery()], SelectQuery());
-    expect(n.type).toBe('NestedAggregation');
-    expect(n.layers).toHaveLength(1);
-    expect(n.dataQuery.type).toBe('SelectQuery');
   });
 
   it('Binding', () => {

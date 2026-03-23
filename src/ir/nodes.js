@@ -93,9 +93,3 @@ export const SelectQuery = (overrides = {}) => ({
   _fieldReplacements: undefined,
   ...overrides,
 });
-
-export const NestedAggregation = (layers, dataQuery) => ({
-  type: 'NestedAggregation',
-  layers,
-  dataQuery,
-});

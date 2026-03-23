@@ -95,19 +95,6 @@ function transformChildren(node, fn) {
           : node.dataSource,
       };
 
-    case 'Union':
-      return {
-        ...node,
-        queries: node.queries.map((q) => transformTree(q, fn)),
-      };
-
-    case 'NestedAggregation':
-      return {
-        ...node,
-        layers: node.layers.map((l) => transformTree(l, fn)),
-        dataQuery: transformTree(node.dataQuery, fn),
-      };
-
     default:
       return node;
   }

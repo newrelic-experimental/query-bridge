@@ -206,8 +206,6 @@ export function emitQuery(node) {
   switch (node.type) {
     case 'SelectQuery':
       return emitSelectQuery(node);
-    case 'NestedAggregation':
-      return emitNestedAggregation(node);
     default:
       return `/* unknown query type: ${node.type} */`;
   }
@@ -298,13 +296,4 @@ function emitDataSource(ds) {
     default:
       return 'Log';
   }
-}
-
-function emitNestedAggregation(node) {
-  // Inner query becomes FROM subquery, outer layer wraps around it
-  const outer = node.layers[0];
-  return emitSelectQuery({
-    ...outer,
-    dataSource: { type: 'SubquerySource', query: node.dataQuery },
-  });
 }

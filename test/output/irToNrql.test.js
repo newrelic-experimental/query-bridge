@@ -12,7 +12,6 @@ import {
   Wildcard,
   Regex,
   SelectQuery,
-  NestedAggregation,
   EventType,
   LookupSource,
   SubquerySource,
@@ -240,22 +239,5 @@ describe('emitQuery', () => {
       "FROM (FROM Log SELECT count(*) AS 'cnt' FACET host LIMIT MAX)",
     );
     expect(nrql).toContain('SELECT max(cnt)');
-  });
-
-  it('NestedAggregation', () => {
-    const inner = SelectQuery({
-      select: [Alias(Func('count', []), 'cnt')],
-      facet: [Identifier('host')],
-      limit: 'MAX',
-    });
-    const outer = SelectQuery({
-      select: [Func('sum', [Identifier('cnt')])],
-    });
-    const na = NestedAggregation([outer], inner);
-    const nrql = emitQuery(na);
-    expect(nrql).toContain(
-      "FROM (FROM Log SELECT count(*) AS 'cnt' FACET host LIMIT MAX)",
-    );
-    expect(nrql).toContain('SELECT sum(cnt)');
   });
 });
