@@ -5,7 +5,7 @@
  * AST→IR translation and NRQL emission.
  */
 import { transformTree } from './transform.js';
-import { Identifier, BinOp, Wildcard } from './nodes.js';
+import { Identifier, BinOp, Func, Literal, Wildcard } from './nodes.js';
 
 // ── Pass 1: Double-NOT elimination ──────────────────────────
 
@@ -119,12 +119,26 @@ function applyFieldReplacements(ir) {
   return walked;
 }
 
+// ── Pass 6: Dual-check expansion ────────────────────────────
+
+function expandDualChecks(ir) {
+  return transformTree(ir, (node) => {
+    if (node.type !== 'DualCheck') return node;
+    const { field, op, value } = node;
+    const strCompare = BinOp(op, field, Literal(String(value.value), 'string'));
+    const numCompare = BinOp(op, Func('numeric', [field]), value);
+    const joinOp = op === '=' ? 'OR' : 'AND';
+    return BinOp(joinOp, strCompare, numCompare);
+  });
+}
+
 // ── Pipeline ────────────────────────────────────────────────
 
 const passes = [
   eliminateDoubleNot,
   foldConstants,
   eliminateTautologies,
+  expandDualChecks,
   applyFillnull,
   applyFieldReplacements,
 ];

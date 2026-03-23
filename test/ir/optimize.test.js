@@ -3,6 +3,8 @@ import {
   Literal,
   BinOp,
   Not,
+  Func,
+  DualCheck,
   SelectQuery,
 } from '../../src/ir/nodes.js';
 import { optimize } from '../../src/ir/optimize.js';
@@ -164,6 +166,108 @@ describe('optimize', () => {
       const ir = SelectQuery({ where: expr });
       const result = optimize(ir);
       expect(result.where).toEqual(expr);
+    });
+  });
+
+  describe('expandDualChecks', () => {
+    it("expands equality: DualCheck(field, =, 500) → field = '500' OR numeric(field) = 500", () => {
+      const ir = SelectQuery({
+        where: DualCheck(Identifier('status'), '=', Literal(500, 'number')),
+      });
+      const result = optimize(ir);
+      expect(result.where).toEqual(
+        BinOp(
+          'OR',
+          BinOp('=', Identifier('status'), Literal('500', 'string')),
+          BinOp(
+            '=',
+            Func('numeric', [Identifier('status')]),
+            Literal(500, 'number'),
+          ),
+        ),
+      );
+    });
+
+    it("expands inequality: DualCheck(field, !=, 500) → field != '500' AND numeric(field) != 500", () => {
+      const ir = SelectQuery({
+        where: DualCheck(Identifier('status'), '!=', Literal(500, 'number')),
+      });
+      const result = optimize(ir);
+      expect(result.where).toEqual(
+        BinOp(
+          'AND',
+          BinOp('!=', Identifier('status'), Literal('500', 'string')),
+          BinOp(
+            '!=',
+            Func('numeric', [Identifier('status')]),
+            Literal(500, 'number'),
+          ),
+        ),
+      );
+    });
+
+    it('expands DualCheck nested in AND', () => {
+      const ir = SelectQuery({
+        where: BinOp(
+          'AND',
+          DualCheck(Identifier('status'), '=', Literal(200, 'number')),
+          Identifier('other'),
+        ),
+      });
+      const result = optimize(ir);
+      expect(result.where.left).toEqual(
+        BinOp(
+          'OR',
+          BinOp('=', Identifier('status'), Literal('200', 'string')),
+          BinOp(
+            '=',
+            Func('numeric', [Identifier('status')]),
+            Literal(200, 'number'),
+          ),
+        ),
+      );
+      expect(result.where.right).toEqual(Identifier('other'));
+    });
+
+    it('handles float values: DualCheck(field, =, 3.14)', () => {
+      const ir = SelectQuery({
+        where: DualCheck(Identifier('score'), '=', Literal(3.14, 'number')),
+      });
+      const result = optimize(ir);
+      expect(result.where).toEqual(
+        BinOp(
+          'OR',
+          BinOp('=', Identifier('score'), Literal('3.14', 'string')),
+          BinOp(
+            '=',
+            Func('numeric', [Identifier('score')]),
+            Literal(3.14, 'number'),
+          ),
+        ),
+      );
+    });
+
+    it('handles complex field expression (e.g., from jparse)', () => {
+      const field = Func('lower', [Identifier('status')]);
+      const ir = SelectQuery({
+        where: DualCheck(field, '=', Literal(200, 'number')),
+      });
+      const result = optimize(ir);
+      expect(result.where).toEqual(
+        BinOp(
+          'OR',
+          BinOp(
+            '=',
+            Func('lower', [Identifier('status')]),
+            Literal('200', 'string'),
+          ),
+          BinOp(
+            '=',
+            Func('numeric', [Func('lower', [Identifier('status')])]),
+            Literal(200, 'number'),
+          ),
+        ),
+      );
     });
   });
 
