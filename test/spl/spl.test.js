@@ -891,7 +891,7 @@ const cases = [
     spl: '* | eval x=round(val, 2)',
     nrql: 'FROM Log WITH round(val, 0.01) AS x SELECT *',
     doc: 'eval-math',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | eval x=pow(base, exp)',
@@ -951,19 +951,19 @@ const cases = [
     spl: '* | eval x=typeof(val)',
     unsupportedIncludes: 'typeof()',
     doc: 'eval-type',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | eval x=isbool(val)',
     unsupportedIncludes: 'isbool()',
     doc: 'eval-type',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | eval x=isstr(val)',
     unsupportedIncludes: 'isstr()',
     doc: 'eval-type',
-    verified: false,
+    verified: 'llm',
   },
   // eval if() with == on field-to-field comparison
   {
@@ -1097,7 +1097,7 @@ const cases = [
     nrql: 'FROM lookup(users.csv) SELECT * WHERE role="admin"',
     warningIncludes: 'inputlookup WHERE',
     doc: 'results-inputlookup',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── rex command ─────────────────────────────────────────────────
@@ -1358,7 +1358,7 @@ const cases = [
     spl: '* | rename _time AS "Time"',
     nrql: "FROM Log SELECT timestamp AS 'Time'",
     doc: 'fields-rename',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | rename properties.* as *',
@@ -1390,25 +1390,25 @@ const cases = [
     spl: '* | strcat host ":" port address',
     nrql: "FROM Log WITH concat(host, ':', port) AS address SELECT *",
     doc: 'fields-strcat',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | strcat first_name last_name full_name',
     nrql: 'FROM Log WITH concat(first_name, last_name) AS full_name SELECT *',
     doc: 'fields-strcat',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | strcat protocol "://" host ":" port url',
     nrql: "FROM Log WITH concat(protocol, '://', host, ':', port) AS url SELECT *",
     doc: 'fields-strcat',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | strcat host ":" port address | stats count by address',
     nrql: "FROM Log WITH concat(host, ':', port) AS address SELECT count(*) FACET address",
     doc: 'fields-strcat',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── rare command ────────────────────────────────────────────────
@@ -1750,34 +1750,34 @@ const cases = [
     spl: '* | top categoryId',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10",
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | top 20 host',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20",
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   // limit=N keyword form
   {
     spl: '* | top limit=20 host',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20",
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   // limit=0 means unlimited → LIMIT MAX
   {
     spl: '* | top limit=0 status',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX",
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   // countfield option renames the count column
   {
     spl: '* | top limit=5 countfield=total host',
     nrql: "FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   // showperc=false suppresses percent select
   {
@@ -1792,28 +1792,28 @@ const cases = [
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5",
     warningIncludes: 'useother',
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   // percentfield option renames the percent column
   {
     spl: '* | top 5 percentfield=pct host',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   // limit=N after field name
   {
     spl: '* | top delay limit=10',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10",
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   // percent subquery includes WHERE from search
   {
     spl: 'error | top 5 status',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── top with groupby ────────────────────────────────────────────
@@ -1823,7 +1823,7 @@ const cases = [
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5",
     warningIncludes: 'top with groupBy',
     doc: 'reports-top-groupby',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── Multiple aggregation ────────────────────────────────────────
@@ -1861,13 +1861,13 @@ const cases = [
     spl: '* | bucket span=5m _time | stats count by _time',
     nrql: 'FROM Log SELECT count(*) TIMESERIES 5 minutes',
     doc: 'reports-bin',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | bin size span=10',
     nrql: 'FROM Log SELECT histogram(size, 10)',
     doc: 'reports-bin',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── where (pipe) ────────────────────────────────────────────────
@@ -1916,7 +1916,7 @@ const cases = [
     spl: '* | where like(host, "web*")',
     nrql: "FROM Log SELECT * WHERE host LIKE 'web%'",
     doc: 'results-where',
-    verified: false,
+    verified: 'llm',
   },
   // where with infix like operator
   {
@@ -1929,13 +1929,13 @@ const cases = [
     spl: '* | where match(host, "^web[0-9]+$")',
     nrql: "FROM Log SELECT * WHERE host RLIKE r'^web[0-9]+$'",
     doc: 'results-where',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | where cidrmatch("10.0.0.0/8", src_ip)',
     nrql: "FROM Log SELECT * WHERE cidrAddress(src_ip, 8) = '10.0.0.0/8'",
     doc: 'results-where',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | where status >= 400 AND status < 500',
@@ -2091,19 +2091,19 @@ const cases = [
     spl: '* | regex "fatal|critical"',
     nrql: "FROM Log SELECT * WHERE message RLIKE r'fatal|critical'",
     doc: 'results-regex',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'status=500 | regex message="timeout"',
     nrql: "FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'timeout'",
     doc: 'results-regex',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | regex uri_path="^/api/v[0-9]+"',
     nrql: "FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'",
     doc: 'results-regex',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── table / fields ──────────────────────────────────────────────
@@ -2114,7 +2114,7 @@ const cases = [
     spl: '* | table _time, host, status, bytes, url',
     nrql: 'FROM Log SELECT timestamp, host, status, bytes, url',
     doc: 'results-table',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | table *',
@@ -2134,7 +2134,7 @@ const cases = [
     spl: '* | fields _time, host, status',
     nrql: 'FROM Log SELECT timestamp, host, status',
     doc: 'results-table',
-    verified: false,
+    verified: 'llm',
   },
   // fields + prefix (explicit include)
   {
@@ -2250,13 +2250,13 @@ const cases = [
     spl: '* | reverse',
     nrql: 'FROM Log SELECT * ORDER BY timestamp ASC',
     doc: 'results-reverse',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'error | table message | reverse',
     nrql: "FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp ASC",
     doc: 'results-reverse',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── Unsupported commands ────────────────────────────────────────
@@ -2305,7 +2305,7 @@ const cases = [
     spl: '* | eventstats count AS total',
     nrql: "FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'",
     doc: 'reports-eventstats',
-    verified: false,
+    verified: 'llm',
   },
   // real-world pattern: stats then eventstats (chained aggregation, no BY)
   {
@@ -2525,7 +2525,7 @@ const cases = [
     nrql: 'FROM Log WITH numeric(bytes) AS bytes_converted SELECT *',
     warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     // '1,234,567' → 1234567
@@ -2533,14 +2533,14 @@ const cases = [
     nrql: "FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *",
     warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     // 1741916927007 → '2026-03-13T23:48:47.007Z'
     spl: '* | convert ctime(timestamp) AS readable',
     nrql: 'FROM Log WITH toDatetime(timestamp) AS readable SELECT *',
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     // '2026-03-13T23:48:47.007Z' → 1741916927007
@@ -2548,7 +2548,7 @@ const cases = [
     nrql: 'FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *',
     warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     // '346.319097ms' → 0.346 — uses numeric() approximation (no NRQL duration parser)
@@ -2556,7 +2556,7 @@ const cases = [
     nrql: 'FROM Log WITH numeric(duration) AS duration_converted SELECT *',
     warningIncludes: 'dur2sec',
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     // '02:30.500' → 150.5 — uses numeric() approximation (no NRQL mm:ss parser)
@@ -2564,14 +2564,14 @@ const cases = [
     nrql: 'FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *',
     warningIncludes: 'mstime',
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     // num: '200' → 200, rmcomma: '1,000' → 1000
     spl: '* | convert num(status), rmcomma(total)',
     nrql: "FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, ',', '')) AS total_converted SELECT *",
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | convert auto(field)',
@@ -2636,29 +2636,28 @@ const cases = [
     spl: '* | replace "error" WITH "warning" IN message',
     nrql: "FROM Log SELECT replace(message, 'error', 'warning'), *",
     doc: 'fields-replace',
-    verified: false,
+    verified: 'llm',
   },
   // downstream aggregation → replace applied in FACET
   {
     spl: '* | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype',
     nrql: "FROM Log SELECT count(*) FACET replace(sourcetype, 'kube:container:', '')",
     doc: 'fields-replace',
-    verified: false,
+    verified: 'llm',
   },
   // multi-pair replace
   {
     spl: '* | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType',
     nrql: "FROM Log SELECT replace(replace(OperationType, '%%14674', 'Value Added'), '%%14675', 'Value Deleted'), *",
     doc: 'fields-replace',
-    verified: false,
+    verified: 'llm',
   },
   // replace eval: fix JSON quoting — self-referencing eval inlined into SELECT to avoid circular dependency
   {
     spl: '* | eval json_content=replace(json_content, "\'", "\\"") | spath input=json_content',
-    nrql: "FROM Log SELECT replace(json_content, '\\'', '\"')",
     unsupportedIncludes: 'spath without path=',
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | sichart count by host',
