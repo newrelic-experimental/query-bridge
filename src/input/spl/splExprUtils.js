@@ -12,6 +12,7 @@ import {
   Func,
   DualCheck,
   RawNrql,
+  SelectQuery,
 } from '../../ir/nodes.js';
 import { escapeStringWildcardForNrql } from '../../output/nrql/nrqlEncoding.js';
 
@@ -324,4 +325,23 @@ export function exprReferencesField(expr, fieldName) {
 
 export function escapeWildcard(value) {
   return value.split('*').map(escapeStringWildcardForNrql).join('%');
+}
+
+// ── Subquery wrapping ───────────────────────────────────────
+
+export function wrapAsSubquery(ir) {
+  const innerQuery = SelectQuery({
+    dataSource: ir.dataSource,
+    bindings: [...ir.bindings],
+    select: [...ir.select],
+    where: ir.where,
+    facet: [...ir.facet],
+    limit: ir.facet.length > 0 ? 'MAX' : ir.limit,
+  });
+
+  ir.dataSource = { type: 'SubquerySource', query: innerQuery };
+  ir.select = [];
+  ir.facet = [];
+  ir.bindings = [];
+  ir.where = null;
 }
