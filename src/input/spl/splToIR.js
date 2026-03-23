@@ -15,10 +15,7 @@ import {
   Like,
   In,
   Wildcard,
-  Regex,
-  Rlike,
   RawNrql,
-  Binding,
   JoinClause,
   OrderBy,
 } from '../../ir/nodes.js';
@@ -50,6 +47,12 @@ import {
   handleMvexpand,
   handleUniq,
 } from './rowHandlers.js';
+import {
+  handleRex,
+  handleSpath,
+  handleRegex,
+  handleSearchPipe,
+} from './extractionHandlers.js';
 
 /**
  * Main entry: translate a parsed SPL AST into an IR query plan.
@@ -494,136 +497,6 @@ function handleRare(cmd, ir) {
   ir.orderBy = OrderBy(Identifier('count'), false); // ASC for rare
   ir.limit = cmd.count || 10;
   ir._hasAggregation = true;
-}
-
-function handleRex(cmd, ir) {
-  if (cmd.mode === 'sed') {
-    ir.unsupported.push('rex mode=sed has no NRQL equivalent');
-    return;
-  }
-  if (cmd.mode !== 'extract' || !cmd.pattern) {
-    ir.unsupported.push('rex command could not be parsed');
-    return;
-  }
-
-  // Extract named group names — match (?P<name>) or (?<name>) but NOT (?<=) or (?<!)
-  const groupRegex = /\(\?(?:P<|<)([a-zA-Z_]\w*)>/g;
-  const names = [];
-  let match;
-  while ((match = groupRegex.exec(cmd.pattern)) !== null) {
-    names.push(match[1]);
-  }
-
-  if (names.length === 0) {
-    ir.unsupported.push(
-      'rex pattern has no named capture groups; nothing to extract',
-    );
-    return;
-  }
-
-  if (cmd.maxMatch) {
-    ir.unsupported.push(
-      'rex max_match not supported; NRQL capture() returns first match only',
-    );
-  }
-
-  // Detect PCRE lookbehind/lookahead — NRQL capture() rejects these
-  if (/\(\?<=|\(\?<!|\(\?=|\(\?!/.test(cmd.pattern)) {
-    ir.unsupported.push(
-      'rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround',
-    );
-    return;
-  }
-
-  // Build capture() expression(s)
-  const field = cmd.field === '_raw' ? 'message' : cmd.field;
-  // Convert (?<name>) to (?P<name>) — NRQL capture() uses Python regex syntax
-  // Only convert named groups ((?<identifier>)), not lookbehind (?<=) or lookahead (?=)
-  const normalizedPattern = cmd.pattern.replace(
-    /\(\?<([a-zA-Z_]\w*)>/g,
-    '(?P<$1>',
-  );
-  // Avoid redundant .* when pattern already anchors with .* or .+
-  const prefix = /^\.[*+]/.test(normalizedPattern) ? '' : '.*';
-  const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '.*';
-  const fullPattern = `${prefix}${normalizedPattern}${suffix}`;
-
-  if (names.length === 1) {
-    // Single capture group — one binding
-    const captureExpr = Func('capture', [
-      Identifier(field),
-      Regex(fullPattern),
-    ]);
-    ir.bindings.push(Binding(`(${names[0]})`, captureExpr));
-  } else {
-    // Multiple capture groups — one capture() call per group.
-    // Each call keeps one (?P<name>...) and converts the rest to non-capturing (?:...).
-    for (const targetName of names) {
-      const perGroupPattern = fullPattern.replace(
-        /\(\?P<([a-zA-Z_]\w*)>/g,
-        (match, name) => (name === targetName ? match : '(?:'),
-      );
-      const captureExpr = Func('capture', [
-        Identifier(field),
-        Regex(perGroupPattern),
-      ]);
-      ir.bindings.push(Binding(targetName, captureExpr));
-    }
-  }
-}
-
-function handleSpath(cmd, ir) {
-  if (!cmd.path) {
-    ir.unsupported.push(
-      'spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field',
-    );
-    return;
-  }
-  const rawInput = cmd.input || 'message';
-  const input = rawInput === '_raw' ? 'message' : rawInput;
-  // Default output name is last segment of path (SPL convention)
-  const output =
-    cmd.output ||
-    cmd.path
-      .split('.')
-      .pop()
-      .replace(/[{}[\]*]/g, '');
-  const jsonPath = cmd.path.replace(/\{[^}]*\}/g, '[*]');
-  ir.bindings.push(
-    Binding(
-      output,
-      Func('jparse', [Identifier(input), Literal(jsonPath, 'string')]),
-    ),
-  );
-  ir.warnings.push(
-    'jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead',
-  );
-}
-
-function handleRegex(cmd, ir) {
-  const field = cmd.field || '_raw';
-  const fieldId = field === '_raw' ? Identifier('message') : Identifier(field);
-  const pattern = cmd.pattern;
-  if (cmd.negate) {
-    const rlike = Not(Rlike(fieldId, pattern));
-    ir.where = ir.where ? BinOp('AND', ir.where, rlike) : rlike;
-  } else {
-    const rlike = Rlike(fieldId, pattern);
-    ir.where = ir.where ? BinOp('AND', ir.where, rlike) : rlike;
-  }
-}
-
-function handleSearchPipe(cmd, ir) {
-  // | search is like an additional WHERE clause
-  const searchNode = cmd.search || cmd.expression;
-  if (searchNode) {
-    const { expr, warnings, unsupported } = translateSearchExpr(searchNode);
-    if (expr) {
-      ir.where = ir.where ? BinOp('AND', ir.where, expr) : expr;
-    }
-    ir.warnings.push(...warnings);
-    ir.unsupported.push(...unsupported);
-  }
 }
 
 function handleJoin(cmd, ir) {
