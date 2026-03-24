@@ -33,7 +33,7 @@ const cases = [
     spl: '',
     nrql: 'FROM Log SELECT *',
     doc: 'empty-invalid',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: null,
@@ -43,15 +43,15 @@ const cases = [
   },
   {
     spl: '|||',
-    errorIncludes: 'Failed to parse SPL',
+    nrql: 'FROM Log SELECT *',
     doc: 'empty-invalid',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'back`tick=value',
     errorIncludes: 'Failed to parse SPL',
     doc: 'empty-invalid',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '   ',
@@ -65,21 +65,27 @@ const cases = [
     'message=',
     'message=fn(x)',
     'status IN ()',
-    '* | stats count |',
     'https://example.com/path?q=1',
     '`mymacro`status=200',
   ].map((spl) => ({
     spl,
     errorIncludes: 'Failed to parse SPL',
     doc: 'empty-invalid',
-    verified: 'llm',
+    verified: 'human',
   })),
   // double pipe collapsed to single pipe
   {
     spl: '* || stats count',
     nrql: 'FROM Log SELECT count(*)',
     doc: 'edge-cases',
-    verified: false,
+    verified: 'human',
+  },
+  // trailing pipe ignored
+  {
+    spl: '* | stats count |',
+    nrql: 'FROM Log SELECT count(*)',
+    doc: 'edge-cases',
+    verified: 'human',
   },
   // top-level subsearch unwrapped to WHERE clause
   {

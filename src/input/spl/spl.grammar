@@ -33,7 +33,7 @@ start
   = _* pipeline:pipeline _* { return pipeline; }
 
 pipeline
-  = search:search_clause? pipes:pipe_command*
+  = search:search_clause? pipes:pipe_command* _* '|'* _*
     {
       return {
         type: 'Pipeline',
