@@ -3046,6 +3046,7 @@ afterAll(() => {
         parts.push(`> [!CAUTION]\n> ${u}`);
       }
     }
+    parts.push('---');
     return parts.join('\n\n');
   }
 
