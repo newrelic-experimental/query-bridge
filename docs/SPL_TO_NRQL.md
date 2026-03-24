@@ -556,7 +556,7 @@ Computes aggregation statistics and adds them as new fields to every event (with
 
 3. **Add max(_time) to get the latest record per group** (~10%) — find the most recent event per source:
    ```
-   SPL: index=infra | eventstats max(_time) as lastImport by source | where _time=lastImport
+   SPL: index=imports | eventstats max(_time) as lastImport by source | where _time=lastImport
    ```
    **NRQL:** Use a subquery JOIN with a WHERE filter on the enriched field:
    ```
@@ -3005,6 +3005,19 @@ NRQL: FROM lookup(my_table) SELECT *
 
 > [!WARNING]
 > Ensure lookup table 'my_table' is uploaded via the Lookups UI
+
+---
+
+```
+❓ Not confirmed
+SPL:  * | join host [inputlookup servers.csv]
+NRQL: FROM Log JOIN (FROM lookup(servers.csv) SELECT * FACET host LIMIT MAX) ON host = host SELECT *
+```
+
+> [!WARNING]
+> `join` subsearch: Ensure lookup table 'servers.csv' is uploaded via the Lookups UI
+>
+> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 
 ---
 
