@@ -43,7 +43,7 @@ pipeline
     }
 
 pipe_command
-  = _* '|' _* cmd:command { return cmd; }
+  = _* '|'+ _* cmd:command { return cmd; }
 
 command
   = stats_command
@@ -1114,7 +1114,13 @@ primary_expr
   / comparison
   / term_directive
   / template_variable
+  / top_level_subsearch
   / bare_keyword
+
+// [subsearch] at the top level — Splunk runs the inner search and uses results as search terms
+top_level_subsearch
+  = '[' content:subsearch_content ']'
+    { return { type: 'TopLevelSubsearch', rawText: content }; }
 
 template_variable
   = '$' name:template_var_name '$'

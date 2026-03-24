@@ -21,7 +21,9 @@ import {
   buildJparseComparison,
   coerceValue,
   escapeWildcard,
+  normalizeSubsearch,
 } from './splExprUtils.js';
+import * as parser from './splParser.js';
 import { handleEval, handleWhere } from './evalHandlers.js';
 import {
   handleTable,
@@ -279,6 +281,23 @@ export function translateSearchExpr(node) {
           'NOT [subsearch] exclusion pattern; manually convert to NOT IN or WHERE NOT conditions in NRQL',
         );
         return null;
+      }
+
+      case 'TopLevelSubsearch': {
+        // [subsearch] at the top level — Splunk runs the inner search and
+        // uses results as search terms. We parse the subsearch and fold its
+        // WHERE clause into the outer query.
+        try {
+          const subAst = parser.parse(normalizeSubsearch(node.rawText));
+          const subIR = translateAstToIR(subAst);
+          for (const w of subIR.warnings) warnings.push(`subsearch: ${w}`);
+          for (const u of subIR.unsupported)
+            unsupported.push(`subsearch: ${u}`);
+          return subIR.where;
+        } catch (e) {
+          unsupported.push(`[subsearch] could not be parsed: ${e.message}`);
+          return null;
+        }
       }
 
       default:

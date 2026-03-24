@@ -18,20 +18,7 @@ import { walkEvalExpr } from './evalHandlers.js';
 import { translateAstToIR } from './splToIR.js';
 import * as parser from './splParser.js';
 
-// SPL subsearches can omit the leading `|` for commands like `inputlookup`.
-// The parser needs `|` to recognize them as commands rather than search terms.
-const COMMAND_PREFIXES =
-  /^(inputlookup|lookup|stats|eventstats|top|rare|table|fields|eval|rename|dedup|sort|head|tail|rex|spath|regex|bin|bucket|chart|timechart|where|search|join|append|appendcols|appendpipe|convert|replace|strcat|fillnull|predict|mvexpand|uniq|reverse|transaction|streamstats)\b/i;
-
-function normalizeSubsearch(raw) {
-  const trimmed = raw.trim();
-  // Already has a leading pipe — parse as-is
-  if (trimmed.startsWith('|')) return trimmed;
-  // Starts with a known command name — prepend pipe
-  if (COMMAND_PREFIXES.test(trimmed)) return `| ${trimmed}`;
-  // Otherwise it's a search expression — parse as-is
-  return trimmed;
-}
+import { normalizeSubsearch } from './splExprUtils.js';
 
 export function handleJoin(cmd, ir) {
   if (cmd.joinType === 'outer') {

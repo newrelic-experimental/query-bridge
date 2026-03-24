@@ -64,9 +64,7 @@ const cases = [
   ...[
     'message=',
     'message=fn(x)',
-    '[search index=web | fields host]',
     'status IN ()',
-    '* || stats count',
     '* | stats count |',
     'https://example.com/path?q=1',
     '`mymacro`status=200',
@@ -76,6 +74,20 @@ const cases = [
     doc: 'empty-invalid',
     verified: 'llm',
   })),
+  // double pipe collapsed to single pipe
+  {
+    spl: '* || stats count',
+    nrql: 'FROM Log SELECT count(*)',
+    doc: 'edge-cases',
+    verified: false,
+  },
+  // top-level subsearch unwrapped to WHERE clause
+  {
+    spl: '[search index=web | fields host]',
+    nrql: "FROM Log SELECT * WHERE index = 'web'",
+    doc: 'edge-cases',
+    verified: false,
+  },
   //
   // ── Bare keywords (no field prefix) ─────────────────────────────
   //

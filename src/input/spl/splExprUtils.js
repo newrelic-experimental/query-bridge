@@ -345,3 +345,17 @@ export function wrapAsSubquery(ir) {
   ir.bindings = [];
   ir.where = null;
 }
+
+// ── Subsearch normalization ─────────────────────────────────
+
+// SPL subsearches can omit the leading `|` for commands like `inputlookup`.
+// The parser needs `|` to recognize them as commands rather than search terms.
+const COMMAND_PREFIXES =
+  /^(inputlookup|lookup|stats|eventstats|top|rare|table|fields|eval|rename|dedup|sort|head|tail|rex|spath|regex|bin|bucket|chart|timechart|where|search|join|append|appendcols|appendpipe|convert|replace|strcat|fillnull|predict|mvexpand|uniq|reverse|transaction|streamstats)\b/i;
+
+export function normalizeSubsearch(raw) {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('|')) return trimmed;
+  if (COMMAND_PREFIXES.test(trimmed)) return `| ${trimmed}`;
+  return trimmed;
+}
