@@ -256,6 +256,7 @@ NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), f
 ```
 🤖 Confirmed by LLM
 SPL:  * | append [search error]
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -266,6 +267,7 @@ SPL:  * | append [search error]
 ```
 🤖 Confirmed by LLM
 SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -293,6 +295,7 @@ NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests'
 ```
 🤖 Confirmed by LLM
 SPL:  * | stats count as total | appendcols [search * | stats count by host]
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -481,6 +484,7 @@ NRQL: FROM Log WITH numeric(field) AS field_converted SELECT *
 ```
 🤖 Confirmed by LLM
 SPL:  * | convert rmunit(field)
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -491,6 +495,7 @@ SPL:  * | convert rmunit(field)
 ```
 🤖 Confirmed by LLM
 SPL:  * | convert memk(field)
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -754,6 +759,7 @@ NRQL: FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur', max(duratio
 ```
 🤖 Confirmed by LLM
 SPL:  * | eventstats sum(bytes) AS total BY host, status
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -770,6 +776,7 @@ Extracts key-value pairs using automatic field discovery. NRQL has no equivalent
 ```
 🤖 Confirmed by LLM
 SPL:  * | extract pairdelim=","
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -891,6 +898,7 @@ NRQL: FROM Log SELECT field1 OR 0, field2 OR 0, field3 OR 0, *
 ```
 🤖 Confirmed by LLM
 SPL:  * | fillnull value=0
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -907,6 +915,7 @@ Runs a template expression over a set of fields matching a wildcard pattern. NRQ
 ```
 🤖 Confirmed by LLM
 SPL:  * | foreach count_* [eval total=total+<<FIELD>>]
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1044,6 +1053,7 @@ NRQL: FROM Log JOIN (FROM Log SELECT role FACET user LIMIT MAX) ON user = user S
 ```
 🤖 Confirmed by LLM
 SPL:  * | join type=outer host [search * | stats count by host]
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1103,6 +1113,7 @@ Combines multivalue field entries into a single multivalue field. NRQL does not 
 ```
 🤖 Confirmed by LLM
 SPL:  * | mvcombine delim="," values
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1337,6 +1348,7 @@ NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *
 ```
 ✅ Confirmed by human
 SPL:  * | rename properties.* as *
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1347,6 +1359,7 @@ SPL:  * | rename properties.* as *
 ```
 ❓ Not confirmed
 SPL:  * | rename "IsOutlier(count)" as isOutlier
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1473,6 +1486,7 @@ NRQL: FROM Log WITH capture(message, r'.*\"orderId\":\"(?P<orderId>[A-Z0-9-]+)\"
 ```
 ✅ Confirmed by human
 SPL:  * | rex field=message "\d+"
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1483,6 +1497,7 @@ SPL:  * | rex field=message "\d+"
 ```
 ✅ Confirmed by human
 SPL:  * | rex field=message "(?<skus>\d{6,})" max_match=0
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1499,6 +1514,7 @@ Uses sed-like syntax for in-line string substitution. Limited NRQL support via s
 ```
 ✅ Confirmed by human
 SPL:  * | rex mode=sed field=message "s/old/new/g"
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1515,6 +1531,7 @@ PCRE features like lookaheads/lookbehinds and backreferences. NRQL's RE2 regex e
 ```
 🤖 Confirmed by LLM
 SPL:  * | rex field=message "(?<=prefix)(?<val>\w+)"
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1698,6 +1715,7 @@ NRQL: FROM Log WITH jparse(payload, 'user.id') AS user_id SELECT *
 ```
 ✅ Confirmed by human
 SPL:  * | spath
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1708,6 +1726,7 @@ SPL:  * | spath
 ```
 ✅ Confirmed by human
 SPL:  * | spath input=payload
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -1868,6 +1887,7 @@ Computes running statistics over events in stream order. Like `eventstats`, NRQL
 ```
 🤖 Confirmed by LLM
 SPL:  * | streamstats count by host
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2009,6 +2029,7 @@ Overlays time series data from different time periods. NRQL has no time-wrapping
 ```
 🤖 Confirmed by LLM
 SPL:  * | timechart count | timewrap 1d
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2166,6 +2187,7 @@ Splunk's `transaction` groups a sequence of events that share a field value (lik
 ```
 🤖 Confirmed by LLM
 SPL:  * | transaction clientip maxspan=10m
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2348,6 +2370,7 @@ Extracts key-value pairs from XML data. NRQL has no XML parser; consider using `
 ```
 🤖 Confirmed by LLM
 SPL:  * | xmlkv
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2626,6 +2649,7 @@ NRQL: FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval x=replace(name, "\\d+", "")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2636,6 +2660,7 @@ SPL:  * | eval x=replace(name, "\\d+", "")
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval x=replace(name, "[abc]", "")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2646,6 +2671,7 @@ SPL:  * | eval x=replace(name, "[abc]", "")
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval x=replace(name, "test.*end", "")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2656,6 +2682,7 @@ SPL:  * | eval x=replace(name, "test.*end", "")
 ```
 ❓ Not confirmed
 SPL:  * | eval x=replace(name, "\d+", "")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2666,6 +2693,7 @@ SPL:  * | eval x=replace(name, "\d+", "")
 ```
 ❓ Not confirmed
 SPL:  * | eval x=replace(name, "foo+", "")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2676,6 +2704,7 @@ SPL:  * | eval x=replace(name, "foo+", "")
 ```
 ❓ Not confirmed
 SPL:  * | eval x=replace(name, "x?y", "")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2686,6 +2715,7 @@ SPL:  * | eval x=replace(name, "x?y", "")
 ```
 ❓ Not confirmed
 SPL:  * | eval x=replace(name, "foo|bar", "")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2696,6 +2726,7 @@ SPL:  * | eval x=replace(name, "foo|bar", "")
 ```
 ❓ Not confirmed
 SPL:  * | eval x=replace(name, "\s+", " ")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2706,6 +2737,7 @@ SPL:  * | eval x=replace(name, "\s+", " ")
 ```
 ❓ Not confirmed
 SPL:  * | eval x=replace(uri, "https://example.com/.*", "")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2716,6 +2748,7 @@ SPL:  * | eval x=replace(uri, "https://example.com/.*", "")
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval json_content=replace(json_content, "'", "\"") | spath input=json_content
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2830,6 +2863,7 @@ NRQL: FROM Log WITH string(val) AS x SELECT *
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval x=typeof(val)
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2840,6 +2874,7 @@ SPL:  * | eval x=typeof(val)
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval x=isbool(val)
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2850,6 +2885,7 @@ SPL:  * | eval x=isbool(val)
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval x=isstr(val)
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -2948,6 +2984,7 @@ NRQL: FROM Log WITH getField(split(data, ','), 0) AS x SELECT *
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval joined = mvjoin(tags, ", ")
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3090,6 +3127,7 @@ Computes running totals over events. NRQL has no running/cumulative aggregation.
 ```
 🤖 Confirmed by LLM
 SPL:  * | accum bytes as running_total
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3122,6 +3160,7 @@ Highlights search terms in results. This is a Splunk UI display feature with no 
 ```
 🤖 Confirmed by LLM
 SPL:  * | highlight error warning
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3203,6 +3242,7 @@ Performs statistical queries against the Splunk metrics store. For New Relic met
 ```
 🤖 Confirmed by LLM
 SPL:  | mstats avg(cpu.percent) by host
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3223,6 +3263,7 @@ Converts a multivalue field to a single value. NRQL does not have multivalue fie
 ```
 🤖 Confirmed by LLM
 SPL:  * | nomv values
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3327,6 +3368,7 @@ Joins results with themselves on a shared field. NRQL JOIN requires two differen
 ```
 🤖 Confirmed by LLM
 SPL:  * | selfjoin host
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3343,6 +3385,7 @@ Performs set operations (union, diff, intersect) on subsearch results. NRQL has 
 ```
 🤖 Confirmed by LLM
 SPL:  * | set union
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3359,6 +3402,7 @@ Returns the last N results. NRQL has no reverse-order limit — results are alwa
 ```
 🤖 Confirmed by LLM
 SPL:  * | tail 10
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3369,6 +3413,7 @@ SPL:  * | tail 10
 ```
 🤖 Confirmed by LLM
 SPL:  * | tail 20
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3385,6 +3430,7 @@ Transposes rows and columns in results. NRQL has no pivot/transpose operation. R
 ```
 🤖 Confirmed by LLM
 SPL:  * | stats count by host | transpose
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3401,6 +3447,7 @@ Removes consecutive duplicate events. Translates similarly to `dedup`.
 ```
 🤖 Confirmed by LLM
 SPL:  * | sort host | uniq
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3447,6 +3494,7 @@ Identifies anomalous events using statistical analysis. NRQL has no built-in ano
 ```
 🤖 Confirmed by LLM
 SPL:  * | anomalies field=count
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3487,6 +3535,7 @@ Clusters similar events together based on field values. NRQL has no clustering a
 ```
 🤖 Confirmed by LLM
 SPL:  * | cluster showcount=true
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3531,6 +3580,7 @@ Simplified access to data model objects. Same Splunk-specific limitation as `dat
 ```
 🤖 Confirmed by LLM
 SPL:  | datamodel Authentication
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3667,6 +3717,7 @@ Writes results to the Splunk metrics store. No NRQL equivalent.
 ```
 🤖 Confirmed by LLM
 SPL:  * | mcollect index=metrics_idx
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3687,6 +3738,7 @@ Searches index metadata rather than events. NRQL queries events directly; index 
 ```
 🤖 Confirmed by LLM
 SPL:  | metadata type=sources
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3711,6 +3763,7 @@ Writes results to a CSV file on the Splunk server. No NRQL equivalent. Use New R
 ```
 🤖 Confirmed by LLM
 SPL:  * | outputcsv results.csv
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3735,6 +3788,7 @@ References a data model dataset and creates a pivot table. Pivot is built on Spl
 ```
 🤖 Confirmed by LLM
 SPL:  | pivot Web_Traffic count
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3780,6 +3834,7 @@ Accesses Splunk's internal REST API from within a search. NRQL queries run again
 ```
 🤖 Confirmed by LLM
 SPL:  | rest /services/server/info
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3816,6 +3871,7 @@ Sends results via email. No NRQL equivalent. Use New Relic alert notifications o
 ```
 🤖 Confirmed by LLM
 SPL:  * | sendemail to="admin@example.com"
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3836,6 +3892,7 @@ Summary indexing commands that write precomputed aggregations back to Splunk ind
 ```
 🤖 Confirmed by LLM
 SPL:  * | sichart count by host
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3876,6 +3933,7 @@ Computes moving averages over time series data. NRQL has no moving average funct
 ```
 🤖 Confirmed by LLM
 SPL:  * | trendline sma5(count) as trend
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -3896,6 +3954,7 @@ Performs statistical queries on indexed fields or data model datasets. This is S
 ```
 🤖 Confirmed by LLM
 SPL:  | tstats count FROM datamodel=Endpoint.Processes
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -4030,6 +4089,7 @@ Commands not recognized by the translator produce a generic unsupported message.
 ```
 🤖 Confirmed by LLM
 SPL:  * | xyzcommand foo bar
+NRQL: 
 ```
 
 > [!CAUTION]
@@ -4952,6 +5012,7 @@ NRQL: FROM Log SELECT *
 ```
 🤖 Confirmed by LLM
 SPL:  |||
+NRQL: 
 ```
 
 ---
@@ -4959,6 +5020,7 @@ SPL:  |||
 ```
 🤖 Confirmed by LLM
 SPL:  back`tick=value
+NRQL: 
 ```
 
 ---
@@ -4974,6 +5036,7 @@ NRQL: FROM Log SELECT *
 ```
 🤖 Confirmed by LLM
 SPL:  message=
+NRQL: 
 ```
 
 ---
@@ -4981,6 +5044,7 @@ SPL:  message=
 ```
 🤖 Confirmed by LLM
 SPL:  message=fn(x)
+NRQL: 
 ```
 
 ---
@@ -4988,6 +5052,7 @@ SPL:  message=fn(x)
 ```
 🤖 Confirmed by LLM
 SPL:  [search index=web | fields host]
+NRQL: 
 ```
 
 ---
@@ -4995,6 +5060,7 @@ SPL:  [search index=web | fields host]
 ```
 🤖 Confirmed by LLM
 SPL:  status IN ()
+NRQL: 
 ```
 
 ---
@@ -5002,6 +5068,7 @@ SPL:  status IN ()
 ```
 🤖 Confirmed by LLM
 SPL:  * || stats count
+NRQL: 
 ```
 
 ---
@@ -5009,6 +5076,7 @@ SPL:  * || stats count
 ```
 🤖 Confirmed by LLM
 SPL:  * | stats count |
+NRQL: 
 ```
 
 ---
@@ -5016,6 +5084,7 @@ SPL:  * | stats count |
 ```
 🤖 Confirmed by LLM
 SPL:  https://example.com/path?q=1
+NRQL: 
 ```
 
 ---
@@ -5023,6 +5092,7 @@ SPL:  https://example.com/path?q=1
 ```
 🤖 Confirmed by LLM
 SPL:  `mymacro`status=200
+NRQL: 
 ```
 
 ---

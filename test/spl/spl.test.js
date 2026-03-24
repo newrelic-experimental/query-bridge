@@ -3031,9 +3031,7 @@ afterAll(() => {
     const badge = VERIFIED_BADGES[e.verified] || '❓ Not confirmed';
     // Code block for SPL/NRQL + badge (gray background)
     const codeLines = [badge, `SPL:  ${e.spl || '(empty)'}`];
-    if (e.nrql) {
-      codeLines.push(`NRQL: ${e.nrql}`);
-    }
+    codeLines.push(`NRQL: ${e.nrql || ''}`);
     const parts = ['```\n' + codeLines.join('\n') + '\n```'];
     // Alert boxes for warnings/unsupported/errors
     if (e.warnings) {
