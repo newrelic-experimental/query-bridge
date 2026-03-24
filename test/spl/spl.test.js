@@ -675,7 +675,7 @@ const cases = [
     spl: '* | eval x = if(status=200, "ok", "err")',
     nrql: "FROM Log WITH if(status = '200' OR numeric(status) = 200, 'ok', 'err') AS x SELECT *",
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'human',
   },
   // Eval piped to stats + eval chained (two eval commands)
   {
@@ -732,7 +732,7 @@ const cases = [
     spl: '* | eval full = first . " " . last',
     nrql: "FROM Log WITH concat(first, ' ', last) AS full SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // eval mvindex() → getField()
   {
@@ -746,7 +746,7 @@ const cases = [
     spl: '* | eval joined = mvjoin(tags, ", ")',
     unsupportedIncludes: 'mvjoin',
     doc: 'eval-multivalue',
-    verified: 'llm',
+    verified: 'human',
   },
   // eval if() with comparison
   {
@@ -798,14 +798,14 @@ const cases = [
     spl: '* | eval x=case(a=1, "one", b=2, "two", 1=1, "other")',
     nrql: "FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', 'other')) AS x SELECT *",
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'human',
   },
   // case() with even args and no default → NULL fallback
   {
     spl: '* | eval x=case(a=1, "one", b=2, "two")',
     nrql: "FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', NULL)) AS x SELECT *",
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'human',
   },
   // eval if() with OR condition
   {
@@ -861,14 +861,14 @@ const cases = [
     spl: '* | eval x=trim(name)',
     nrql: "FROM Log WITH capture(name, r'^\\s*(?P<x>.*\\S)\\s*$') AS x SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // eval ltrim() → capture with leading whitespace strip
   {
     spl: '* | eval x=ltrim(name)',
     nrql: "FROM Log WITH capture(name, r'^\\s*(?P<x>.*)$') AS x SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // eval replace() with simple literal → NRQL replace()
   {
@@ -882,7 +882,7 @@ const cases = [
     spl: '* | eval x=replace(name, "\\\\d+", "")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: 'llm',
+    verified: 'human',
   },
   // eval replace() simple deletion
   {
@@ -903,7 +903,7 @@ const cases = [
     spl: '* | eval x=round(val, 2)',
     nrql: 'FROM Log WITH round(val, 0.01) AS x SELECT *',
     doc: 'eval-math',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | eval x=pow(base, exp)',
@@ -957,25 +957,25 @@ const cases = [
     spl: '* | eval x=tostring(val)',
     nrql: 'FROM Log WITH string(val) AS x SELECT *',
     doc: 'eval-type',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | eval x=typeof(val)',
     unsupportedIncludes: 'typeof()',
     doc: 'eval-type',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | eval x=isbool(val)',
     unsupportedIncludes: 'isbool()',
     doc: 'eval-type',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | eval x=isstr(val)',
     unsupportedIncludes: 'isstr()',
     doc: 'eval-type',
-    verified: 'llm',
+    verified: 'human',
   },
   // eval if() with == on field-to-field comparison
   {
@@ -1003,7 +1003,7 @@ const cases = [
     nrql: 'FROM Log WITH values AS x SELECT *',
     warningIncludes: 'mvindex() requires at least 2 arguments',
     doc: 'eval-multivalue',
-    verified: 'llm',
+    verified: 'human',
   },
   // mvindex(split(...), 0) → getField(split(...), 0)
   {
@@ -1023,80 +1023,80 @@ const cases = [
     spl: '* | eval x=replace(name, "[abc]", "")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | eval x=replace(name, "test.*end", "")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: 'llm',
+    verified: 'human',
   },
   // replace() regex detection — quantifiers after word chars
   {
     spl: '* | eval x=replace(name, "\\d+", "")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | eval x=replace(name, "foo+", "")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | eval x=replace(name, "x?y", "")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // replace() regex detection — alternation
   {
     spl: '* | eval x=replace(name, "foo|bar", "")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // replace() regex detection — \s+ parsed as s+ (parser strips backslash)
   {
     spl: '* | eval x=replace(name, "\\s+", " ")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // replace() with literal dot in hostname — should NOT flag as regex
   {
     spl: '* | eval x=replace(name, "old.host.com", "new.host.com")',
     nrql: "FROM Log WITH replace(name, 'old.host.com', 'new.host.com') AS x SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // replace() with literal hyphen — should NOT flag as regex
   {
     spl: '* | eval x=replace(name, "foo-bar", "baz")',
     nrql: "FROM Log WITH replace(name, 'foo-bar', 'baz') AS x SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // replace() with URL containing ? and + — should NOT flag as regex
   {
     spl: '* | eval x=replace(uri, "https://old.com/api?key=val", "https://new.com/api")',
     nrql: "FROM Log WITH replace(uri, 'https://old.com/api?key=val', 'https://new.com/api') AS x SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | eval x=replace(uri, "/path/to+file", "/path/to_file")',
     nrql: "FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // replace() with URL that also has real regex — should still flag
   {
     spl: '* | eval x=replace(uri, "https://example.com/.*", "")',
     unsupportedIncludes: 'regex',
     doc: 'eval-string',
-    verified: false,
+    verified: 'human',
   },
   // where with infix like operator — exact output
   {
@@ -1117,7 +1117,7 @@ const cases = [
     nrql: "FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *",
     warningIncludes: 'original field names',
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'human',
   },
   //
   // ── lookup command ──────────────────────────────────────────────
