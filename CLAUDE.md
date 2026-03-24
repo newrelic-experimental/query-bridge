@@ -37,25 +37,38 @@ Native ESM — no babel, no transpilation. Jest runs with `--experimental-vm-mod
 
 ## Architecture
 
+See `docs/ARCHITECTURE.md` for full pipeline overview with worked example.
+
 ```
-SPL → Peggy parser → AST → splToIR.js → IR → irToNrql.js → NRQL
+SPL → Peggy parser → AST → splToIR → IR → optimize → irToNrql → NRQL
 ```
 
 ### IR Nodes (src/ir/nodes.js)
-Plain objects with `type` field. `SelectQuery`, `NestedAggregation` at query level. `Identifier`, `Literal`, `BinOp`, `Func`, `Alias`, etc. at expression level.
+Plain objects with `type` field. `SelectQuery` at query level. `Identifier`, `Literal`, `BinOp`, `Func`, `Alias`, `DualCheck`, etc. at expression level.
+
+### IR Optimization (src/ir/optimize.js)
+Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.js`):
+1. Double-NOT elimination
+2. Constant folding (arithmetic on number literals)
+3. Tautology elimination (`x AND true` → `x`)
+4. DualCheck expansion (`DualCheck(field, =, 500)` → `field = '500' OR numeric(field) = 500`)
+5. Fillnull substitution (apply `_fillnullMap` entries)
+6. Field replacement substitution (apply `_fieldReplacements` entries)
 
 ### Key Design Decisions
 - **Smart backticking**: Only backtick identifiers with dots/dashes/spaces/colons/curlies. Simple names bare. Macros (`$name`) pass through.
-- **Numeric dual-check**: `SPL: status=500` → `NRQL: status = '500' OR numeric(status) = 500`
+- **DualCheck IR node**: `SPL: status=500` → `DualCheck` node → expanded by optimizer to `status = '500' OR numeric(status) = 500`. Consolidates dual-check logic from 2 call sites into 1 expansion pass.
 - **Subquery wrapping**: Stats-after-stats wraps as `SubquerySource`, not string hack.
 
 ## Important Paths
 
 ### Source
-- `src/ir/` — IR node types and optimization
-- `src/input/spl/` — SPL parser, grammar, AST→IR translator, time parsing
+- `src/translate.js` — Top-level entry: parse → optimize → emit
+- `src/ir/` — IR node types (`nodes.js`), tree walker (`transform.js`), optimization pipeline (`optimize.js`)
+- `src/input/spl/splToIR.js` — Entry point + search expr translation + command dispatch table
+- `src/input/spl/*Handlers.js` — Command handlers split by theme: aggregation, enrichment, extraction, eval, row
+- `src/input/spl/splExprUtils.js` — Shared utilities: field/function mapping, comparison builders, arithmetic parsing
 - `src/output/nrql/` — IR→NRQL emitter and encoding utilities
-- `src/translate.js` — Entry point: parse → IR → emit
 
 ### Tests
 - `test/spl/spl.test.js` — Unit tests + real-world regression suite
@@ -64,6 +77,7 @@ Plain objects with `type` field. `SelectQuery`, `NestedAggregation` at query lev
 - `test/ir/` and `test/output/` — IR and emitter unit tests
 
 ### Docs & References
+- `docs/ARCHITECTURE.md` — pipeline overview, file map, worked example
 - `docs/SPL_TO_NRQL.md` — translation status doc and divergence analysis
 - `.claude/rules/nrql-reference.md` — NRQL syntax, functions, and translation gotchas
 - `.claude/rules/spl-reference.md` — SPL syntax, commands, and translation gotchas
