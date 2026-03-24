@@ -39,23 +39,18 @@ export function translateSplToNrql(spl) {
   // Pass 2: Optimize IR
   const optimized = optimize(ir);
 
+  // Deduplicate messages (multiple commands can produce the same warning)
+  const warnings = [...new Set(optimized.warnings)];
+  const unsupported = [...new Set(optimized.unsupported)];
+  const errors = [...new Set(optimized.errors)];
+
   // Unsupported or errors → no NRQL output
-  if (optimized.unsupported.length > 0 || optimized.errors.length > 0) {
-    return {
-      nrql: '',
-      warnings: optimized.warnings,
-      unsupported: optimized.unsupported,
-      errors: optimized.errors,
-    };
+  if (unsupported.length > 0 || errors.length > 0) {
+    return { nrql: '', warnings, unsupported, errors };
   }
 
   // Pass 3: IR → NRQL string
   const nrql = emitQuery(optimized);
 
-  return {
-    nrql,
-    warnings: optimized.warnings,
-    unsupported: optimized.unsupported,
-    errors: optimized.errors,
-  };
+  return { nrql, warnings, unsupported, errors };
 }

@@ -1247,7 +1247,6 @@ Extracts fields from structured data (JSON, XML). Translates to NRQL `jparse()` 
   NRQL: FROM Log WITH jparse(message, 'user.name') AS name, jparse(message, 'user.email') AS email SELECT *
   ✅ Confirmed by human
 ! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
 
 ```diff
