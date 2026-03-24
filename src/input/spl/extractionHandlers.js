@@ -70,28 +70,11 @@ export function handleRex(cmd, ir) {
   const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '.*';
   const fullPattern = `${prefix}${normalizedPattern}${suffix}`;
 
-  if (names.length === 1) {
-    // Single capture group — one binding
-    const captureExpr = Func('capture', [
-      Identifier(field),
-      Regex(fullPattern),
-    ]);
-    ir.bindings.push(Binding(`(${names[0]})`, captureExpr));
-  } else {
-    // Multiple capture groups — one capture() call per group.
-    // Each call keeps one (?P<name>...) and converts the rest to non-capturing (?:...).
-    for (const targetName of names) {
-      const perGroupPattern = fullPattern.replace(
-        /\(\?P<([a-zA-Z_]\w*)>/g,
-        (match, name) => (name === targetName ? match : '(?:'),
-      );
-      const captureExpr = Func('capture', [
-        Identifier(field),
-        Regex(perGroupPattern),
-      ]);
-      ir.bindings.push(Binding(targetName, captureExpr));
-    }
-  }
+  // Single capture() call with tuple destructuring for multiple groups:
+  // WITH capture(field, r'...(?P<a>...)...(?P<b>...)...') AS (a, b)
+  const captureExpr = Func('capture', [Identifier(field), Regex(fullPattern)]);
+  const tupleName = `(${names.join(', ')})`;
+  ir.bindings.push(Binding(tupleName, captureExpr));
 }
 
 export function handleSpath(cmd, ir) {

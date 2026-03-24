@@ -92,7 +92,7 @@ const cases = [
     spl: '[search index=web | fields host]',
     nrql: "FROM Log SELECT * WHERE index = 'web'",
     doc: 'edge-cases',
-    verified: false,
+    verified: 'human',
   },
   //
   // ── Bare keywords (no field prefix) ─────────────────────────────
@@ -1129,21 +1129,21 @@ const cases = [
     nrql: 'FROM Log JOIN (FROM lookup(geo_table) SELECT * FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *',
     warningIncludes: 'lookup table',
     doc: 'correlation-lookup',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | lookup ip_to_country src_ip OUTPUT country',
     nrql: 'FROM Log JOIN (FROM lookup(ip_to_country) SELECT country FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *',
     warningIncludes: 'lookup table',
     doc: 'correlation-lookup',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | lookup users_lookup username AS user OUTPUT department',
     nrql: 'FROM Log JOIN (FROM lookup(users_lookup) SELECT department FACET username LIMIT MAX) ON user = username SELECT *',
     warningIncludes: 'lookup table',
     doc: 'correlation-lookup',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── inputlookup command ─────────────────────────────────────────
@@ -1175,14 +1175,14 @@ const cases = [
     nrql: 'FROM Log JOIN (FROM lookup(servers.csv) SELECT * FACET host LIMIT MAX) ON host = host SELECT *',
     warningIncludes: 'lookup table',
     doc: 'results-inputlookup',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '| inputlookup users.csv where role="admin"',
     nrql: "FROM lookup(users.csv) SELECT * WHERE role = 'admin'",
     warningIncludes: 'inputlookup WHERE',
     doc: 'results-inputlookup',
-    verified: false,
+    verified: 'human',
   },
   //
   // ── rex command ─────────────────────────────────────────────────
@@ -1199,12 +1199,12 @@ const cases = [
     doc: 'fields-rex',
     verified: 'human',
   },
-  // multi-capture rex: one capture() call per named group
+  // multi-capture rex: single capture() with tuple destructuring
   {
     spl: '* | rex field=_raw "From: <(?<from>.*)> To: <(?<to>.*)>"',
-    nrql: "FROM Log WITH capture(message, r'.*From: <(?P<from>.*)> To: <(?:.*)>.*') AS `from`, capture(message, r'.*From: <(?:.*)> To: <(?P<to>.*)>.*') AS to SELECT *",
+    nrql: "FROM Log WITH capture(message, r'.*From: <(?P<from>.*)> To: <(?P<to>.*)>.*') AS (from, to) SELECT *",
     doc: 'fields-rex',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | rex field=message "\\d+"',
@@ -1249,7 +1249,7 @@ const cases = [
     spl: '* | rex field=message "(?<=prefix)(?<val>\\w+)"',
     unsupportedIncludes: 'lookahead/lookbehind',
     doc: 'fields-rex-pcre',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── spath command ───────────────────────────────────────────────
