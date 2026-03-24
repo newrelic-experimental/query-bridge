@@ -3074,7 +3074,7 @@ afterAll(() => {
     const blocks = sorted.map(renderEntry);
     return (
       `<!-- spl-cases: ${tag} -->\n` +
-      blocks.join('\n\n') +
+      blocks.join('\n\n---\n\n') +
       `\n<!-- /spl-cases -->`
     );
   });
