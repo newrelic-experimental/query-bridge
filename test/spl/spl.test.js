@@ -3029,21 +3029,24 @@ afterAll(() => {
 
   function renderEntry(e) {
     const badge = VERIFIED_BADGES[e.verified] || '❓ Not confirmed';
-    // Single diff code block: SPL/NRQL as neutral (space prefix), badge as neutral,
-    // warnings as yellow (!), unsupported as red (-)
-    const lines = [];
-    lines.push(`  SPL:  ${e.spl || '(empty)'}`);
+    // Code block for SPL/NRQL + badge (gray background)
+    const codeLines = [badge, `SPL:  ${e.spl || '(empty)'}`];
     if (e.nrql) {
-      lines.push(`  NRQL: ${e.nrql}`);
+      codeLines.push(`NRQL: ${e.nrql}`);
     }
-    lines.push(`  ${badge}`);
+    const parts = ['```\n' + codeLines.join('\n') + '\n```'];
+    // Alert boxes for warnings/unsupported/errors
     if (e.warnings) {
-      for (const w of e.warnings) lines.push(`! ⚠ ${w}`);
+      for (const w of e.warnings) {
+        parts.push(`> [!WARNING]\n> ${w}`);
+      }
     }
     if (e.unsupported) {
-      for (const u of e.unsupported) lines.push(`- ✗ ${u}`);
+      for (const u of e.unsupported) {
+        parts.push(`> [!CAUTION]\n> ${u}`);
+      }
     }
-    return '```diff\n' + lines.join('\n') + '\n```';
+    return parts.join('\n\n');
   }
 
   doc = doc.replace(SENTINEL_RE, (match, tag) => {
