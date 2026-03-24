@@ -3027,6 +3027,18 @@ afterAll(() => {
     mcp: '🔍 Confirmed by MCP',
   };
 
+  // Backtick the leading command/function if it starts lowercase, otherwise capitalize
+  function formatMessage(msg) {
+    if (/^[A-Z]/.test(msg)) return msg;
+    // Match leading command token: word(…) or word with possible dots/parens
+    const m = msg.match(/^([a-zA-Z_][\w.]*(?:\([^)]*\))?)[:\s]/);
+    if (m) {
+      return `\`${m[1]}\`` + msg.slice(m[1].length);
+    }
+    // Fallback: capitalize first letter
+    return msg.charAt(0).toUpperCase() + msg.slice(1);
+  }
+
   function renderEntry(e) {
     const badge = VERIFIED_BADGES[e.verified] || '❓ Not confirmed';
     // Code block for SPL/NRQL + badge (gray background)
@@ -3036,12 +3048,14 @@ afterAll(() => {
     // Alert boxes for warnings/unsupported
     if (e.warnings) {
       parts.push(
-        `> [!WARNING]\n` + e.warnings.map((w) => `> ${w}`).join('\n>\n'),
+        `> [!WARNING]\n` +
+          e.warnings.map((w) => `> ${formatMessage(w)}`).join('\n>\n'),
       );
     }
     if (e.unsupported) {
       parts.push(
-        `> [!CAUTION]\n` + e.unsupported.map((u) => `> ${u}`).join('\n>\n'),
+        `> [!CAUTION]\n` +
+          e.unsupported.map((u) => `> ${formatMessage(u)}`).join('\n>\n'),
       );
     }
     parts.push('---');

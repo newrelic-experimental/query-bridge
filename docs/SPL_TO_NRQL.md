@@ -194,7 +194,7 @@ NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main' AND message LIKE '%C
 ```
 
 > [!WARNING]
-> append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 
 ---
 
@@ -205,7 +205,7 @@ NRQL: FROM Log SELECT average(duration), max(duration)
 ```
 
 > [!WARNING]
-> append merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
+> `append` merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
 
 ---
 
@@ -216,7 +216,7 @@ NRQL: FROM Log SELECT filter(count(*), WHERE message LIKE '%error%'), filter(cou
 ```
 
 > [!WARNING]
-> append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 
 ---
 
@@ -227,7 +227,7 @@ NRQL: FROM Log SELECT count(*), average(duration) FACET host
 ```
 
 > [!WARNING]
-> append merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
+> `append` merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
 
 ---
 
@@ -238,7 +238,7 @@ NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%') AS
 ```
 
 > [!WARNING]
-> append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 
 ---
 
@@ -249,7 +249,7 @@ NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), f
 ```
 
 > [!WARNING]
-> append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 
 ---
 
@@ -260,7 +260,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> append with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query
+> `append` with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query
 
 ---
 
@@ -271,7 +271,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> append with subsearch cannot be automatically translated; the main query and subsearch group by different fields
+> `append` with subsearch cannot be automatically translated; the main query and subsearch group by different fields
 
 ---
 <!-- /spl-cases -->
@@ -288,7 +288,7 @@ NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests'
 ```
 
 > [!WARNING]
-> appendcols translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+> `appendcols` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 
 ---
 
@@ -299,7 +299,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> appendcols with subsearch cannot be automatically translated; the main query and subsearch group by different fields
+> `appendcols` with subsearch cannot be automatically translated; the main query and subsearch group by different fields
 
 ---
 <!-- /spl-cases -->
@@ -316,7 +316,7 @@ NRQL: FROM Log SELECT count(*) AS 'search_count'
 ```
 
 > [!WARNING]
-> appendpipe adds summary rows to results; NRQL cannot append rows to a query. The sub-pipeline aggregation is available as a nested query, but the "append as new row" behavior must be handled by the UI.
+> `appendpipe` adds summary rows to results; NRQL cannot append rows to a query. The sub-pipeline aggregation is available as a nested query, but the "append as new row" behavior must be handled by the UI.
 
 ---
 <!-- /spl-cases -->
@@ -394,7 +394,7 @@ NRQL: FROM Log WITH numeric(bytes) AS bytes_converted SELECT *
 ```
 
 > [!WARNING]
-> convert num(bytes): NRQL cannot overwrite a field in-place; aliased to bytes_converted
+> `convert` num(bytes): NRQL cannot overwrite a field in-place; aliased to bytes_converted
 
 ---
 
@@ -405,7 +405,7 @@ NRQL: FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *
 ```
 
 > [!WARNING]
-> convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
+> `convert` rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
 
 ---
 
@@ -424,7 +424,7 @@ NRQL: FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *
 ```
 
 > [!WARNING]
-> convert mktime(timestr): NRQL cannot overwrite a field in-place; aliased to timestr_converted
+> `convert` mktime(timestr): NRQL cannot overwrite a field in-place; aliased to timestr_converted
 
 ---
 
@@ -435,9 +435,9 @@ NRQL: FROM Log WITH numeric(duration) AS duration_converted SELECT *
 ```
 
 > [!WARNING]
-> convert dur2sec(duration): NRQL has no duration parser; using numeric(duration) as approximation — verify data format
+> `convert` dur2sec(duration): NRQL has no duration parser; using numeric(duration) as approximation — verify data format
 >
-> convert dur2sec(duration): NRQL cannot overwrite a field in-place; aliased to duration_converted
+> `convert` dur2sec(duration): NRQL cannot overwrite a field in-place; aliased to duration_converted
 
 ---
 
@@ -448,9 +448,9 @@ NRQL: FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *
 ```
 
 > [!WARNING]
-> convert mstime(elapsed): NRQL has no mm:ss.ms parser; using numeric(elapsed) as approximation — verify data format
+> `convert` mstime(elapsed): NRQL has no mm:ss.ms parser; using numeric(elapsed) as approximation — verify data format
 >
-> convert mstime(elapsed): NRQL cannot overwrite a field in-place; aliased to elapsed_converted
+> `convert` mstime(elapsed): NRQL cannot overwrite a field in-place; aliased to elapsed_converted
 
 ---
 
@@ -461,9 +461,9 @@ NRQL: FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, 
 ```
 
 > [!WARNING]
-> convert num(status): NRQL cannot overwrite a field in-place; aliased to status_converted
+> `convert` num(status): NRQL cannot overwrite a field in-place; aliased to status_converted
 >
-> convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
+> `convert` rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
 
 ---
 
@@ -474,7 +474,7 @@ NRQL: FROM Log WITH numeric(field) AS field_converted SELECT *
 ```
 
 > [!WARNING]
-> convert auto(field): NRQL cannot overwrite a field in-place; aliased to field_converted
+> `convert` auto(field): NRQL cannot overwrite a field in-place; aliased to field_converted
 
 ---
 
@@ -485,7 +485,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> convert rmunit(field) not supported in NRQL
+> `convert` rmunit(field) not supported in NRQL
 
 ---
 
@@ -496,7 +496,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> convert memk(field) not supported in NRQL
+> `convert` memk(field) not supported in NRQL
 
 ---
 <!-- /spl-cases -->
@@ -513,7 +513,7 @@ NRQL: FROM Log SELECT latest(timestamp) FACET host LIMIT MAX
 ```
 
 > [!WARNING]
-> dedup translated to FACET; add latest(field) for each field you want to keep
+> `dedup` translated to FACET; add latest(field) for each field you want to keep
 
 ---
 
@@ -524,7 +524,7 @@ NRQL: FROM Log SELECT latest(timestamp) FACET host, status LIMIT MAX
 ```
 
 > [!WARNING]
-> dedup translated to FACET; add latest(field) for each field you want to keep
+> `dedup` translated to FACET; add latest(field) for each field you want to keep
 
 ---
 
@@ -535,7 +535,7 @@ NRQL: FROM Log SELECT count(*) FACET host LIMIT MAX
 ```
 
 > [!WARNING]
-> dedup translated to FACET; add latest(field) for each field you want to keep
+> `dedup` translated to FACET; add latest(field) for each field you want to keep
 
 ---
 <!-- /spl-cases -->
@@ -600,7 +600,7 @@ NRQL: FROM Log WITH jparse(payload, 'user.id') AS uid, numeric(uid) / 1 AS uid_n
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -716,7 +716,7 @@ NRQL: FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'
 ```
 
 > [!WARNING]
-> eventstats without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+> `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
 
 ---
 
@@ -727,7 +727,7 @@ NRQL: FROM Log SELECT count(*) AS 'appCount', (FROM (FROM Log SELECT count(*) AS
 ```
 
 > [!WARNING]
-> eventstats without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+> `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
 
 ---
 
@@ -760,7 +760,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> eventstats with multiple BY fields (host, status) cannot be translated; NRQL subquery JOIN only supports a single ON key
+> `eventstats` with multiple BY fields (host, status) cannot be translated; NRQL subquery JOIN only supports a single ON key
 
 ---
 <!-- /spl-cases -->
@@ -834,7 +834,7 @@ NRQL: FROM Log SELECT *
 ```
 
 > [!WARNING]
-> fields - (exclude mode) has limited NRQL support
+> `fields` - (exclude mode) has limited NRQL support
 
 ---
 <!-- /spl-cases -->
@@ -899,7 +899,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> fillnull without field list not supported — NRQL requires explicit field names
+> `fillnull` without field list not supported — NRQL requires explicit field names
 
 ---
 <!-- /spl-cases -->
@@ -1230,9 +1230,9 @@ NRQL: FROM Log WITH jparse(message, 'cloudformation[*].stack_prefix') AS stack_p
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 >
-> mvexpand stack_prefix skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+> `mvexpand` stack_prefix skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 
 ---
 
@@ -1243,7 +1243,7 @@ NRQL: FROM Log SELECT *
 ```
 
 > [!WARNING]
-> mvexpand list(orderNumber) skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+> `mvexpand` list(orderNumber) skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 
 ---
 
@@ -1254,7 +1254,7 @@ NRQL: FROM Log SELECT uniques(title) AS 'title'
 ```
 
 > [!WARNING]
-> mvexpand title skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+> `mvexpand` title skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 
 ---
 
@@ -1265,7 +1265,7 @@ NRQL: FROM Log WITH split(permissions, ',') AS perms SELECT count(*) FACET perms
 ```
 
 > [!WARNING]
-> mvexpand perms skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+> `mvexpand` perms skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 
 ---
 
@@ -1276,7 +1276,7 @@ NRQL: FROM Log WITH mvappend(notable_src, notable_dest) AS notable_asset SELECT 
 ```
 
 > [!WARNING]
-> mvexpand notable_asset skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+> `mvexpand` notable_asset skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 
 ---
 
@@ -1289,7 +1289,7 @@ NRQL: FROM Log SELECT uniques(orderNumber) AS 'orderNumber' WHERE index = 'k8s_m
 > [!WARNING]
 > SPL list() mapped to NRQL uniques(); duplicates will be removed
 >
-> mvexpand orderNumber skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+> `mvexpand` orderNumber skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 
 ---
 <!-- /spl-cases -->
@@ -1485,7 +1485,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> rex pattern has no named capture groups; nothing to extract
+> `rex` pattern has no named capture groups; nothing to extract
 
 ---
 
@@ -1496,7 +1496,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> rex max_match not supported; NRQL capture() returns first match only
+> `rex` max_match not supported; NRQL capture() returns first match only
 
 ---
 <!-- /spl-cases -->
@@ -1513,7 +1513,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> rex mode=sed has no NRQL equivalent
+> `rex` mode=sed has no NRQL equivalent
 
 ---
 <!-- /spl-cases -->
@@ -1530,7 +1530,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround
+> `rex` pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround
 
 ---
 <!-- /spl-cases -->
@@ -1585,7 +1585,7 @@ NRQL: FROM Log WITH jparse(payload, 'user.name') AS username SELECT *
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1596,7 +1596,7 @@ NRQL: FROM Log WITH jparse(message, 'response.status') AS status SELECT *
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1607,7 +1607,7 @@ NRQL: FROM Log WITH jparse(message, 'data.id') AS id SELECT *
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1618,7 +1618,7 @@ NRQL: FROM Log WITH jparse(message, 'response.code') AS code SELECT count(*) FAC
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1629,7 +1629,7 @@ NRQL: FROM Log WITH jparse(message, 'user.name') AS name, jparse(message, 'user.
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1640,7 +1640,7 @@ NRQL: FROM Log WITH jparse(message, 'request.url') AS url, capture(url, r'.*(?P<
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1651,7 +1651,7 @@ NRQL: FROM Log WITH jparse(message, 'AppID') AS AppID SELECT *
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1662,7 +1662,7 @@ NRQL: FROM Log WITH jparse(message, 'source_name') AS source_name SELECT *
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1673,7 +1673,7 @@ NRQL: FROM Log WITH jparse(message, 'errors[*].code') AS error_code SELECT * WHE
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1684,7 +1684,7 @@ NRQL: FROM Log WITH jparse(message, 'items[*].status') AS status SELECT *
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1695,7 +1695,7 @@ NRQL: FROM Log WITH jparse(request_body, 'user.preferences[*].key') AS pref_key 
 ```
 
 > [!WARNING]
-> jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 
 ---
 
@@ -1714,7 +1714,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
+> `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 
 ---
 
@@ -1725,7 +1725,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
+> `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 
 ---
 <!-- /spl-cases -->
@@ -2095,7 +2095,7 @@ NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS
 ```
 
 > [!WARNING]
-> useother: NRQL pie chart automatically shows an "Other" category for values outside LIMIT
+> `useother`: NRQL pie chart automatically shows an "Other" category for values outside LIMIT
 
 ---
 
@@ -2136,7 +2136,7 @@ NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS
 ```
 
 > [!WARNING]
-> top with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value
+> `top` with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value
 
 ---
 <!-- /spl-cases -->
@@ -2648,7 +2648,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern '\d+' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern '\d+' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2659,7 +2659,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern '[abc]' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern '[abc]' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2670,7 +2670,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern 'test.*end' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern 'test.*end' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2681,7 +2681,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern 'd+' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern 'd+' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2692,7 +2692,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern 'foo+' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern 'foo+' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2703,7 +2703,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern 'x?y' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern 'x?y' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2714,7 +2714,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern 'foo|bar' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern 'foo|bar' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2725,7 +2725,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern 's+' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern 's+' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2736,7 +2736,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> replace() with regex pattern 'https://example.com/.*' not supported — NRQL replace() is literal-only
+> `replace()` with regex pattern 'https://example.com/.*' not supported — NRQL replace() is literal-only
 
 ---
 
@@ -2747,7 +2747,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
+> `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 
 ---
 <!-- /spl-cases -->
@@ -2862,7 +2862,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> eval function typeof() has no NRQL equivalent
+> `eval` function typeof() has no NRQL equivalent
 
 ---
 
@@ -2873,7 +2873,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> eval function isbool() has no NRQL equivalent
+> `eval` function isbool() has no NRQL equivalent
 
 ---
 
@@ -2884,7 +2884,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> eval function isstr() has no NRQL equivalent
+> `eval` function isstr() has no NRQL equivalent
 
 ---
 <!-- /spl-cases -->
@@ -2953,7 +2953,7 @@ NRQL: FROM Log WITH length(lines) AS x SELECT *
 ```
 
 > [!WARNING]
-> length() returns string length in NRQL, not multivalue count; results may differ for non-array fields
+> `length()` returns string length in NRQL, not multivalue count; results may differ for non-array fields
 
 ---
 
@@ -2964,7 +2964,7 @@ NRQL: FROM Log WITH values AS x SELECT *
 ```
 
 > [!WARNING]
-> mvindex() requires at least 2 arguments (field, index)
+> `mvindex()` requires at least 2 arguments (field, index)
 
 ---
 
@@ -2983,7 +2983,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> mvjoin() has no NRQL equivalent — NRQL cannot join array elements into a delimited string
+> `mvjoin()` has no NRQL equivalent — NRQL cannot join array elements into a delimited string
 
 ---
 <!-- /spl-cases -->
@@ -3211,7 +3211,7 @@ NRQL: FROM lookup(users.csv) SELECT * WHERE role = 'admin'
 > [!WARNING]
 > Ensure lookup table 'users.csv' is uploaded via the Lookups UI
 >
-> inputlookup WHERE condition translated as-is; verify field names match the lookup table schema
+> `inputlookup` WHERE condition translated as-is; verify field names match the lookup table schema
 
 ---
 <!-- /spl-cases -->
@@ -3445,7 +3445,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> uniq has no direct NRQL equivalent
+> `uniq` has no direct NRQL equivalent
 
 ---
 <!-- /spl-cases -->
@@ -3952,7 +3952,7 @@ NRQL:
 ```
 
 > [!CAUTION]
-> tstats queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.
+> `tstats` queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.
 
 ---
 <!-- /spl-cases -->
@@ -4527,7 +4527,7 @@ NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```
 
 > [!WARNING]
-> _raw is not a valid NRQL field; mapped to message
+> `_raw` is not a valid NRQL field; mapped to message
 
 ---
 
