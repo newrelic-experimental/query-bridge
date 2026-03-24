@@ -3033,16 +3033,16 @@ afterAll(() => {
     const codeLines = [badge, `SPL:  ${e.spl || '(empty)'}`];
     codeLines.push(`NRQL: ${e.nrql || ''}`);
     const parts = ['```\n' + codeLines.join('\n') + '\n```'];
-    // Alert boxes for warnings/unsupported/errors
+    // Alert boxes for warnings/unsupported
     if (e.warnings) {
-      for (const w of e.warnings) {
-        parts.push(`> [!WARNING]\n> ${w}`);
-      }
+      parts.push(
+        `> [!WARNING]\n` + e.warnings.map((w) => `> ${w}`).join('\n>\n'),
+      );
     }
     if (e.unsupported) {
-      for (const u of e.unsupported) {
-        parts.push(`> [!CAUTION]\n> ${u}`);
-      }
+      parts.push(
+        `> [!CAUTION]\n` + e.unsupported.map((u) => `> ${u}`).join('\n>\n'),
+      );
     }
     parts.push('---');
     return parts.join('\n\n');

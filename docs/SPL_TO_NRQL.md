@@ -436,8 +436,7 @@ NRQL: FROM Log WITH numeric(duration) AS duration_converted SELECT *
 
 > [!WARNING]
 > convert dur2sec(duration): NRQL has no duration parser; using numeric(duration) as approximation — verify data format
-
-> [!WARNING]
+>
 > convert dur2sec(duration): NRQL cannot overwrite a field in-place; aliased to duration_converted
 
 ---
@@ -450,8 +449,7 @@ NRQL: FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *
 
 > [!WARNING]
 > convert mstime(elapsed): NRQL has no mm:ss.ms parser; using numeric(elapsed) as approximation — verify data format
-
-> [!WARNING]
+>
 > convert mstime(elapsed): NRQL cannot overwrite a field in-place; aliased to elapsed_converted
 
 ---
@@ -464,8 +462,7 @@ NRQL: FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, 
 
 > [!WARNING]
 > convert num(status): NRQL cannot overwrite a field in-place; aliased to status_converted
-
-> [!WARNING]
+>
 > convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
 
 ---
@@ -1234,8 +1231,7 @@ NRQL: FROM Log WITH jparse(message, 'cloudformation[*].stack_prefix') AS stack_p
 
 > [!WARNING]
 > jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
-> [!WARNING]
+>
 > mvexpand stack_prefix skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 
 ---
@@ -1292,8 +1288,7 @@ NRQL: FROM Log SELECT uniques(orderNumber) AS 'orderNumber' WHERE index = 'k8s_m
 
 > [!WARNING]
 > SPL list() mapped to NRQL uniques(); duplicates will be removed
-
-> [!WARNING]
+>
 > mvexpand orderNumber skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 
 ---
@@ -3215,8 +3210,7 @@ NRQL: FROM lookup(users.csv) SELECT * WHERE role = 'admin'
 
 > [!WARNING]
 > Ensure lookup table 'users.csv' is uploaded via the Lookups UI
-
-> [!WARNING]
+>
 > inputlookup WHERE condition translated as-is; verify field names match the lookup table schema
 
 ---
@@ -4669,8 +4663,7 @@ NRQL: FROM Log SELECT * WHERE $macro_a AND $macro_b
 
 > [!WARNING]
 > SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists
-
-> [!WARNING]
+>
 > SPL macro `macro_b` translated to NRQL macro $macro_b; ensure a matching NRQL macro exists
 
 ---
