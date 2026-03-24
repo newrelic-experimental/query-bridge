@@ -3058,7 +3058,6 @@ afterAll(() => {
           e.unsupported.map((u) => `> ${formatMessage(u)}`).join('\n>\n'),
       );
     }
-    parts.push('---');
     return parts.join('\n\n');
   }
 
