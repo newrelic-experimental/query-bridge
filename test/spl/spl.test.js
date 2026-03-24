@@ -3021,7 +3021,6 @@ afterAll(() => {
     return 0;
   }
 
-  const STATUS_COLORS = ['#d4edda', '#f8d7da'];
   const VERIFIED_BADGES = {
     human: '✅ Confirmed by human',
     llm: '🤖 Confirmed by LLM',
@@ -3029,39 +3028,22 @@ afterAll(() => {
   };
 
   function renderEntry(e) {
-    const bg = STATUS_COLORS[statusRank(e)];
     const badge = VERIFIED_BADGES[e.verified] || '❓ Not confirmed';
-    const codeLines = [`SPL:  ${e.spl || '(empty)'}`, `NRQL: ${e.nrql}`];
-    const escaped = codeLines
-      .join('\n')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    const notes = [];
+    // Single diff code block: SPL/NRQL as neutral (space prefix), badge as neutral,
+    // warnings as yellow (!), unsupported as red (-)
+    const lines = [];
+    lines.push(`  SPL:  ${e.spl || '(empty)'}`);
+    if (e.nrql) {
+      lines.push(`  NRQL: ${e.nrql}`);
+    }
+    lines.push(`  ${badge}`);
     if (e.warnings) {
-      for (const w of e.warnings)
-        notes.push(
-          `<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ ${w.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`,
-        );
+      for (const w of e.warnings) lines.push(`! ⚠ ${w}`);
     }
     if (e.unsupported) {
-      for (const u of e.unsupported)
-        notes.push(
-          `<div style="padding: 4px 8px; margin: 4px 0 0 0; font-size: 0.9em;">✗ ${u.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`,
-        );
+      for (const u of e.unsupported) lines.push(`- ✗ ${u}`);
     }
-    // Give the first note extra top margin to match the outer div's bottom padding
-    if (notes.length > 0) {
-      notes[0] = notes[0].replace('margin: 4px 0 0 0', 'margin: 8px 0 0 0');
-    }
-    const noteBlock = notes.length > 0 ? `\n${notes.join('')}` : '';
-    return (
-      `<div style="background: ${bg}; padding: 8px; border-radius: 4px; margin: 4px 0;">\n` +
-      `<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">\n` +
-      `<pre style="margin: 0; flex: 1;">${escaped}</pre>\n` +
-      `<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">${badge}</span>\n` +
-      `</div>${noteBlock}\n` +
-      `</div>`
-    );
+    return '```diff\n' + lines.join('\n') + '\n```';
   }
 
   doc = doc.replace(SENTINEL_RE, (match, tag) => {

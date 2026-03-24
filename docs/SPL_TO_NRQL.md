@@ -187,77 +187,59 @@ Commands that appear in 50 or more real-world customer queries or security detec
 Appends the results of a subsearch to the current results. The translator merges the main query and subsearch into a single NRQL query — using `filter()` when the WHERE clauses differ, or a combined SELECT when they match.
 
 <!-- spl-cases: correlation-append -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=main "Cache hit" | stats count as Hits | append [search index=main "Cache miss" | stats count as Misses]
-NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main' AND message LIKE '%Cache hit%') AS 'Hits', filter(count(*), WHERE index = 'main' AND message LIKE '%Cache miss%') AS 'Misses'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log</div>
-</div>
+```diff
+  SPL:  index=main "Cache hit" | stats count as Hits | append [search index=main "Cache miss" | stats count as Misses]
+  NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main' AND message LIKE '%Cache hit%') AS 'Hits', filter(count(*), WHERE index = 'main' AND message LIKE '%Cache miss%') AS 'Misses'
+  🤖 Confirmed by LLM
+! ⚠ append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats avg(duration) | append [search * | stats max(duration)]
-NRQL: FROM Log SELECT average(duration), max(duration)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ append merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events</div>
-</div>
+```diff
+  SPL:  * | stats avg(duration) | append [search * | stats max(duration)]
+  NRQL: FROM Log SELECT average(duration), max(duration)
+  🤖 Confirmed by LLM
+! ⚠ append merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error | stats count by host | append [search success | stats count by host]
-NRQL: FROM Log SELECT filter(count(*), WHERE message LIKE '%error%'), filter(count(*), WHERE message LIKE '%success%') FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log</div>
-</div>
+```diff
+  SPL:  error | stats count by host | append [search success | stats count by host]
+  NRQL: FROM Log SELECT filter(count(*), WHERE message LIKE '%error%'), filter(count(*), WHERE message LIKE '%success%') FACET host
+  🤖 Confirmed by LLM
+! ⚠ append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by host | append [search * | stats avg(duration) by host]
-NRQL: FROM Log SELECT count(*), average(duration) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ append merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events</div>
-</div>
+```diff
+  SPL:  * | stats count by host | append [search * | stats avg(duration) by host]
+  NRQL: FROM Log SELECT count(*), average(duration) FACET host
+  🤖 Confirmed by LLM
+! ⚠ append merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error | stats avg(duration) as err_dur | append [search success | stats avg(duration) as ok_dur]
-NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%') AS 'err_dur', filter(average(duration), WHERE message LIKE '%success%') AS 'ok_dur'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log</div>
-</div>
+```diff
+  SPL:  error | stats avg(duration) as err_dur | append [search success | stats avg(duration) as ok_dur]
+  NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%') AS 'err_dur', filter(average(duration), WHERE message LIKE '%success%') AS 'ok_dur'
+  🤖 Confirmed by LLM
+! ⚠ append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error | stats avg(duration) | append [search success | stats max(duration)]
-NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), filter(max(duration), WHERE message LIKE '%success%')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log</div>
-</div>
+```diff
+  SPL:  error | stats avg(duration) | append [search success | stats max(duration)]
+  NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), filter(max(duration), WHERE message LIKE '%success%')
+  🤖 Confirmed by LLM
+! ⚠ append translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | append [search error]
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ append with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query</div>
-</div>
+```diff
+  SPL:  * | append [search error]
+  🤖 Confirmed by LLM
+- ✗ append with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ append with subsearch cannot be automatically translated; the main query and subsearch group by different fields</div>
-</div>
+```diff
+  SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
+  🤖 Confirmed by LLM
+- ✗ append with subsearch cannot be automatically translated; the main query and subsearch group by different fields
+```
 <!-- /spl-cases -->
 
 #### `appendcols` — Supported
@@ -265,23 +247,18 @@ NRQL: null</pre>
 Adds subsearch results as new columns. Uses the same merge logic as `append` — merges into a single SELECT or uses `filter()` when WHERE clauses differ.
 
 <!-- spl-cases: correlation-appendcols -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=main | stats count as total_requests | appendcols [search index=main level=error | stats count as errors]
-NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests', filter(count(*), WHERE index = 'main' AND level = 'error') AS 'errors'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ appendcols translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log</div>
-</div>
+```diff
+  SPL:  index=main | stats count as total_requests | appendcols [search index=main level=error | stats count as errors]
+  NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests', filter(count(*), WHERE index = 'main' AND level = 'error') AS 'errors'
+  🤖 Confirmed by LLM
+! ⚠ appendcols translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count as total | appendcols [search * | stats count by host]
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ appendcols with subsearch cannot be automatically translated; the main query and subsearch group by different fields</div>
-</div>
+```diff
+  SPL:  * | stats count as total | appendcols [search * | stats count by host]
+  🤖 Confirmed by LLM
+- ✗ appendcols with subsearch cannot be automatically translated; the main query and subsearch group by different fields
+```
 <!-- /spl-cases -->
 
 #### `appendpipe` — Supported
@@ -289,14 +266,12 @@ NRQL: null</pre>
 Runs a subpipeline and appends results. In practice, used for zero-fill fallbacks which are a no-op in NRQL (dashboards handle empty results natively). Ignored with a warning.
 
 <!-- spl-cases: correlation-appendpipe -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count as search_count | appendpipe [stats count | where count=0]
-NRQL: FROM Log SELECT count(*) AS 'search_count'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ appendpipe adds summary rows to results; NRQL cannot append rows to a query. The sub-pipeline aggregation is available as a nested query, but the "append as new row" behavior must be handled by the UI.</div>
-</div>
+```diff
+  SPL:  * | stats count as search_count | appendpipe [stats count | where count=0]
+  NRQL: FROM Log SELECT count(*) AS 'search_count'
+  🤖 Confirmed by LLM
+! ⚠ appendpipe adds summary rows to results; NRQL cannot append rows to a query. The sub-pipeline aggregation is available as a nested query, but the "append as new row" behavior must be handled by the UI.
+```
 <!-- /spl-cases -->
 
 #### `bin` / `bucket` — Supported
@@ -304,37 +279,29 @@ NRQL: FROM Log SELECT count(*) AS 'search_count'</pre>
 Groups continuous numeric values into discrete buckets. `bin _time span=X` translates to `TIMESERIES X`. `bin field span=N` translates to `FACET histogram(field, N)`.
 
 <!-- spl-cases: reports-bin -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | bin _time span=5m
-NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | bin _time span=5m
+  NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | bucket _time span=5m
-NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | bucket _time span=5m
+  NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | bucket span=5m _time | stats count by _time
-NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | bucket span=5m _time | stats count by _time
+  NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | bin size span=10
-NRQL: FROM Log SELECT histogram(size, 10)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | bin size span=10
+  NRQL: FROM Log SELECT histogram(size, 10)
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 #### `chart` — Supported
@@ -342,13 +309,11 @@ NRQL: FROM Log SELECT histogram(size, 10)</pre>
 Creates a data table suitable for charting. Translates to NRQL `SELECT ... FACET ... TIMESERIES`.
 
 <!-- spl-cases: reports-chart -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | chart count by status
-NRQL: FROM Log SELECT count(*) FACET status</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | chart count by status
+  NRQL: FROM Log SELECT count(*) FACET status
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 #### `convert` — Partial support
@@ -365,94 +330,75 @@ Converts field values between formats. Translates to NRQL `WITH` expressions. No
 | `mstime(field)` | `'02:30.500'` → `150.5` | `substring()`/`position()` arithmetic |
 
 <!-- spl-cases: fields-convert -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert num(bytes)
-NRQL: FROM Log WITH numeric(bytes) AS bytes_converted SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert num(bytes): NRQL cannot overwrite a field in-place; aliased to bytes_converted</div>
-</div>
+```diff
+  SPL:  * | convert num(bytes)
+  NRQL: FROM Log WITH numeric(bytes) AS bytes_converted SELECT *
+  🤖 Confirmed by LLM
+! ⚠ convert num(bytes): NRQL cannot overwrite a field in-place; aliased to bytes_converted
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert rmcomma(total)
-NRQL: FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted</div>
-</div>
+```diff
+  SPL:  * | convert rmcomma(total)
+  NRQL: FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *
+  🤖 Confirmed by LLM
+! ⚠ convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert ctime(timestamp) AS readable
-NRQL: FROM Log WITH toDatetime(timestamp) AS readable SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | convert ctime(timestamp) AS readable
+  NRQL: FROM Log WITH toDatetime(timestamp) AS readable SELECT *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert mktime(timestr)
-NRQL: FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert mktime(timestr): NRQL cannot overwrite a field in-place; aliased to timestr_converted</div>
-</div>
+```diff
+  SPL:  * | convert mktime(timestr)
+  NRQL: FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *
+  🤖 Confirmed by LLM
+! ⚠ convert mktime(timestr): NRQL cannot overwrite a field in-place; aliased to timestr_converted
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert dur2sec(duration)
-NRQL: FROM Log WITH numeric(duration) AS duration_converted SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert dur2sec(duration): NRQL has no duration parser; using numeric(duration) as approximation — verify data format</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ convert dur2sec(duration): NRQL cannot overwrite a field in-place; aliased to duration_converted</div>
-</div>
+```diff
+  SPL:  * | convert dur2sec(duration)
+  NRQL: FROM Log WITH numeric(duration) AS duration_converted SELECT *
+  🤖 Confirmed by LLM
+! ⚠ convert dur2sec(duration): NRQL has no duration parser; using numeric(duration) as approximation — verify data format
+! ⚠ convert dur2sec(duration): NRQL cannot overwrite a field in-place; aliased to duration_converted
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert mstime(elapsed)
-NRQL: FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert mstime(elapsed): NRQL has no mm:ss.ms parser; using numeric(elapsed) as approximation — verify data format</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ convert mstime(elapsed): NRQL cannot overwrite a field in-place; aliased to elapsed_converted</div>
-</div>
+```diff
+  SPL:  * | convert mstime(elapsed)
+  NRQL: FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *
+  🤖 Confirmed by LLM
+! ⚠ convert mstime(elapsed): NRQL has no mm:ss.ms parser; using numeric(elapsed) as approximation — verify data format
+! ⚠ convert mstime(elapsed): NRQL cannot overwrite a field in-place; aliased to elapsed_converted
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert num(status), rmcomma(total)
-NRQL: FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, ',', '')) AS total_converted SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert num(status): NRQL cannot overwrite a field in-place; aliased to status_converted</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted</div>
-</div>
+```diff
+  SPL:  * | convert num(status), rmcomma(total)
+  NRQL: FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, ',', '')) AS total_converted SELECT *
+  🤖 Confirmed by LLM
+! ⚠ convert num(status): NRQL cannot overwrite a field in-place; aliased to status_converted
+! ⚠ convert rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert auto(field)
-NRQL: FROM Log WITH numeric(field) AS field_converted SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ convert auto(field): NRQL cannot overwrite a field in-place; aliased to field_converted</div>
-</div>
+```diff
+  SPL:  * | convert auto(field)
+  NRQL: FROM Log WITH numeric(field) AS field_converted SELECT *
+  🤖 Confirmed by LLM
+! ⚠ convert auto(field): NRQL cannot overwrite a field in-place; aliased to field_converted
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert rmunit(field)
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ convert rmunit(field) not supported in NRQL</div>
-</div>
+```diff
+  SPL:  * | convert rmunit(field)
+  🤖 Confirmed by LLM
+- ✗ convert rmunit(field) not supported in NRQL
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | convert memk(field)
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ convert memk(field) not supported in NRQL</div>
-</div>
+```diff
+  SPL:  * | convert memk(field)
+  🤖 Confirmed by LLM
+- ✗ convert memk(field) not supported in NRQL
+```
 <!-- /spl-cases -->
 
 #### `dedup` — Supported
@@ -460,32 +406,26 @@ NRQL: null</pre>
 Removes duplicate events based on field values. Translates to NRQL `FACET` with `LIMIT MAX`, which groups results by unique field combinations. Add `latest(field)` for each field you want to keep from the original events.
 
 <!-- spl-cases: results-dedup -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | dedup host
-NRQL: FROM Log SELECT latest(timestamp) FACET host LIMIT MAX</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ dedup translated to FACET; add latest(field) for each field you want to keep</div>
-</div>
+```diff
+  SPL:  * | dedup host
+  NRQL: FROM Log SELECT latest(timestamp) FACET host LIMIT MAX
+  🤖 Confirmed by LLM
+! ⚠ dedup translated to FACET; add latest(field) for each field you want to keep
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | dedup host, status
-NRQL: FROM Log SELECT latest(timestamp) FACET host, status LIMIT MAX</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ dedup translated to FACET; add latest(field) for each field you want to keep</div>
-</div>
+```diff
+  SPL:  * | dedup host, status
+  NRQL: FROM Log SELECT latest(timestamp) FACET host, status LIMIT MAX
+  🤖 Confirmed by LLM
+! ⚠ dedup translated to FACET; add latest(field) for each field you want to keep
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by host | dedup host
-NRQL: FROM Log SELECT count(*) FACET host LIMIT MAX</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ dedup translated to FACET; add latest(field) for each field you want to keep</div>
-</div>
+```diff
+  SPL:  * | stats count by host | dedup host
+  NRQL: FROM Log SELECT count(*) FACET host LIMIT MAX
+  🤖 Confirmed by LLM
+! ⚠ dedup translated to FACET; add latest(field) for each field you want to keep
+```
 <!-- /spl-cases -->
 
 #### `eval` — Supported
@@ -493,87 +433,67 @@ NRQL: FROM Log SELECT count(*) FACET host LIMIT MAX</pre>
 Calculates an expression and puts the result into a field. Translates to NRQL `WITH ... AS` expressions.
 
 <!-- spl-cases: fields-eval-arithmetic -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval d = bytes / 1024, m = price * quantity, a = sent + received, s = end_time - start_time, r = x % 10
-NRQL: FROM Log WITH numeric(bytes) / 1024 AS d, numeric(price) * numeric(quantity) AS m, numeric(sent) + numeric(received) AS a, numeric(end_time) - numeric(start_time) AS s, mod(numeric(x), 10) AS r SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval d = bytes / 1024, m = price * quantity, a = sent + received, s = end_time - start_time, r = x % 10
+  NRQL: FROM Log WITH numeric(bytes) / 1024 AS d, numeric(price) * numeric(quantity) AS m, numeric(sent) + numeric(received) AS a, numeric(end_time) - numeric(start_time) AS s, mod(numeric(x), 10) AS r SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval p1 = a * b + c, p2 = a + b / c, p3 = (a + b) / c, p4 = (a + b) * (c - d)
-NRQL: FROM Log WITH numeric(a) * numeric(b) + numeric(c) AS p1, numeric(a) + numeric(b) / numeric(c) AS p2, (numeric(a) + numeric(b)) / numeric(c) AS p3, (numeric(a) + numeric(b)) * (numeric(c) - numeric(d)) AS p4 SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval p1 = a * b + c, p2 = a + b / c, p3 = (a + b) / c, p4 = (a + b) * (c - d)
+  NRQL: FROM Log WITH numeric(a) * numeric(b) + numeric(c) AS p1, numeric(a) + numeric(b) / numeric(c) AS p2, (numeric(a) + numeric(b)) / numeric(c) AS p3, (numeric(a) + numeric(b)) * (numeric(c) - numeric(d)) AS p4 SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval pct = count / 100.0, chain = a + b + c + d, mul = a * b * c, kb = bytes / 1024, mb = bytes / 1048576, gb = bytes / 1073741824
-NRQL: FROM Log WITH numeric(count) / 100 AS pct, numeric(a) + numeric(b) + numeric(c) + numeric(d) AS chain, numeric(a) * numeric(b) * numeric(c) AS mul, numeric(bytes) / 1024 AS kb, numeric(bytes) / 1048576 AS mb, numeric(bytes) / 1073741824 AS gb SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval pct = count / 100.0, chain = a + b + c + d, mul = a * b * c, kb = bytes / 1024, mb = bytes / 1048576, gb = bytes / 1073741824
+  NRQL: FROM Log WITH numeric(count) / 100 AS pct, numeric(a) + numeric(b) + numeric(c) + numeric(d) AS chain, numeric(a) * numeric(b) * numeric(c) AS mul, numeric(bytes) / 1024 AS kb, numeric(bytes) / 1048576 AS mb, numeric(bytes) / 1073741824 AS gb SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval size_mb = bytes / 1048576 | eval size_gb = size_mb / 1024 | stats avg(size_mb) by host
-NRQL: FROM Log WITH numeric(bytes) / 1048576 AS size_mb, numeric(size_mb) / 1024 AS size_gb SELECT average(size_mb) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval size_mb = bytes / 1048576 | eval size_gb = size_mb / 1024 | stats avg(size_mb) by host
+  NRQL: FROM Log WITH numeric(bytes) / 1048576 AS size_mb, numeric(size_mb) / 1024 AS size_gb SELECT average(size_mb) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=200 | eval duration_sec = duration / 1000 | table host, duration_sec
-NRQL: FROM Log WITH numeric(duration) / 1000 AS duration_sec SELECT host, duration_sec WHERE status = '200' OR numeric(status) = 200</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  status=200 | eval duration_sec = duration / 1000 | table host, duration_sec
+  NRQL: FROM Log WITH numeric(duration) / 1000 AS duration_sec SELECT host, duration_sec WHERE status = '200' OR numeric(status) = 200
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=a+b, alias = original, lit = 42, parens = ((a + b)), hyph = http-status / 100, col = aws:region, dot = http.status / 100
-NRQL: FROM Log WITH numeric(a) + numeric(b) AS x, original AS alias, 42 AS lit, numeric(a) + numeric(b) AS parens, numeric(`http-status`) / 100 AS hyph, `aws:region` AS col, numeric(`http.status`) / 100 AS dot SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=a+b, alias = original, lit = 42, parens = ((a + b)), hyph = http-status / 100, col = aws:region, dot = http.status / 100
+  NRQL: FROM Log WITH numeric(a) + numeric(b) AS x, original AS alias, 42 AS lit, numeric(a) + numeric(b) AS parens, numeric(`http-status`) / 100 AS hyph, `aws:region` AS col, numeric(`http.status`) / 100 AS dot SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath input=payload path=user.id output=uid | eval uid_num = uid / 1
-NRQL: FROM Log WITH jparse(payload, 'user.id') AS uid, numeric(uid) / 1 AS uid_num SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath input=payload path=user.id output=uid | eval uid_num = uid / 1
+  NRQL: FROM Log WITH jparse(payload, 'user.id') AS uid, numeric(uid) / 1 AS uid_num SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fillnull value=0 bytes | eval kb = bytes / 1024
-NRQL: FROM Log WITH numeric(bytes OR 0) / 1024 AS kb SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | fillnull value=0 bytes | eval kb = bytes / 1024
+  NRQL: FROM Log WITH numeric(bytes OR 0) / 1024 AS kb SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval rate = count / duration | sort -rate | head 10
-NRQL: FROM Log WITH numeric(count) / numeric(duration) AS rate SELECT * ORDER BY rate DESC LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval rate = count / duration | sort -rate | head 10
+  NRQL: FROM Log WITH numeric(count) / numeric(duration) AS rate SELECT * ORDER BY rate DESC LIMIT 10
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval kb = bytes / 1024 | rename kb as kilobytes
-NRQL: FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL rename keeps original field names alongside aliases</div>
-</div>
+```diff
+  SPL:  * | eval kb = bytes / 1024 | rename kb as kilobytes
+  NRQL: FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *
+  ❓ Not confirmed
+! ⚠ NRQL rename keeps original field names alongside aliases
+```
 <!-- /spl-cases -->
 
 #### `eventstats` — Supported
@@ -631,68 +551,53 @@ Computes aggregation statistics and adds them as new fields to every event (with
 </details>
 
 <!-- spl-cases: reports-eventstats -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eventstats count by host
-NRQL: FROM Log JOIN (FROM Log SELECT count(*) AS 'count' FACET host LIMIT MAX) ON host = host SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | eventstats count by host
+  NRQL: FROM Log JOIN (FROM Log SELECT count(*) AS 'count' FACET host LIMIT MAX) ON host = host SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eventstats avg(duration) AS avg_dur BY host
-NRQL: FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur' FACET host LIMIT MAX) ON host = host SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | eventstats avg(duration) AS avg_dur BY host
+  NRQL: FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur' FACET host LIMIT MAX) ON host = host SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eventstats count AS total
-NRQL: FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ eventstats without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval</div>
-</div>
+```diff
+  SPL:  * | eventstats count AS total
+  NRQL: FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'
+  🤖 Confirmed by LLM
+! ⚠ eventstats without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count as appCount by app | eventstats sum(appCount) as namespaceCount
-NRQL: FROM Log SELECT count(*) AS 'appCount', (FROM (FROM Log SELECT count(*) AS 'appCount' FACET app LIMIT MAX) SELECT sum(appCount)) AS 'namespaceCount' FACET app</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ eventstats without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval</div>
-</div>
+```diff
+  SPL:  * | stats count as appCount by app | eventstats sum(appCount) as namespaceCount
+  NRQL: FROM Log SELECT count(*) AS 'appCount', (FROM (FROM Log SELECT count(*) AS 'appCount' FACET app LIMIT MAX) SELECT sum(appCount)) AS 'namespaceCount' FACET app
+  ❓ Not confirmed
+! ⚠ eventstats without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eventstats max(timestamp) as lastImport BY source
-NRQL: FROM Log JOIN (FROM Log SELECT max(timestamp) AS 'lastImport' FACET source LIMIT MAX) ON source = source SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | eventstats max(timestamp) as lastImport BY source
+  NRQL: FROM Log JOIN (FROM Log SELECT max(timestamp) AS 'lastImport' FACET source LIMIT MAX) ON source = source SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eventstats avg(duration) AS avg_dur, max(duration) AS max_dur BY host
-NRQL: FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur', max(duration) AS 'max_dur' FACET host LIMIT MAX) ON host = host SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | eventstats avg(duration) AS avg_dur, max(duration) AS max_dur BY host
+  NRQL: FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur', max(duration) AS 'max_dur' FACET host LIMIT MAX) ON host = host SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eventstats sum(bytes) AS total BY host, status
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ eventstats with multiple BY fields (host, status) cannot be translated; NRQL subquery JOIN only supports a single ON key</div>
-</div>
+```diff
+  SPL:  * | eventstats sum(bytes) AS total BY host, status
+  🤖 Confirmed by LLM
+- ✗ eventstats with multiple BY fields (host, status) cannot be translated; NRQL subquery JOIN only supports a single ON key
+```
 <!-- /spl-cases -->
 
 #### `extract` (`kv`) — Not supported
@@ -700,14 +605,11 @@ NRQL: null</pre>
 Extracts key-value pairs using automatic field discovery. NRQL has no equivalent to automatic key-value extraction. Use `rex` (capture()) for regex-based extraction or `spath` (jparse()) for structured data.
 
 <!-- spl-cases: fields-extract -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | extract pairdelim=","
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'extract' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | extract pairdelim=","
+  🤖 Confirmed by LLM
+- ✗ SPL command 'extract' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `table` / `fields` — Partial support
@@ -715,54 +617,42 @@ NRQL: null</pre>
 Selects which fields to include in the results. Both `table` and `fields` translate to NRQL `SELECT field1, field2, ...`. The exclude syntax (`fields - field1, field2`) is not supported — NRQL cannot exclude specific fields from `SELECT *`.
 
 <!-- spl-cases: results-table -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | table _time, host, status, bytes, url
-NRQL: FROM Log SELECT timestamp, host, status, bytes, url</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | table _time, host, status, bytes, url
+  NRQL: FROM Log SELECT timestamp, host, status, bytes, url
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | table *
-NRQL: FROM Log SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | table *
+  NRQL: FROM Log SELECT *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fields host, status
-NRQL: FROM Log SELECT host, status</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | fields host, status
+  NRQL: FROM Log SELECT host, status
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fields _time, host, status
-NRQL: FROM Log SELECT timestamp, host, status</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | fields _time, host, status
+  NRQL: FROM Log SELECT timestamp, host, status
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fields + host, status
-NRQL: FROM Log SELECT host, status</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | fields + host, status
+  NRQL: FROM Log SELECT host, status
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fields - _raw, _time
-NRQL: FROM Log SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ fields - (exclude mode) has limited NRQL support</div>
-</div>
+```diff
+  SPL:  * | fields - _raw, _time
+  NRQL: FROM Log SELECT *
+  🤖 Confirmed by LLM
+! ⚠ fields - (exclude mode) has limited NRQL support
+```
 <!-- /spl-cases -->
 
 #### `fillnull` — Supported
@@ -770,62 +660,47 @@ NRQL: FROM Log SELECT *</pre>
 Replaces null values with a specified value. Translates to NRQL `WITH if(field IS NULL, default, field) AS field`.
 
 <!-- spl-cases: fields-fillnull -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fillnull value=N/A host status
-NRQL: FROM Log SELECT host OR 'N/A', status OR 'N/A', *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | fillnull value=N/A host status
+  NRQL: FROM Log SELECT host OR 'N/A', status OR 'N/A', *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fillnull value=0 bytes duration
-NRQL: FROM Log SELECT bytes OR 0, duration OR 0, *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | fillnull value=0 bytes duration
+  NRQL: FROM Log SELECT bytes OR 0, duration OR 0, *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fillnull bytes
-NRQL: FROM Log SELECT bytes OR '0', *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | fillnull bytes
+  NRQL: FROM Log SELECT bytes OR '0', *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fillnull value="unknown" host
-NRQL: FROM Log SELECT host OR 'unknown', *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | fillnull value="unknown" host
+  NRQL: FROM Log SELECT host OR 'unknown', *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fillnull value=0 bytes | stats sum(bytes) by host
-NRQL: FROM Log SELECT sum(bytes OR 0) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | fillnull value=0 bytes | stats sum(bytes) by host
+  NRQL: FROM Log SELECT sum(bytes OR 0) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fillnull value=0 field1, field2, field3
-NRQL: FROM Log SELECT field1 OR 0, field2 OR 0, field3 OR 0, *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | fillnull value=0 field1, field2, field3
+  NRQL: FROM Log SELECT field1 OR 0, field2 OR 0, field3 OR 0, *
+  ✅ Confirmed by human
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | fillnull value=0
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ fillnull without field list not supported — NRQL requires explicit field names</div>
-</div>
+```diff
+  SPL:  * | fillnull value=0
+  🤖 Confirmed by LLM
+- ✗ fillnull without field list not supported — NRQL requires explicit field names
+```
 <!-- /spl-cases -->
 
 #### `foreach` — Not supported
@@ -833,14 +708,11 @@ NRQL: null</pre>
 Runs a template expression over a set of fields matching a wildcard pattern. NRQL has no iterator construct — each field must be referenced explicitly.
 
 <!-- spl-cases: fields-foreach -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | foreach count_* [eval total=total+&lt;&lt;FIELD&gt;&gt;]
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'foreach' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | foreach count_* [eval total=total+<<FIELD>>]
+  🤖 Confirmed by LLM
+- ✗ SPL command 'foreach' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `head` — Supported
@@ -848,21 +720,17 @@ NRQL: null</pre>
 Returns the first N results. Translates to NRQL `LIMIT N`.
 
 <!-- spl-cases: results-head -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | head 10
-NRQL: FROM Log SELECT * LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | head 10
+  NRQL: FROM Log SELECT * LIMIT 10
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | head
-NRQL: FROM Log SELECT * LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | head
+  NRQL: FROM Log SELECT * LIMIT 10
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 #### `join` — Supported
@@ -870,95 +738,74 @@ NRQL: FROM Log SELECT * LIMIT 10</pre>
 Combines results from a subsearch with current results using a shared field. Translates to NRQL `JOIN ... ON`.
 
 <!-- spl-cases: correlation-join -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | join host [search index=other | stats count by host]
-NRQL: FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'other' FACET host LIMIT MAX) ON host = host SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | join host [search index=other | stats count by host]
+  NRQL: FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'other' FACET host LIMIT MAX) ON host = host SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | join type=left src_ip [search index=geo | table src_ip, country]
-NRQL: FROM Log LEFT JOIN (FROM Log SELECT country WHERE index = 'geo' FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | join type=left src_ip [search index=geo | table src_ip, country]
+  NRQL: FROM Log LEFT JOIN (FROM Log SELECT country WHERE index = 'geo' FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | join host [search status=500 | table host, message]
-NRQL: FROM Log JOIN (FROM Log SELECT message WHERE status = '500' OR numeric(status) = 500 FACET host LIMIT MAX) ON host = host SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | join host [search status=500 | table host, message]
+  NRQL: FROM Log JOIN (FROM Log SELECT message WHERE status = '500' OR numeric(status) = 500 FACET host LIMIT MAX) ON host = host SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | join src_ip [search * | stats count, avg(bytes) by src_ip]
-NRQL: FROM Log JOIN (FROM Log SELECT count(*), average(bytes) FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | join src_ip [search * | stats count, avg(bytes) by src_ip]
+  NRQL: FROM Log JOIN (FROM Log SELECT count(*), average(bytes) FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | join host [search * | stats count by host | head 100]
-NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT 100) ON host = host SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | join host [search * | stats count by host | head 100]
+  NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT 100) ON host = host SELECT *
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | join host [search status=200 host=web*]
-NRQL: FROM Log JOIN (FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND host LIKE 'web%' FACET host LIMIT MAX) ON host = host SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | join host [search status=200 host=web*]
+  NRQL: FROM Log JOIN (FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND host LIKE 'web%' FACET host LIMIT MAX) ON host = host SELECT *
+  ❓ Not confirmed
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=500 | join host [search * | stats count by host]
-NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT MAX) ON host = host SELECT * WHERE status = '500' OR numeric(status) = 500</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  status=500 | join host [search * | stats count by host]
+  NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT MAX) ON host = host SELECT * WHERE status = '500' OR numeric(status) = 500
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by host | join host [search * | stats avg(cpu) by host]
-NRQL: FROM Log JOIN (FROM Log SELECT average(cpu) FACET host LIMIT MAX) ON host = host SELECT count(*) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | stats count by host | join host [search * | stats avg(cpu) by host]
+  NRQL: FROM Log JOIN (FROM Log SELECT average(cpu) FACET host LIMIT MAX) ON host = host SELECT count(*) FACET host
+  🤖 Confirmed by LLM
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | join user [search * | table user, role]
-NRQL: FROM Log JOIN (FROM Log SELECT role FACET user LIMIT MAX) ON user = user SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit</div>
-</div>
+```diff
+  SPL:  * | join user [search * | table user, role]
+  NRQL: FROM Log JOIN (FROM Log SELECT role FACET user LIMIT MAX) ON user = user SELECT *
+  ❓ Not confirmed
+! ⚠ NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | join type=outer host [search * | stats count by host]
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ NRQL does not support full outer join; only INNER and LEFT joins are available</div>
-</div>
+```diff
+  SPL:  * | join type=outer host [search * | stats count by host]
+  🤖 Confirmed by LLM
+- ✗ NRQL does not support full outer join; only INNER and LEFT joins are available
+```
 <!-- /spl-cases -->
 
 #### `lookup` — Supported
@@ -966,32 +813,26 @@ NRQL: null</pre>
 Enriches events with fields from a lookup table. Translates to NRQL `JOIN` with `lookup()`.
 
 <!-- spl-cases: correlation-lookup -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | lookup geo_table src_ip
-NRQL: FROM Log JOIN (FROM lookup(geo_table) SELECT * FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Ensure lookup table 'geo_table' is uploaded via the Lookups UI</div>
-</div>
+```diff
+  SPL:  * | lookup geo_table src_ip
+  NRQL: FROM Log JOIN (FROM lookup(geo_table) SELECT * FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *
+  ❓ Not confirmed
+! ⚠ Ensure lookup table 'geo_table' is uploaded via the Lookups UI
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | lookup ip_to_country src_ip OUTPUT country
-NRQL: FROM Log JOIN (FROM lookup(ip_to_country) SELECT country FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Ensure lookup table 'ip_to_country' is uploaded via the Lookups UI</div>
-</div>
+```diff
+  SPL:  * | lookup ip_to_country src_ip OUTPUT country
+  NRQL: FROM Log JOIN (FROM lookup(ip_to_country) SELECT country FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *
+  🤖 Confirmed by LLM
+! ⚠ Ensure lookup table 'ip_to_country' is uploaded via the Lookups UI
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | lookup users_lookup username AS user OUTPUT department
-NRQL: FROM Log JOIN (FROM lookup(users_lookup) SELECT department FACET username LIMIT MAX) ON user = username SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Ensure lookup table 'users_lookup' is uploaded via the Lookups UI</div>
-</div>
+```diff
+  SPL:  * | lookup users_lookup username AS user OUTPUT department
+  NRQL: FROM Log JOIN (FROM lookup(users_lookup) SELECT department FACET username LIMIT MAX) ON user = username SELECT *
+  🤖 Confirmed by LLM
+! ⚠ Ensure lookup table 'users_lookup' is uploaded via the Lookups UI
+```
 <!-- /spl-cases -->
 
 #### `mvcombine` — Not supported
@@ -1003,14 +844,11 @@ Combines multivalue field entries into a single multivalue field. NRQL does not 
 **In New Relic:** Attributes can natively store arrays and nested objects (JSON). There's no need to "combine" rows into multivalue fields — use `uniques()` or `latest()` aggregation functions to collect values, or query the structured data directly.
 
 <!-- spl-cases: fields-mvcombine -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | mvcombine delim="," values
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'mvcombine' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | mvcombine delim="," values
+  🤖 Confirmed by LLM
+- ✗ SPL command 'mvcombine' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `mvexpand` — Partial support
@@ -1117,59 +955,49 @@ Sometimes `mvexpand` is applied to a field that is already single-value (defensi
 **Migration advice:** Before flagging `mvexpand` as a blocker, identify which pattern the customer is using. Most (~70%) are expand-then-filter or dedup round-trips that NRQL handles without row expansion. The truly unsupported cases are symmetric counting and per-element aggregation across events.
 
 <!-- spl-cases: unsupported-mvexpand -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath path=cloudformation{}.stack_prefix output=stack_prefix | mvexpand stack_prefix | search stack_prefix="fff000-gitlabrole"
-NRQL: FROM Log WITH jparse(message, 'cloudformation[*].stack_prefix') AS stack_prefix SELECT * WHERE stack_prefix = 'fff000-gitlabrole'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ mvexpand stack_prefix skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work</div>
-</div>
+```diff
+  SPL:  * | spath path=cloudformation{}.stack_prefix output=stack_prefix | mvexpand stack_prefix | search stack_prefix="fff000-gitlabrole"
+  NRQL: FROM Log WITH jparse(message, 'cloudformation[*].stack_prefix') AS stack_prefix SELECT * WHERE stack_prefix = 'fff000-gitlabrole'
+  🤖 Confirmed by LLM
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+! ⚠ mvexpand stack_prefix skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | mvexpand list(orderNumber)
-NRQL: FROM Log SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ mvexpand list(orderNumber) skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work</div>
-</div>
+```diff
+  SPL:  * | mvexpand list(orderNumber)
+  NRQL: FROM Log SELECT *
+  🤖 Confirmed by LLM
+! ⚠ mvexpand list(orderNumber) skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats values(title) as title | mvexpand title
-NRQL: FROM Log SELECT uniques(title) AS 'title'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ mvexpand title skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work</div>
-</div>
+```diff
+  SPL:  * | stats values(title) as title | mvexpand title
+  NRQL: FROM Log SELECT uniques(title) AS 'title'
+  🤖 Confirmed by LLM
+! ⚠ mvexpand title skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms
-NRQL: FROM Log WITH split(permissions, ',') AS perms SELECT count(*) FACET perms</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ mvexpand perms skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work</div>
-</div>
+```diff
+  SPL:  * | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms
+  NRQL: FROM Log WITH split(permissions, ',') AS perms SELECT count(*) FACET perms
+  🤖 Confirmed by LLM
+! ⚠ mvexpand perms skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset
-NRQL: FROM Log WITH mvappend(notable_src, notable_dest) AS notable_asset SELECT count(*) FACET notable_asset</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ mvexpand notable_asset skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work</div>
-</div>
+```diff
+  SPL:  * | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset
+  NRQL: FROM Log WITH mvappend(notable_src, notable_dest) AS notable_asset SELECT count(*) FACET notable_asset
+  🤖 Confirmed by LLM
+! ⚠ mvexpand notable_asset skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber
-NRQL: FROM Log SELECT uniques(orderNumber) AS 'orderNumber' WHERE index = 'k8s_main' AND message LIKE '%bopus%' AND orderType = 'BOPUS' AND storeNumber LIKE '%' AND orderNumber LIKE '%' FACET orderStatus, storeNumber ORDER BY orderNumber DESC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL list() mapped to NRQL uniques(); duplicates will be removed</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ mvexpand orderNumber skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work</div>
-</div>
+```diff
+  SPL:  index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber
+  NRQL: FROM Log SELECT uniques(orderNumber) AS 'orderNumber' WHERE index = 'k8s_main' AND message LIKE '%bopus%' AND orderType = 'BOPUS' AND storeNumber LIKE '%' AND orderNumber LIKE '%' FACET orderStatus, storeNumber ORDER BY orderNumber DESC
+  🤖 Confirmed by LLM
+! ⚠ SPL list() mapped to NRQL uniques(); duplicates will be removed
+! ⚠ mvexpand orderNumber skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
+```
 <!-- /spl-cases -->
 
 #### `rename` — Supported
@@ -1177,58 +1005,44 @@ NRQL: FROM Log SELECT uniques(orderNumber) AS 'orderNumber' WHERE index = 'k8s_m
 Renames fields. Translates to NRQL `AS` aliases.
 
 <!-- spl-cases: fields-rename -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rename src_ip AS source_address
-NRQL: FROM Log SELECT src_ip AS 'source_address', *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL rename keeps original field names alongside aliases</div>
-</div>
+```diff
+  SPL:  * | rename src_ip AS source_address
+  NRQL: FROM Log SELECT src_ip AS 'source_address', *
+  ❓ Not confirmed
+! ⚠ NRQL rename keeps original field names alongside aliases
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats avg(bytes) as avg_bytes by host | rename avg_bytes AS average_bytes
-NRQL: FROM Log SELECT average(bytes) AS 'average_bytes' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats avg(bytes) as avg_bytes by host | rename avg_bytes AS average_bytes
+  NRQL: FROM Log SELECT average(bytes) AS 'average_bytes' FACET host
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rename _time AS "Time"
-NRQL: FROM Log SELECT timestamp AS 'Time', *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL rename keeps original field names alongside aliases</div>
-</div>
+```diff
+  SPL:  * | rename _time AS "Time"
+  NRQL: FROM Log SELECT timestamp AS 'Time', *
+  ❓ Not confirmed
+! ⚠ NRQL rename keeps original field names alongside aliases
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rename src_ip as src user_name as user
-NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL rename keeps original field names alongside aliases</div>
-</div>
+```diff
+  SPL:  * | rename src_ip as src user_name as user
+  NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *
+  ❓ Not confirmed
+! ⚠ NRQL rename keeps original field names alongside aliases
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rename properties.* as *
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ Wildcard rename (properties.* as *) not supported in NRQL; rename specific fields</div>
-</div>
+```diff
+  SPL:  * | rename properties.* as *
+  ✅ Confirmed by human
+- ✗ Wildcard rename (properties.* as *) not supported in NRQL; rename specific fields
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rename "IsOutlier(count)" as isOutlier
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ Cannot rename field with parentheses in name: "IsOutlier(count)"</div>
-</div>
+```diff
+  SPL:  * | rename "IsOutlier(count)" as isOutlier
+  ❓ Not confirmed
+- ✗ Cannot rename field with parentheses in name: "IsOutlier(count)"
+```
 <!-- /spl-cases -->
 
 #### `replace` — Partial support
@@ -1268,29 +1082,23 @@ Replaces field values using wildcards or exact matches. NRQL has no in-place fie
 </details>
 
 <!-- spl-cases: fields-replace -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | replace "error" WITH "warning" IN message
-NRQL: FROM Log SELECT replace(message, 'error', 'warning'), *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | replace "error" WITH "warning" IN message
+  NRQL: FROM Log SELECT replace(message, 'error', 'warning'), *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype
-NRQL: FROM Log SELECT count(*) FACET replace(sourcetype, 'kube:container:', '')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype
+  NRQL: FROM Log SELECT count(*) FACET replace(sourcetype, 'kube:container:', '')
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType
-NRQL: FROM Log SELECT replace(replace(OperationType, '%%14674', 'Value Added'), '%%14675', 'Value Deleted'), *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType
+  NRQL: FROM Log SELECT replace(replace(OperationType, '%%14674', 'Value Added'), '%%14675', 'Value Deleted'), *
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 #### `rex` — Supported
@@ -1298,71 +1106,53 @@ NRQL: FROM Log SELECT replace(replace(OperationType, '%%14674', 'Value Added'), 
 Extracts fields using regular expressions. Translates to NRQL `capture()` or `aparse()`.
 
 <!-- spl-cases: fields-rex -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex field=message "(?&lt;ip&gt;\d+\.\d+\.\d+\.\d+)"
-NRQL: FROM Log WITH capture(message, r'.*(?P&lt;ip&gt;\d+\.\d+\.\d+\.\d+).*') AS (ip) SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rex field=message "(?<ip>\d+\.\d+\.\d+\.\d+)"
+  NRQL: FROM Log WITH capture(message, r'.*(?P<ip>\d+\.\d+\.\d+\.\d+).*') AS (ip) SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex "user=(?&lt;username&gt;\w+)"
-NRQL: FROM Log WITH capture(message, r'.*user=(?P&lt;username&gt;\w+).*') AS (username) SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rex "user=(?<username>\w+)"
+  NRQL: FROM Log WITH capture(message, r'.*user=(?P<username>\w+).*') AS (username) SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex field=_raw "From: &lt;(?&lt;from&gt;.*)&gt; To: &lt;(?&lt;to&gt;.*)&gt;"
-NRQL: FROM Log WITH capture(message, r'.*From: &lt;(?P&lt;from&gt;.*)&gt; To: &lt;(?:.*)&gt;.*') AS `from`, capture(message, r'.*From: &lt;(?:.*)&gt; To: &lt;(?P&lt;to&gt;.*)&gt;.*') AS to SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | rex field=_raw "From: <(?<from>.*)> To: <(?<to>.*)>"
+  NRQL: FROM Log WITH capture(message, r'.*From: <(?P<from>.*)> To: <(?:.*)>.*') AS `from`, capture(message, r'.*From: <(?:.*)> To: <(?P<to>.*)>.*') AS to SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex field=_raw ".*dlq\/(?P&lt;dlq_key&gt;\d+),"
-NRQL: FROM Log WITH capture(message, r'.*dlq\/(?P&lt;dlq_key&gt;\d+),.*') AS (dlq_key) SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rex field=_raw ".*dlq\/(?P<dlq_key>\d+),"
+  NRQL: FROM Log WITH capture(message, r'.*dlq\/(?P<dlq_key>\d+),.*') AS (dlq_key) SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex "status=(?&lt;code&gt;\d+)" | stats count by code
-NRQL: FROM Log WITH capture(message, r'.*status=(?P&lt;code&gt;\d+).*') AS (code) SELECT count(*) FACET code</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rex "status=(?<code>\d+)" | stats count by code
+  NRQL: FROM Log WITH capture(message, r'.*status=(?P<code>\d+).*') AS (code) SELECT count(*) FACET code
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex field=message "\"orderId\":\"(?&lt;orderId&gt;[A-Z0-9-]+)\""
-NRQL: FROM Log WITH capture(message, r'.*\"orderId\":\"(?P&lt;orderId&gt;[A-Z0-9-]+)\".*') AS (orderId) SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rex field=message "\"orderId\":\"(?<orderId>[A-Z0-9-]+)\""
+  NRQL: FROM Log WITH capture(message, r'.*\"orderId\":\"(?P<orderId>[A-Z0-9-]+)\".*') AS (orderId) SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex field=message "\d+"
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ rex pattern has no named capture groups; nothing to extract</div>
-</div>
+```diff
+  SPL:  * | rex field=message "\d+"
+  ✅ Confirmed by human
+- ✗ rex pattern has no named capture groups; nothing to extract
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex field=message "(?&lt;skus&gt;\d{6,})" max_match=0
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ rex max_match not supported; NRQL capture() returns first match only</div>
-</div>
+```diff
+  SPL:  * | rex field=message "(?<skus>\d{6,})" max_match=0
+  ✅ Confirmed by human
+- ✗ rex max_match not supported; NRQL capture() returns first match only
+```
 <!-- /spl-cases -->
 
 #### `rex` (sed mode) — Not supported
@@ -1370,14 +1160,11 @@ NRQL: null</pre>
 Uses sed-like syntax for in-line string substitution. Limited NRQL support via string functions.
 
 <!-- spl-cases: fields-rex-sed -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex mode=sed field=message "s/old/new/g"
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ rex mode=sed has no NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | rex mode=sed field=message "s/old/new/g"
+  ✅ Confirmed by human
+- ✗ rex mode=sed has no NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `rex` (PCRE-only features) — Partial support
@@ -1385,14 +1172,11 @@ NRQL: null</pre>
 PCRE features like lookaheads/lookbehinds and backreferences. NRQL's RE2 regex engine does not support these.
 
 <!-- spl-cases: fields-rex-pcre -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rex field=message "(?&lt;=prefix)(?&lt;val&gt;\w+)"
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround</div>
-</div>
+```diff
+  SPL:  * | rex field=message "(?<=prefix)(?<val>\w+)"
+  🤖 Confirmed by LLM
+- ✗ rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround
+```
 <!-- /spl-cases -->
 
 #### `search` (pipe) — Supported
@@ -1400,37 +1184,29 @@ NRQL: null</pre>
 Filters results with search criteria (same as implicit search). Translates to additional NRQL `WHERE` conditions.
 
 <!-- spl-cases: results-search -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=web | stats count by status | search status=200
-NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND status = '200' OR numeric(status) = 200 FACET status</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  index=web | stats count by status | search status=200
+  NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND status = '200' OR numeric(status) = 200 FACET status
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=500 | search error
-NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message LIKE '%error%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  status=500 | search error
+  NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message LIKE '%error%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | search status=200 OR status=301
-NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 OR status = '301' OR numeric(status) = 301</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | search status=200 OR status=301
+  NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 OR status = '301' OR numeric(status) = 301
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | search host=web01
-NRQL: FROM Log SELECT * WHERE host = 'web01'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  | search host=web01
+  NRQL: FROM Log SELECT * WHERE host = 'web01'
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 #### `spath` — Partial support
@@ -1438,130 +1214,101 @@ NRQL: FROM Log SELECT * WHERE host = 'web01'</pre>
 Extracts fields from structured data (JSON, XML). Translates to NRQL `jparse()` for JSON paths.
 
 <!-- spl-cases: fields-spath -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath input=payload path=user.name output=username
-NRQL: FROM Log WITH jparse(payload, 'user.name') AS username SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath input=payload path=user.name output=username
+  NRQL: FROM Log WITH jparse(payload, 'user.name') AS username SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath path=response.status
-NRQL: FROM Log WITH jparse(message, 'response.status') AS status SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath path=response.status
+  NRQL: FROM Log WITH jparse(message, 'response.status') AS status SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath input=_raw path=data.id output=id
-NRQL: FROM Log WITH jparse(message, 'data.id') AS id SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath input=_raw path=data.id output=id
+  NRQL: FROM Log WITH jparse(message, 'data.id') AS id SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath path=response.code output=code | stats count by code
-NRQL: FROM Log WITH jparse(message, 'response.code') AS code SELECT count(*) FACET code</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath path=response.code output=code | stats count by code
+  NRQL: FROM Log WITH jparse(message, 'response.code') AS code SELECT count(*) FACET code
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath path=user.name output=name | spath path=user.email output=email
-NRQL: FROM Log WITH jparse(message, 'user.name') AS name, jparse(message, 'user.email') AS email SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath path=user.name output=name | spath path=user.email output=email
+  NRQL: FROM Log WITH jparse(message, 'user.name') AS name, jparse(message, 'user.email') AS email SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath path=request.url output=url | rex field=url "(?&lt;domain&gt;[^/]+)"
-NRQL: FROM Log WITH jparse(message, 'request.url') AS url, capture(url, r'.*(?P&lt;domain&gt;[^/]+).*') AS (domain) SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath path=request.url output=url | rex field=url "(?<domain>[^/]+)"
+  NRQL: FROM Log WITH jparse(message, 'request.url') AS url, capture(url, r'.*(?P<domain>[^/]+).*') AS (domain) SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath "AppID"
-NRQL: FROM Log WITH jparse(message, 'AppID') AS AppID SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath "AppID"
+  NRQL: FROM Log WITH jparse(message, 'AppID') AS AppID SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath source_name
-NRQL: FROM Log WITH jparse(message, 'source_name') AS source_name SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath source_name
+  NRQL: FROM Log WITH jparse(message, 'source_name') AS source_name SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath path=errors{}.code output=error_code | search error_code=404
-NRQL: FROM Log WITH jparse(message, 'errors[*].code') AS error_code SELECT * WHERE error_code = '404' OR numeric(error_code) = 404</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath path=errors{}.code output=error_code | search error_code=404
+  NRQL: FROM Log WITH jparse(message, 'errors[*].code') AS error_code SELECT * WHERE error_code = '404' OR numeric(error_code) = 404
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath path=items{}.status
-NRQL: FROM Log WITH jparse(message, 'items[*].status') AS status SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath path=items{}.status
+  NRQL: FROM Log WITH jparse(message, 'items[*].status') AS status SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath input=request_body path=user.preferences{}.key output=pref_key
-NRQL: FROM Log WITH jparse(request_body, 'user.preferences[*].key') AS pref_key SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead</div>
-</div>
+```diff
+  SPL:  * | spath input=request_body path=user.preferences{}.key output=pref_key
+  NRQL: FROM Log WITH jparse(request_body, 'user.preferences[*].key') AS pref_key SELECT *
+  ✅ Confirmed by human
+! ⚠ jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval user_id = json_extract(payload, "$.user.id")
-NRQL: FROM Log WITH jparse(payload, 'user.id') AS user_id SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval user_id = json_extract(payload, "$.user.id")
+  NRQL: FROM Log WITH jparse(payload, 'user.id') AS user_id SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field</div>
-</div>
+```diff
+  SPL:  * | spath
+  ✅ Confirmed by human
+- ✗ spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | spath input=payload
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field</div>
-</div>
+```diff
+  SPL:  * | spath input=payload
+  ✅ Confirmed by human
+- ✗ spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
+```
 <!-- /spl-cases -->
 
 #### `stats` — Supported
@@ -1569,77 +1316,59 @@ NRQL: null</pre>
 Computes aggregate statistics over events. Translates to NRQL `SELECT aggregate(...) FACET ...`.
 
 <!-- spl-cases: reports-stats -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=web | stats count by status
-NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET status</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  index=web | stats count by status
+  NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET status
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats avg(response_time) as avg_response_time by host
-NRQL: FROM Log SELECT average(response_time) AS 'avg_response_time' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats avg(response_time) as avg_response_time by host
+  NRQL: FROM Log SELECT average(response_time) AS 'avg_response_time' FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=web | stats count, dc(clientip) AS unique_clients BY status
-NRQL: FROM Log SELECT count(*), uniqueCount(clientip) AS 'unique_clients' WHERE index = 'web' FACET status</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  index=web | stats count, dc(clientip) AS unique_clients BY status
+  NRQL: FROM Log SELECT count(*), uniqueCount(clientip) AS 'unique_clients' WHERE index = 'web' FACET status
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count min(_time) as firstTime max(_time) as lastTime BY user dest
-NRQL: FROM Log SELECT count(*), min(timestamp) AS 'firstTime', max(timestamp) AS 'lastTime' FACET user, dest</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count min(_time) as firstTime max(_time) as lastTime BY user dest
+  NRQL: FROM Log SELECT count(*), min(timestamp) AS 'firstTime', max(timestamp) AS 'lastTime' FACET user, dest
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count(status) by host
-NRQL: FROM Log SELECT count(status) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count(status) by host
+  NRQL: FROM Log SELECT count(status) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count as "totalFailure"
-NRQL: FROM Log SELECT count(*) AS 'totalFailure'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count as "totalFailure"
+  NRQL: FROM Log SELECT count(*) AS 'totalFailure'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count as 'my count'
-NRQL: FROM Log SELECT count(*) AS 'my count'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count as 'my count'
+  NRQL: FROM Log SELECT count(*) AS 'my count'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count(eval(status&gt;=400)) as errors
-NRQL: FROM Log SELECT filter(count(*), WHERE numeric(status) &gt;= 400) AS 'errors'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count(eval(status>=400)) as errors
+  NRQL: FROM Log SELECT filter(count(*), WHERE numeric(status) >= 400) AS 'errors'
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count(eval(EventCode=4648)) as attempts, count(eval(EventCode=4624)) as successes
-NRQL: FROM Log SELECT filter(count(*), WHERE EventCode = '4648' OR numeric(EventCode) = 4648) AS 'attempts', filter(count(*), WHERE EventCode = '4624' OR numeric(EventCode) = 4624) AS 'successes'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count(eval(EventCode=4648)) as attempts, count(eval(EventCode=4624)) as successes
+  NRQL: FROM Log SELECT filter(count(*), WHERE EventCode = '4648' OR numeric(EventCode) = 4648) AS 'attempts', filter(count(*), WHERE EventCode = '4624' OR numeric(EventCode) = 4624) AS 'successes'
+  ❓ Not confirmed
+```
 <!-- /spl-cases -->
 
 #### Multiple chained aggregations
@@ -1651,23 +1380,19 @@ _No test cases for this section._
 <!-- /spl-cases -->
 
 <!-- spl-cases: reports-chained-agg-no-outer-facet -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by host | stats avg(count)
-NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT average(count)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count by host | stats avg(count)
+  NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT average(count)
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 <!-- spl-cases: reports-chained-agg-aliased -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=web | stats count as cnt by host | stats max(cnt)
-NRQL: FROM (FROM Log SELECT count(*) AS 'cnt' WHERE index = 'web' FACET host LIMIT MAX) SELECT max(cnt)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  index=web | stats count as cnt by host | stats max(cnt)
+  NRQL: FROM (FROM Log SELECT count(*) AS 'cnt' WHERE index = 'web' FACET host LIMIT MAX) SELECT max(cnt)
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 #### `streamstats` — Not supported
@@ -1713,14 +1438,11 @@ Computes running statistics over events in stream order. Like `eventstats`, NRQL
 </details>
 
 <!-- spl-cases: reports-streamstats -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | streamstats count by host
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'streamstats' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | streamstats count by host
+  🤖 Confirmed by LLM
+- ✗ SPL command 'streamstats' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `strcat` — Supported
@@ -1728,37 +1450,29 @@ NRQL: null</pre>
 Concatenates string values. Translates to NRQL `concat()` in a WITH clause.
 
 <!-- spl-cases: fields-strcat -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | strcat host ":" port address
-NRQL: FROM Log WITH concat(host, ':', port) AS address SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | strcat host ":" port address
+  NRQL: FROM Log WITH concat(host, ':', port) AS address SELECT *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | strcat first_name last_name full_name
-NRQL: FROM Log WITH concat(first_name, last_name) AS full_name SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | strcat first_name last_name full_name
+  NRQL: FROM Log WITH concat(first_name, last_name) AS full_name SELECT *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | strcat protocol "://" host ":" port url
-NRQL: FROM Log WITH concat(protocol, '://', host, ':', port) AS url SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | strcat protocol "://" host ":" port url
+  NRQL: FROM Log WITH concat(protocol, '://', host, ':', port) AS url SELECT *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | strcat host ":" port address | stats count by address
-NRQL: FROM Log WITH concat(host, ':', port) AS address SELECT count(*) FACET address</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | strcat host ":" port address | stats count by address
+  NRQL: FROM Log WITH concat(host, ':', port) AS address SELECT count(*) FACET address
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 #### `table` — Supported
@@ -1772,78 +1486,60 @@ See [Fields > `table` / `fields`](#table--fields--partial-support) — `table` a
 Creates time series charts by bucketing events into time intervals. Translates to NRQL `SELECT ... TIMESERIES span`.
 
 <!-- spl-cases: reports-timechart -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart count
-NRQL: FROM Log SELECT count(*) TIMESERIES AUTO</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | timechart count
+  NRQL: FROM Log SELECT count(*) TIMESERIES AUTO
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  sourcetype=access_* | timechart span=1h count by status
-NRQL: FROM Log SELECT count(*) WHERE sourcetype LIKE 'access_%' FACET status TIMESERIES 1 hour</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  sourcetype=access_* | timechart span=1h count by status
+  NRQL: FROM Log SELECT count(*) WHERE sourcetype LIKE 'access_%' FACET status TIMESERIES 1 hour
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart span=5m count BY host
-NRQL: FROM Log SELECT count(*) FACET host TIMESERIES 5 minutes</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | timechart span=5m count BY host
+  NRQL: FROM Log SELECT count(*) FACET host TIMESERIES 5 minutes
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart span=1d sum(price) by productName
-NRQL: FROM Log SELECT sum(price) FACET productName TIMESERIES 1 day</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | timechart span=1d sum(price) by productName
+  NRQL: FROM Log SELECT sum(price) FACET productName TIMESERIES 1 day
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart count span=5m
-NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | timechart count span=5m
+  NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart count(POS) span=5m as "TPOS"
-NRQL: FROM Log SELECT count(POS) AS 'TPOS' TIMESERIES 5 minutes</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | timechart count(POS) span=5m as "TPOS"
+  NRQL: FROM Log SELECT count(POS) AS 'TPOS' TIMESERIES 5 minutes
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart c span=1m
-NRQL: FROM Log SELECT count(*) TIMESERIES 1 minute</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | timechart c span=1m
+  NRQL: FROM Log SELECT count(*) TIMESERIES 1 minute
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart span=30m count | predict count as predict_count
-NRQL: FROM Log SELECT count(*) TIMESERIES 30 minutes PREDICT</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | timechart span=30m count | predict count as predict_count
+  NRQL: FROM Log SELECT count(*) TIMESERIES 30 minutes PREDICT
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count | predict count
-NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically</div>
-</div>
+```diff
+  SPL:  * | stats count | predict count
+  NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT
+  🤖 Confirmed by LLM
+! ⚠ PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically
+```
 <!-- /spl-cases -->
 
 #### `timewrap` — Not supported
@@ -1851,14 +1547,11 @@ NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT</pre>
 Overlays time series data from different time periods. NRQL has no time-wrapping. Use `COMPARE WITH` to compare the current time range against a prior period.
 
 <!-- spl-cases: reports-timewrap -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart count | timewrap 1d
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'timewrap' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | timechart count | timewrap 1d
+  🤖 Confirmed by LLM
+- ✗ SPL command 'timewrap' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `top` — Supported
@@ -1868,86 +1561,66 @@ Shows the most common values of a field. Translates to NRQL `SELECT count(*) FAC
 > **Note:** SPL `top` also outputs a `percent` column. The NRQL translation approximates this with a scalar subquery (`count(*) * 100.0 / (SELECT count(*) FROM Log)`), but the result may differ from SPL's built-in percentage in edge cases (e.g., when combined with WHERE clauses or groupBy).
 
 <!-- spl-cases: reports-top -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top categoryId
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | top categoryId
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top 20 host
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | top 20 host
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top limit=20 host
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | top limit=20 host
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top limit=0 status
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | top limit=0 status
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top limit=5 countfield=total host
-NRQL: FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | top limit=5 countfield=total host
+  NRQL: FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top 10 showperc=false host
-NRQL: FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | top 10 showperc=false host
+  NRQL: FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 10
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top 5 useother=true status
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ useother: NRQL pie chart automatically shows an "Other" category for values outside LIMIT</div>
-</div>
+```diff
+  SPL:  * | top 5 useother=true status
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5
+  🤖 Confirmed by LLM
+! ⚠ useother: NRQL pie chart automatically shows an "Other" category for values outside LIMIT
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top 5 percentfield=pct host
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | top 5 percentfield=pct host
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top delay limit=10
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | top delay limit=10
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error | top 5 status
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  error | top 5 status
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 #### `top` with `groupby` — Partial support
@@ -1955,14 +1628,12 @@ NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHE
 Top values per group. SPL `top 5 status by host` returns the top 5 statuses **per host** (partitioned top-N). NRQL has no windowing/ranking functions, so this is approximated as a global `FACET status, host` which returns the top 5 (status, host) pairs overall — different semantics.
 
 <!-- spl-cases: reports-top-groupby -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | top 5 status by host
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ top with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value</div>
-</div>
+```diff
+  SPL:  * | top 5 status by host
+  NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5
+  🤖 Confirmed by LLM
+! ⚠ top with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value
+```
 <!-- /spl-cases -->
 
 #### `transaction` — Not supported
@@ -2003,14 +1674,11 @@ Splunk's `transaction` groups a sequence of events that share a field value (lik
 </details>
 
 <!-- spl-cases: correlation-transaction -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | transaction clientip maxspan=10m
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'transaction' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | transaction clientip maxspan=10m
+  🤖 Confirmed by LLM
+- ✗ SPL command 'transaction' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `where` — Supported
@@ -2018,123 +1686,95 @@ NRQL: null</pre>
 Filters results using boolean expressions. Supports comparison operators, `isnull()`, `isnotnull()`, `like()`, `match()`, `cidrmatch()`, and `isint()`.
 
 <!-- spl-cases: results-where -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where isint(orderId)
-NRQL: FROM Log SELECT * WHERE numeric(orderId) IS NOT NULL</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Unknown search node type: FunctionCall</div>
-</div>
+```diff
+  SPL:  * | where isint(orderId)
+  NRQL: FROM Log SELECT * WHERE numeric(orderId) IS NOT NULL
+  ✅ Confirmed by human
+! ⚠ Unknown search node type: FunctionCall
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where name like "test%"
-NRQL: FROM Log SELECT * WHERE name LIKE 'test%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | where name like "test%"
+  NRQL: FROM Log SELECT * WHERE name LIKE 'test%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=web | stats count BY status | where count &gt; 100
-NRQL: FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET status LIMIT MAX) SELECT * WHERE numeric(count) &gt; 100</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  index=web | stats count BY status | where count > 100
+  NRQL: FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET status LIMIT MAX) SELECT * WHERE numeric(count) > 100
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=500 | where bytes &gt; 1024
-NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND numeric(bytes) &gt; 1024</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  status=500 | where bytes > 1024
+  NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND numeric(bytes) > 1024
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where isnull(status)
-NRQL: FROM Log SELECT * WHERE status IS NULL</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Unknown search node type: FunctionCall</div>
-</div>
+```diff
+  SPL:  * | where isnull(status)
+  NRQL: FROM Log SELECT * WHERE status IS NULL
+  ✅ Confirmed by human
+! ⚠ Unknown search node type: FunctionCall
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where isnotnull(status)
-NRQL: FROM Log SELECT * WHERE status IS NOT NULL</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Unknown search node type: FunctionCall</div>
-</div>
+```diff
+  SPL:  * | where isnotnull(status)
+  NRQL: FROM Log SELECT * WHERE status IS NOT NULL
+  ✅ Confirmed by human
+! ⚠ Unknown search node type: FunctionCall
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where host = "web01"
-NRQL: FROM Log SELECT * WHERE host = 'web01'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | where host = "web01"
+  NRQL: FROM Log SELECT * WHERE host = 'web01'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where count &gt; 100
-NRQL: FROM Log SELECT * WHERE numeric(count) &gt; 100</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | where count > 100
+  NRQL: FROM Log SELECT * WHERE numeric(count) > 100
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where like(host, "web*")
-NRQL: FROM Log SELECT * WHERE host LIKE 'web%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Unknown search node type: FunctionCall</div>
-</div>
+```diff
+  SPL:  * | where like(host, "web*")
+  NRQL: FROM Log SELECT * WHERE host LIKE 'web%'
+  🤖 Confirmed by LLM
+! ⚠ Unknown search node type: FunctionCall
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where name like "%test%"
-NRQL: FROM Log SELECT * WHERE name LIKE '%test%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | where name like "%test%"
+  NRQL: FROM Log SELECT * WHERE name LIKE '%test%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where match(host, "^web[0-9]+$")
-NRQL: FROM Log SELECT * WHERE host RLIKE r'^web[0-9]+$'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Unknown search node type: FunctionCall</div>
-</div>
+```diff
+  SPL:  * | where match(host, "^web[0-9]+$")
+  NRQL: FROM Log SELECT * WHERE host RLIKE r'^web[0-9]+$'
+  🤖 Confirmed by LLM
+! ⚠ Unknown search node type: FunctionCall
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where cidrmatch("10.0.0.0/8", src_ip)
-NRQL: FROM Log SELECT * WHERE cidrAddress(src_ip, 8) = '10.0.0.0/8'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Unknown search node type: FunctionCall</div>
-</div>
+```diff
+  SPL:  * | where cidrmatch("10.0.0.0/8", src_ip)
+  NRQL: FROM Log SELECT * WHERE cidrAddress(src_ip, 8) = '10.0.0.0/8'
+  🤖 Confirmed by LLM
+! ⚠ Unknown search node type: FunctionCall
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where status &gt;= 400 AND status &lt; 500
-NRQL: FROM Log SELECT * WHERE numeric(status) &gt;= 400 AND numeric(status) &lt; 500</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | where status >= 400 AND status < 500
+  NRQL: FROM Log SELECT * WHERE numeric(status) >= 400 AND numeric(status) < 500
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where NOT status = 200
-NRQL: FROM Log SELECT * WHERE NOT (status = '200' OR numeric(status) = 200)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | where NOT status = 200
+  NRQL: FROM Log SELECT * WHERE NOT (status = '200' OR numeric(status) = 200)
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 #### `where` on aggregation result — Supported
@@ -2142,29 +1782,23 @@ NRQL: FROM Log SELECT * WHERE NOT (status = '200' OR numeric(status) = 200)</pre
 Filters aggregation results (equivalent to SQL HAVING). Translates to NRQL `WHERE` on aggregate expressions.
 
 <!-- spl-cases: results-where-on-agg -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by host | where NOT count = 0
-NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE NOT (count = '0' OR numeric(count) = 0)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count by host | where NOT count = 0
+  NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE NOT (count = '0' OR numeric(count) = 0)
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by host | where count &gt; 100 AND count &lt; 1000
-NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeric(count) &gt; 100 AND numeric(count) &lt; 1000</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count by host | where count > 100 AND count < 1000
+  NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeric(count) > 100 AND numeric(count) < 1000
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count | where count &gt; 0
-NRQL: FROM (FROM Log SELECT count(*)) SELECT * WHERE numeric(count) &gt; 0</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count | where count > 0
+  NRQL: FROM (FROM Log SELECT count(*)) SELECT * WHERE numeric(count) > 0
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 #### `xmlkv` — Not supported
@@ -2172,14 +1806,11 @@ NRQL: FROM (FROM Log SELECT count(*)) SELECT * WHERE numeric(count) &gt; 0</pre>
 Extracts key-value pairs from XML data. NRQL has no XML parser; consider using `spath` (jparse()) if the data can be converted to JSON at ingest time.
 
 <!-- spl-cases: fields-xmlkv -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | xmlkv
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'xmlkv' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | xmlkv
+  🤖 Confirmed by LLM
+- ✗ SPL command 'xmlkv' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 ### Eval Functions
@@ -2193,141 +1824,107 @@ Evaluation functions are used inside `eval`, `where`, and `case` expressions.
 Most conditional functions translate to NRQL equivalents: `if()` → `if()`, `case()` → nested `if()`, `isnull()` → `IS NULL`, `isnotnull()` → `IS NOT NULL`, `like()` → `LIKE`, `match()` → `RLIKE`, `in()` → `IN`. Functions without equivalents: `validate()`, `searchmatch()`.
 
 <!-- spl-cases: eval-conditional -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x = if(status=200, "ok", "err")
-NRQL: FROM Log WITH if(status = '200' OR numeric(status) = 200, 'ok', 'err') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x = if(status=200, "ok", "err")
+  NRQL: FROM Log WITH if(status = '200' OR numeric(status) = 200, 'ok', 'err') AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x = if(a&gt;1, "y", "n")
-NRQL: FROM Log WITH if(numeric(a) &gt; 1, 'y', 'n') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x = if(a>1, "y", "n")
+  NRQL: FROM Log WITH if(numeric(a) > 1, 'y', 'n') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval FLSQuantity=if(channelName=="FLS", availableQuantityInChannel, 0)
-NRQL: FROM Log WITH if(channelName = 'FLS', availableQuantityInChannel, 0) AS FLSQuantity SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval FLSQuantity=if(channelName=="FLS", availableQuantityInChannel, 0)
+  NRQL: FROM Log WITH if(channelName = 'FLS', availableQuantityInChannel, 0) AS FLSQuantity SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if(a &gt; 0 and b &gt; 0, "both", "nope")
-NRQL: FROM Log WITH if(numeric(a) &gt; 0 AND numeric(b) &gt; 0, 'both', 'nope') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if(a > 0 and b > 0, "both", "nope")
+  NRQL: FROM Log WITH if(numeric(a) > 0 AND numeric(b) > 0, 'both', 'nope') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval level = case(status&lt;300, "ok", status&lt;500, "warn", 1=1, "err")
-NRQL: FROM Log WITH if(numeric(status) &lt; 300, 'ok', if(numeric(status) &lt; 500, 'warn', 'err')) AS level SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval level = case(status<300, "ok", status<500, "warn", 1=1, "err")
+  NRQL: FROM Log WITH if(numeric(status) < 300, 'ok', if(numeric(status) < 500, 'warn', 'err')) AS level SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=case(a=1, "one", b=2, "two", 1=1, "other")
-NRQL: FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', 'other')) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=case(a=1, "one", b=2, "two", 1=1, "other")
+  NRQL: FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', 'other')) AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=case(a=1, "one", b=2, "two")
-NRQL: FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', NULL)) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=case(a=1, "one", b=2, "two")
+  NRQL: FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', NULL)) AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if(a &gt; 0 or b &gt; 0, "yes", "no")
-NRQL: FROM Log WITH if(numeric(a) &gt; 0 OR numeric(b) &gt; 0, 'yes', 'no') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if(a > 0 or b > 0, "yes", "no")
+  NRQL: FROM Log WITH if(numeric(a) > 0 OR numeric(b) > 0, 'yes', 'no') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if((a &gt; 0) or (b &gt; 0), "yes", "no")
-NRQL: FROM Log WITH if(numeric(a) &gt; 0 OR numeric(b) &gt; 0, 'yes', 'no') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if((a > 0) or (b > 0), "yes", "no")
+  NRQL: FROM Log WITH if(numeric(a) > 0 OR numeric(b) > 0, 'yes', 'no') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if(count &gt; (a + b), "over", "under")
-NRQL: FROM Log WITH if(numeric(count) &gt; numeric(a) + numeric(b), 'over', 'under') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if(count > (a + b), "over", "under")
+  NRQL: FROM Log WITH if(numeric(count) > numeric(a) + numeric(b), 'over', 'under') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if(skuCount &gt; FCQuantity, "yes", "no")
-NRQL: FROM Log WITH if(numeric(skuCount) &gt; numeric(FCQuantity), 'yes', 'no') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if(skuCount > FCQuantity, "yes", "no")
+  NRQL: FROM Log WITH if(numeric(skuCount) > numeric(FCQuantity), 'yes', 'no') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if(isnull(field), "missing", field)
-NRQL: FROM Log WITH if(field IS NULL, 'missing', field) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if(isnull(field), "missing", field)
+  NRQL: FROM Log WITH if(field IS NULL, 'missing', field) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if(isnotnull(field), field, "default")
-NRQL: FROM Log WITH if(field IS NOT NULL, field, 'default') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if(isnotnull(field), field, "default")
+  NRQL: FROM Log WITH if(field IS NOT NULL, field, 'default') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if(like(name, "test%"), "match", "no")
-NRQL: FROM Log WITH if(name LIKE 'test%', 'match', 'no') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if(like(name, "test%"), "match", "no")
+  NRQL: FROM Log WITH if(name LIKE 'test%', 'match', 'no') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval match=if(a==b, "same", "diff")
-NRQL: FROM Log WITH if(a = b, 'same', 'diff') AS match SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval match=if(a==b, "same", "diff")
+  NRQL: FROM Log WITH if(a = b, 'same', 'diff') AS match SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=if(a &gt; 0, "yes")
-NRQL: FROM Log WITH if(numeric(a) &gt; 0, 'yes') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=if(a > 0, "yes")
+  NRQL: FROM Log WITH if(numeric(a) > 0, 'yes') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=case("only")
-NRQL: FROM Log WITH 'only' AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=case("only")
+  NRQL: FROM Log WITH 'only' AS x SELECT *
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### String Functions
@@ -2337,207 +1934,149 @@ NRQL: FROM Log WITH 'only' AS x SELECT *</pre>
 String functions translate to NRQL equivalents where available: `lower()` → `lower()`, `upper()` → `upper()`, `len()` → `length()`, `substr()` → `substring()`, `replace()` → `replace()`. Some functions like `urldecode()` have no direct equivalent.
 
 <!-- spl-cases: eval-string -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval name = lower(username)
-NRQL: FROM Log WITH lower(username) AS name SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval name = lower(username)
+  NRQL: FROM Log WITH lower(username) AS name SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval full = first . " " . last
-NRQL: FROM Log WITH concat(first, ' ', last) AS full SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval full = first . " " . last
+  NRQL: FROM Log WITH concat(first, ' ', last) AS full SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=upper(name)
-NRQL: FROM Log WITH upper(name) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=upper(name)
+  NRQL: FROM Log WITH upper(name) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=substr(name, 1, 3)
-NRQL: FROM Log WITH substring(name, 0, 3) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=substr(name, 1, 3)
+  NRQL: FROM Log WITH substring(name, 0, 3) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=substr(name, -3)
-NRQL: FROM Log WITH substring(name, -3) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=substr(name, -3)
+  NRQL: FROM Log WITH substring(name, -3) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=trim(name)
-NRQL: FROM Log WITH capture(name, r'^\s*(?P&lt;x&gt;.*\S)\s*$') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=trim(name)
+  NRQL: FROM Log WITH capture(name, r'^\s*(?P<x>.*\S)\s*$') AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=ltrim(name)
-NRQL: FROM Log WITH capture(name, r'^\s*(?P&lt;x&gt;.*)$') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=ltrim(name)
+  NRQL: FROM Log WITH capture(name, r'^\s*(?P<x>.*)$') AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "a", "b")
-NRQL: FROM Log WITH replace(name, 'a', 'b') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "a", "b")
+  NRQL: FROM Log WITH replace(name, 'a', 'b') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "SKU:", "")
-NRQL: FROM Log WITH replace(name, 'SKU:', '') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "SKU:", "")
+  NRQL: FROM Log WITH replace(name, 'SKU:', '') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "]", "")
-NRQL: FROM Log WITH replace(name, ']', '') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "]", "")
+  NRQL: FROM Log WITH replace(name, ']', '') AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "old.host.com", "new.host.com")
-NRQL: FROM Log WITH replace(name, 'old.host.com', 'new.host.com') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "old.host.com", "new.host.com")
+  NRQL: FROM Log WITH replace(name, 'old.host.com', 'new.host.com') AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "foo-bar", "baz")
-NRQL: FROM Log WITH replace(name, 'foo-bar', 'baz') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "foo-bar", "baz")
+  NRQL: FROM Log WITH replace(name, 'foo-bar', 'baz') AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(uri, "https://old.com/api?key=val", "https://new.com/api")
-NRQL: FROM Log WITH replace(uri, 'https://old.com/api?key=val', 'https://new.com/api') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(uri, "https://old.com/api?key=val", "https://new.com/api")
+  NRQL: FROM Log WITH replace(uri, 'https://old.com/api?key=val', 'https://new.com/api') AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(uri, "/path/to+file", "/path/to_file")
-NRQL: FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(uri, "/path/to+file", "/path/to_file")
+  NRQL: FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *
+  ❓ Not confirmed
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "\\d+", "")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern '\d+' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "\\d+", "")
+  🤖 Confirmed by LLM
+- ✗ replace() with regex pattern '\d+' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "[abc]", "")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern '[abc]' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "[abc]", "")
+  🤖 Confirmed by LLM
+- ✗ replace() with regex pattern '[abc]' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "test.*end", "")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern 'test.*end' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "test.*end", "")
+  🤖 Confirmed by LLM
+- ✗ replace() with regex pattern 'test.*end' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "\d+", "")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern 'd+' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "\d+", "")
+  ❓ Not confirmed
+- ✗ replace() with regex pattern 'd+' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "foo+", "")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern 'foo+' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "foo+", "")
+  ❓ Not confirmed
+- ✗ replace() with regex pattern 'foo+' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "x?y", "")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern 'x?y' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "x?y", "")
+  ❓ Not confirmed
+- ✗ replace() with regex pattern 'x?y' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "foo|bar", "")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern 'foo|bar' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "foo|bar", "")
+  ❓ Not confirmed
+- ✗ replace() with regex pattern 'foo|bar' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(name, "\s+", " ")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern 's+' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(name, "\s+", " ")
+  ❓ Not confirmed
+- ✗ replace() with regex pattern 's+' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=replace(uri, "https://example.com/.*", "")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ replace() with regex pattern 'https://example.com/.*' not supported — NRQL replace() is literal-only</div>
-</div>
+```diff
+  SPL:  * | eval x=replace(uri, "https://example.com/.*", "")
+  ❓ Not confirmed
+- ✗ replace() with regex pattern 'https://example.com/.*' not supported — NRQL replace() is literal-only
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval json_content=replace(json_content, "'", "\"") | spath input=json_content
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field</div>
-</div>
+```diff
+  SPL:  * | eval json_content=replace(json_content, "'", "\"") | spath input=json_content
+  🤖 Confirmed by LLM
+- ✗ spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
+```
 <!-- /spl-cases -->
 
 ### Math Functions
@@ -2547,69 +2086,53 @@ NRQL: null</pre>
 Math functions map directly: `abs()` → `abs()`, `ceil()` → `ceil()`, `floor()` → `floor()`, `round()` → `round()`, `log()` → `log()`, `ln()` → `ln()`, `exp()` → `exp()`, `pow()` → `pow()`, `sqrt()` → `sqrt()`.
 
 <!-- spl-cases: eval-math -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=abs(val)
-NRQL: FROM Log WITH abs(val) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=abs(val)
+  NRQL: FROM Log WITH abs(val) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=ceil(val)
-NRQL: FROM Log WITH ceil(val) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=ceil(val)
+  NRQL: FROM Log WITH ceil(val) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=floor(val)
-NRQL: FROM Log WITH floor(val) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=floor(val)
+  NRQL: FROM Log WITH floor(val) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=sqrt(val)
-NRQL: FROM Log WITH sqrt(val) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=sqrt(val)
+  NRQL: FROM Log WITH sqrt(val) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=round(val, 2)
-NRQL: FROM Log WITH round(val, 0.01) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=round(val, 2)
+  NRQL: FROM Log WITH round(val, 0.01) AS x SELECT *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=pow(base, exp)
-NRQL: FROM Log WITH pow(base, exp) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=pow(base, exp)
+  NRQL: FROM Log WITH pow(base, exp) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=ceiling(val)
-NRQL: FROM Log WITH ceiling(val) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=ceiling(val)
+  NRQL: FROM Log WITH ceiling(val) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=log(val)
-NRQL: FROM Log WITH log10(val) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=log(val)
+  NRQL: FROM Log WITH log10(val) AS x SELECT *
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### Type Conversion
@@ -2619,56 +2142,41 @@ NRQL: FROM Log WITH log10(val) AS x SELECT *</pre>
 Type and coercion functions: `coalesce()` → nested `if(IS NOT NULL)`, `tonumber()` → `numeric()`, `tostring()` → `string()`. Type-checking functions (`typeof()`, `isbool()`, etc.) have limited or no NRQL equivalents.
 
 <!-- spl-cases: eval-type -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval val = coalesce(field1, field2, "default")
-NRQL: FROM Log WITH (field1 OR field2 OR 'default') AS val SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval val = coalesce(field1, field2, "default")
+  NRQL: FROM Log WITH (field1 OR field2 OR 'default') AS val SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=tonumber(val)
-NRQL: FROM Log WITH numeric(val) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=tonumber(val)
+  NRQL: FROM Log WITH numeric(val) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=tostring(val)
-NRQL: FROM Log WITH string(val) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=tostring(val)
+  NRQL: FROM Log WITH string(val) AS x SELECT *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=typeof(val)
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ eval function typeof() has no NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | eval x=typeof(val)
+  🤖 Confirmed by LLM
+- ✗ eval function typeof() has no NRQL equivalent
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=isbool(val)
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ eval function isbool() has no NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | eval x=isbool(val)
+  🤖 Confirmed by LLM
+- ✗ eval function isbool() has no NRQL equivalent
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=isstr(val)
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ eval function isstr() has no NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | eval x=isstr(val)
+  🤖 Confirmed by LLM
+- ✗ eval function isstr() has no NRQL equivalent
+```
 <!-- /spl-cases -->
 
 ### Multivalue Functions
@@ -2720,48 +2228,37 @@ Splunk's data model is fundamentally flat text. There are no arrays, no nested o
 - **`mvdedup()`, `mvsort()`, `mvfind()`, `mvfilter()`** — array dedup/sort/search/filter. In New Relic, use `uniques()` for dedup, `FACET` for grouping, and `WHERE` for filtering. These operations apply to events, not to arrays within a single event.
 
 <!-- spl-cases: eval-multivalue -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval first = mvindex(values, 0)
-NRQL: FROM Log WITH getField(values, 0) AS first SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval first = mvindex(values, 0)
+  NRQL: FROM Log WITH getField(values, 0) AS first SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x = mvcount(lines)
-NRQL: FROM Log WITH length(lines) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ length() returns string length in NRQL, not multivalue count; results may differ for non-array fields</div>
-</div>
+```diff
+  SPL:  * | eval x = mvcount(lines)
+  NRQL: FROM Log WITH length(lines) AS x SELECT *
+  ✅ Confirmed by human
+! ⚠ length() returns string length in NRQL, not multivalue count; results may differ for non-array fields
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=mvindex(values)
-NRQL: FROM Log WITH values AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ mvindex() requires at least 2 arguments (field, index)</div>
-</div>
+```diff
+  SPL:  * | eval x=mvindex(values)
+  NRQL: FROM Log WITH values AS x SELECT *
+  🤖 Confirmed by LLM
+! ⚠ mvindex() requires at least 2 arguments (field, index)
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval x=mvindex(split(data, ","), 0)
-NRQL: FROM Log WITH getField(split(data, ','), 0) AS x SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | eval x=mvindex(split(data, ","), 0)
+  NRQL: FROM Log WITH getField(split(data, ','), 0) AS x SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | eval joined = mvjoin(tags, ", ")
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ mvjoin() has no NRQL equivalent — NRQL cannot join array elements into a delimited string</div>
-</div>
+```diff
+  SPL:  * | eval joined = mvjoin(tags, ", ")
+  🤖 Confirmed by LLM
+- ✗ mvjoin() has no NRQL equivalent — NRQL cannot join array elements into a delimited string
+```
 <!-- /spl-cases -->
 
 ### Date/Time Functions — Not supported
@@ -2787,45 +2284,35 @@ Extracts geographic information from IP addresses. New Relic performs GeoIP enri
 Filters results by matching a field against a regular expression. Translates to NRQL `WHERE field RLIKE 'pattern'`.
 
 <!-- spl-cases: results-regex -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | regex message="error\\d+"
-NRQL: FROM Log SELECT * WHERE message RLIKE r'error\\d+'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | regex message="error\\d+"
+  NRQL: FROM Log SELECT * WHERE message RLIKE r'error\\d+'
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | regex status!="^2\\d{2}$"
-NRQL: FROM Log SELECT * WHERE status NOT RLIKE r'^2\\d{2}$'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-</div>
+```diff
+  SPL:  * | regex status!="^2\\d{2}$"
+  NRQL: FROM Log SELECT * WHERE status NOT RLIKE r'^2\\d{2}$'
+  ❓ Not confirmed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | regex "fatal|critical"
-NRQL: FROM Log SELECT * WHERE message RLIKE r'fatal|critical'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | regex "fatal|critical"
+  NRQL: FROM Log SELECT * WHERE message RLIKE r'fatal|critical'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=500 | regex message="timeout"
-NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'timeout'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  status=500 | regex message="timeout"
+  NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'timeout'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | regex uri_path="^/api/v[0-9]+"
-NRQL: FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | regex uri_path="^/api/v[0-9]+"
+  NRQL: FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 #### `sort` — Supported
@@ -2833,53 +2320,41 @@ NRQL: FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'</pre>
 Sorts results by field values. Translates to NRQL `ORDER BY field ASC|DESC`.
 
 <!-- spl-cases: results-sort -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sort - count
-NRQL: FROM Log SELECT * ORDER BY count DESC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | sort - count
+  NRQL: FROM Log SELECT * ORDER BY count DESC
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sort + name
-NRQL: FROM Log SELECT * ORDER BY name ASC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | sort + name
+  NRQL: FROM Log SELECT * ORDER BY name ASC
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sort name
-NRQL: FROM Log SELECT * ORDER BY name ASC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | sort name
+  NRQL: FROM Log SELECT * ORDER BY name ASC
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sort 0 host
-NRQL: FROM Log SELECT * ORDER BY host ASC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | sort 0 host
+  NRQL: FROM Log SELECT * ORDER BY host ASC
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sort count desc
-NRQL: FROM Log SELECT * ORDER BY count DESC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | sort count desc
+  NRQL: FROM Log SELECT * ORDER BY count DESC
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sort 0 - firstTime
-NRQL: FROM Log SELECT * ORDER BY firstTime DESC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | sort 0 - firstTime
+  NRQL: FROM Log SELECT * ORDER BY firstTime DESC
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 ---
@@ -2895,14 +2370,11 @@ NRQL: FROM Log SELECT * ORDER BY firstTime DESC</pre>
 Computes running totals over events. NRQL has no running/cumulative aggregation. Each row in NRQL results is independent — there's no concept of row-order-dependent calculations.
 
 <!-- spl-cases: reports-accum -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | accum bytes as running_total
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'accum' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | accum bytes as running_total
+  🤖 Confirmed by LLM
+- ✗ SPL command 'accum' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `addtotals` — Not supported
@@ -2926,14 +2398,11 @@ Retrieves data from a dataset, report, or data model. In NRQL, `FROM` is the sta
 Highlights search terms in results. This is a Splunk UI display feature with no NRQL equivalent. New Relic's log viewer handles highlighting in the presentation layer.
 
 <!-- spl-cases: results-highlight -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | highlight error warning
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'highlight' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | highlight error warning
+  🤖 Confirmed by LLM
+- ✗ SPL command 'highlight' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `inputlookup` — Supported
@@ -2941,41 +2410,34 @@ NRQL: null</pre>
 Loads events from a lookup table. Translates to NRQL `FROM lookup(tablename)`.
 
 <!-- spl-cases: results-inputlookup -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | inputlookup geo_ips
-NRQL: FROM lookup(geo_ips) SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Ensure lookup table 'geo_ips' is uploaded via the Lookups UI</div>
-</div>
+```diff
+  SPL:  * | inputlookup geo_ips
+  NRQL: FROM lookup(geo_ips) SELECT *
+  ✅ Confirmed by human
+! ⚠ Ensure lookup table 'geo_ips' is uploaded via the Lookups UI
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | inputlookup append=true geo_ips
-NRQL: FROM lookup(geo_ips) SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Ensure lookup table 'geo_ips' is uploaded via the Lookups UI</div>
-</div>
+```diff
+  SPL:  * | inputlookup append=true geo_ips
+  NRQL: FROM lookup(geo_ips) SELECT *
+  ✅ Confirmed by human
+! ⚠ Ensure lookup table 'geo_ips' is uploaded via the Lookups UI
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | inputlookup my_table
-NRQL: FROM lookup(my_table) SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Ensure lookup table 'my_table' is uploaded via the Lookups UI</div>
-</div>
+```diff
+  SPL:  * | inputlookup my_table
+  NRQL: FROM lookup(my_table) SELECT *
+  ✅ Confirmed by human
+! ⚠ Ensure lookup table 'my_table' is uploaded via the Lookups UI
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | inputlookup users.csv where role="admin"
-NRQL: FROM lookup(users.csv) SELECT * WHERE role = 'admin'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">❓ Not confirmed</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ Ensure lookup table 'users.csv' is uploaded via the Lookups UI</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ inputlookup WHERE condition translated as-is; verify field names match the lookup table schema</div>
-</div>
+```diff
+  SPL:  | inputlookup users.csv where role="admin"
+  NRQL: FROM lookup(users.csv) SELECT * WHERE role = 'admin'
+  ❓ Not confirmed
+! ⚠ Ensure lookup table 'users.csv' is uploaded via the Lookups UI
+! ⚠ inputlookup WHERE condition translated as-is; verify field names match the lookup table schema
+```
 <!-- /spl-cases -->
 
 #### `makemv` — Not supported
@@ -2995,14 +2457,11 @@ Runs a search for each result of a previous search (like a for-each loop). NRQL 
 Performs statistical queries against the Splunk metrics store. For New Relic metrics, query the `Metric` event type directly: `FROM Metric SELECT average(cpu.percent) FACET host`.
 
 <!-- spl-cases: metrics-mstats -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | mstats avg(cpu.percent) by host
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'mstats' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  | mstats avg(cpu.percent) by host
+  🤖 Confirmed by LLM
+- ✗ SPL command 'mstats' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `multikv` — Not supported
@@ -3014,14 +2473,11 @@ Extracts fields from table-formatted events (like command output with headers an
 Converts a multivalue field to a single value. NRQL does not have multivalue fields.
 
 <!-- spl-cases: fields-nomv -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | nomv values
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'nomv' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | nomv values
+  🤖 Confirmed by LLM
+- ✗ SPL command 'nomv' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `outlier` — Not supported
@@ -3037,53 +2493,41 @@ Writes results to a lookup table. No NRQL equivalent. Lookup tables in New Relic
 Shows the least common values of a field. Translates to NRQL `SELECT count(*) ... FACET field ORDER BY count(*) ASC`.
 
 <!-- spl-cases: reports-rare -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rare status
-NRQL: FROM Log SELECT count(*) FACET status ORDER BY count ASC LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rare status
+  NRQL: FROM Log SELECT count(*) FACET status ORDER BY count ASC LIMIT 10
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rare 5 uri_path
-NRQL: FROM Log SELECT count(*) FACET uri_path ORDER BY count ASC LIMIT 5</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rare 5 uri_path
+  NRQL: FROM Log SELECT count(*) FACET uri_path ORDER BY count ASC LIMIT 5
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rare status by host
-NRQL: FROM Log SELECT count(*) FACET status, host ORDER BY count ASC LIMIT 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rare status by host
+  NRQL: FROM Log SELECT count(*) FACET status, host ORDER BY count ASC LIMIT 10
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status&gt;=400 | rare 20 uri_path
-NRQL: FROM Log SELECT count(*) WHERE numeric(status) &gt;= 400 FACET uri_path ORDER BY count ASC LIMIT 20</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  status>=400 | rare 20 uri_path
+  NRQL: FROM Log SELECT count(*) WHERE numeric(status) >= 400 FACET uri_path ORDER BY count ASC LIMIT 20
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rare app limit=20
-NRQL: FROM Log SELECT count(*) FACET app ORDER BY count ASC LIMIT 20</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rare app limit=20
+  NRQL: FROM Log SELECT count(*) FACET app ORDER BY count ASC LIMIT 20
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | rare limit=20 "details.error"
-NRQL: FROM Log SELECT count(*) FACET `details.error` ORDER BY count ASC LIMIT 20</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | rare limit=20 "details.error"
+  NRQL: FROM Log SELECT count(*) FACET `details.error` ORDER BY count ASC LIMIT 20
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 #### `return` — Not supported
@@ -3095,21 +2539,17 @@ Returns field values from a subsearch. NRQL subqueries return scalar values dire
 Reverses the order of results. Translates to NRQL `ORDER BY timestamp ASC`.
 
 <!-- spl-cases: results-reverse -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | reverse
-NRQL: FROM Log SELECT * ORDER BY timestamp ASC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | reverse
+  NRQL: FROM Log SELECT * ORDER BY timestamp ASC
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error | table message | reverse
-NRQL: FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp ASC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  error | table message | reverse
+  NRQL: FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp ASC
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 #### `selfjoin` — Not supported
@@ -3117,14 +2557,11 @@ NRQL: FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp AS
 Joins results with themselves on a shared field. NRQL JOIN requires two different event types; self-joins are not supported.
 
 <!-- spl-cases: correlation-selfjoin -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | selfjoin host
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'selfjoin' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | selfjoin host
+  🤖 Confirmed by LLM
+- ✗ SPL command 'selfjoin' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `set` — Not supported
@@ -3132,14 +2569,11 @@ NRQL: null</pre>
 Performs set operations (union, diff, intersect) on subsearch results. NRQL has no set algebra operators.
 
 <!-- spl-cases: correlation-set -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | set union
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'set' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | set union
+  🤖 Confirmed by LLM
+- ✗ SPL command 'set' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `tail` — Not supported
@@ -3147,23 +2581,17 @@ NRQL: null</pre>
 Returns the last N results. NRQL has no reverse-order limit — results are always ordered newest-first by default, and `LIMIT` takes from the top.
 
 <!-- spl-cases: results-tail -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | tail 10
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'tail' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | tail 10
+  🤖 Confirmed by LLM
+- ✗ SPL command 'tail' has no known NRQL equivalent
+```
 
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | tail 20
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'tail' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | tail 20
+  🤖 Confirmed by LLM
+- ✗ SPL command 'tail' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `transpose` — Not supported
@@ -3171,14 +2599,11 @@ NRQL: null</pre>
 Transposes rows and columns in results. NRQL has no pivot/transpose operation. Result reshaping is handled by the visualization layer.
 
 <!-- spl-cases: results-transpose -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by host | transpose
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'transpose' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | stats count by host | transpose
+  🤖 Confirmed by LLM
+- ✗ SPL command 'transpose' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `uniq` — Not supported
@@ -3186,14 +2611,11 @@ NRQL: null</pre>
 Removes consecutive duplicate events. Translates similarly to `dedup`.
 
 <!-- spl-cases: results-uniq -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sort host | uniq
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ uniq has no direct NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | sort host | uniq
+  🤖 Confirmed by LLM
+- ✗ uniq has no direct NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `xyseries` — Not supported
@@ -3231,14 +2653,11 @@ Analyzes fields for their ability to predict another field. Splunk ML toolkit fe
 Identifies anomalous events using statistical analysis. NRQL has no built-in anomaly detection at query time. New Relic provides anomaly detection through Applied Intelligence and alert conditions, not the query language.
 
 <!-- spl-cases: anomalies-anomalies -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | anomalies field=count
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'anomalies' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | anomalies field=count
+  🤖 Confirmed by LLM
+- ✗ SPL command 'anomalies' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `anomalydetection` — Not supported
@@ -3270,14 +2689,11 @@ Replaces directory paths with higher-level groupings. Splunk-specific path manip
 Clusters similar events together based on field values. NRQL has no clustering algorithm. New Relic Logs provides pattern detection in the UI, but it's not accessible via NRQL.
 
 <!-- spl-cases: anomalies-cluster -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | cluster showcount=true
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'cluster' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | cluster showcount=true
+  🤖 Confirmed by LLM
+- ✗ SPL command 'cluster' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `cofilter` — Not supported
@@ -3313,14 +2729,11 @@ Accesses Splunk's data model acceleration. Data models are a Splunk-specific abs
 Simplified access to data model objects. Same Splunk-specific limitation as `datamodel`.
 
 <!-- spl-cases: data-datamodel -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | datamodel Authentication
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'datamodel' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  | datamodel Authentication
+  🤖 Confirmed by LLM
+- ✗ SPL command 'datamodel' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `dbinspect` — Not supported
@@ -3448,14 +2861,11 @@ Returns metadata about metrics in the Splunk metrics store. New Relic metric met
 Writes results to the Splunk metrics store. No NRQL equivalent.
 
 <!-- spl-cases: results-mcollect -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | mcollect index=metrics_idx
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'mcollect' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | mcollect index=metrics_idx
+  🤖 Confirmed by LLM
+- ✗ SPL command 'mcollect' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `metadata` — Not supported
@@ -3467,14 +2877,11 @@ Returns metadata about sources, sourcetypes, or hosts in an index. New Relic att
 Searches index metadata rather than events. NRQL queries events directly; index metadata is managed through the New Relic platform.
 
 <!-- spl-cases: data-metadata -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | metadata type=sources
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'metadata' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  | metadata type=sources
+  🤖 Confirmed by LLM
+- ✗ SPL command 'metadata' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `mpreview` — Not supported
@@ -3490,14 +2897,11 @@ Runs multiple searches simultaneously and combines the results. NRQL has no UNIO
 Writes results to a CSV file on the Splunk server. No NRQL equivalent. Use New Relic's export features (UI export, NerdGraph, or streaming).
 
 <!-- spl-cases: results-outputcsv -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | outputcsv results.csv
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'outputcsv' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | outputcsv results.csv
+  🤖 Confirmed by LLM
+- ✗ SPL command 'outputcsv' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `outputtext` — Not supported
@@ -3513,14 +2917,11 @@ Finds events that overlap in time based on start/end fields. NRQL has no interva
 References a data model dataset and creates a pivot table. Pivot is built on Splunk's data model layer which has no NRQL counterpart.
 
 <!-- spl-cases: data-pivot -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | pivot Web_Traffic count
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'pivot' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  | pivot Web_Traffic count
+  🤖 Confirmed by LLM
+- ✗ SPL command 'pivot' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `predict` — Not supported
@@ -3528,14 +2929,12 @@ NRQL: null</pre>
 Forecasts future values using time series algorithms. NRQL has no built-in forecasting. New Relic provides baseline alerting through Applied Intelligence, but forecasting is not available in the query language.
 
 <!-- spl-cases: prediction-predict -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | predict count
-NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically</div>
-</div>
+```diff
+  SPL:  * | predict count
+  NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT
+  🤖 Confirmed by LLM
+! ⚠ PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically
+```
 <!-- /spl-cases -->
 
 #### `rangemap` — Not supported
@@ -3555,14 +2954,11 @@ Filters events to those containing specific fields. Use `WHERE field IS NOT NULL
 Accesses Splunk's internal REST API from within a search. NRQL queries run against telemetry data only — platform API access uses NerdGraph, not the query language.
 
 <!-- spl-cases: data-rest -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | rest /services/server/info
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'rest' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  | rest /services/server/info
+  🤖 Confirmed by LLM
+- ✗ SPL command 'rest' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `rtorder` — Not supported
@@ -3590,14 +2986,11 @@ Searches within transaction results. NRQL has no transaction grouping; see [Corr
 Sends results via email. No NRQL equivalent. Use New Relic alert notifications or scheduled query exports.
 
 <!-- spl-cases: results-sendemail -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sendemail to="admin@example.com"
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'sendemail' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | sendemail to="admin@example.com"
+  🤖 Confirmed by LLM
+- ✗ SPL command 'sendemail' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `setfields` — Not supported
@@ -3609,14 +3002,11 @@ Sets field values to a literal value. Use `eval` / `WITH` in NRQL to assign cons
 Summary indexing commands that write precomputed aggregations back to Splunk indexes. New Relic handles precomputation through events-to-metrics rules and Metric data types, not query-time commands.
 
 <!-- spl-cases: data-sichart -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sichart count by host
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'sichart' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | sichart count by host
+  🤖 Confirmed by LLM
+- ✗ SPL command 'sichart' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `sirare` — Not supported
@@ -3648,14 +3038,11 @@ Converts field values to JSON format. NRQL has no built-in JSON serialization fu
 Computes moving averages over time series data. NRQL has no moving average function. For trend analysis, use `TIMESERIES` with `COMPARE WITH` to compare time periods.
 
 <!-- spl-cases: prediction-trendline -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | trendline sma5(count) as trend
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'trendline' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | trendline sma5(count) as trend
+  🤖 Confirmed by LLM
+- ✗ SPL command 'trendline' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 #### `tscollect` — Not supported
@@ -3667,14 +3054,11 @@ Writes results to a time-series collection (tsidx) for accelerated access. Splun
 Performs statistical queries on indexed fields or data model datasets. This is Splunk's acceleration layer; NRQL queries all data directly without a separate accelerated path.
 
 <!-- spl-cases: data-tstats -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | tstats count FROM datamodel=Endpoint.Processes
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ tstats queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.</div>
-</div>
+```diff
+  SPL:  | tstats count FROM datamodel=Endpoint.Processes
+  🤖 Confirmed by LLM
+- ✗ tstats queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.
+```
 <!-- /spl-cases -->
 
 #### `union` — Not supported
@@ -3800,14 +3184,11 @@ Assigns event types to events. Splunk-specific event classification.
 Commands not recognized by the translator produce a generic unsupported message.
 
 <!-- spl-cases: unsupported-unknown -->
-<div style="background: #f8d7da; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | xyzcommand foo bar
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="padding: 4px 8px; margin: 8px 0 0 0; font-size: 0.9em;">✗ SPL command 'xyzcommand' has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | xyzcommand foo bar
+  🤖 Confirmed by LLM
+- ✗ SPL command 'xyzcommand' has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 ---
@@ -3843,162 +3224,124 @@ NRQL: null</pre>
 <!-- /spl-table -->
 
 <!-- spl-cases: stats-functions -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats dc(clientip), avg(bytes), sum(bytes), median(latency), mean(latency), distinct_count(user), values(status), perc95(latency), p99(latency), stdev(latency) by host
-NRQL: FROM Log SELECT uniqueCount(clientip), average(bytes), sum(bytes), median(latency), average(latency), uniqueCount(user), uniques(status), percentile(latency, 95), percentile(latency, 99), stddev(latency) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats dc(clientip), avg(bytes), sum(bytes), median(latency), mean(latency), distinct_count(user), values(status), perc95(latency), p99(latency), stdev(latency) by host
+  NRQL: FROM Log SELECT uniqueCount(clientip), average(bytes), sum(bytes), median(latency), average(latency), uniqueCount(user), uniques(status), percentile(latency, 95), percentile(latency, 99), stddev(latency) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats min(duration), max(duration) by host
-NRQL: FROM Log SELECT min(duration), max(duration) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats min(duration), max(duration) by host
+  NRQL: FROM Log SELECT min(duration), max(duration) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats stdevp(latency) by host
-NRQL: FROM Log SELECT stddev(latency) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL stdevp() is population stddev; mapped to NRQL stddev() which is sample stddev. Results may differ.</div>
-</div>
+```diff
+  SPL:  * | stats stdevp(latency) by host
+  NRQL: FROM Log SELECT stddev(latency) FACET host
+  ✅ Confirmed by human
+! ⚠ SPL stdevp() is population stddev; mapped to NRQL stddev() which is sample stddev. Results may differ.
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats earliest(timestamp), latest(timestamp) by host
-NRQL: FROM Log SELECT earliest(timestamp), latest(timestamp) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats earliest(timestamp), latest(timestamp) by host
+  NRQL: FROM Log SELECT earliest(timestamp), latest(timestamp) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats first(status) by host
-NRQL: FROM Log SELECT latest(status) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats first(status) by host
+  NRQL: FROM Log SELECT latest(status) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats last(status) by host
-NRQL: FROM Log SELECT earliest(status) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats last(status) by host
+  NRQL: FROM Log SELECT earliest(status) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats rate(bytes) by host
-NRQL: FROM Log SELECT rate(sum(bytes), 1 second) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats rate(bytes) by host
+  NRQL: FROM Log SELECT rate(sum(bytes), 1 second) FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats list(user) by host
-NRQL: FROM Log SELECT uniques(user) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL list() mapped to NRQL uniques(); duplicates will be removed</div>
-</div>
+```diff
+  SPL:  * | stats list(user) by host
+  NRQL: FROM Log SELECT uniques(user) FACET host
+  ✅ Confirmed by human
+! ⚠ SPL list() mapped to NRQL uniques(); duplicates will be removed
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats xyzfunc(field) by host
-NRQL: FROM Log SELECT * FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL function xyzfunc() has no known NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | stats xyzfunc(field) by host
+  NRQL: FROM Log SELECT * FACET host
+  ✅ Confirmed by human
+! ⚠ SPL function xyzfunc() has no known NRQL equivalent
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats estdc(clientip) as approx_unique by host
-NRQL: FROM Log SELECT uniqueCount(clientip) AS 'approx_unique' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats estdc(clientip) as approx_unique by host
+  NRQL: FROM Log SELECT uniqueCount(clientip) AS 'approx_unique' FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats exactperc95(latency) as exact_p95 by service
-NRQL: FROM Log SELECT percentile(latency, 95) AS 'exact_p95' FACET service</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL exactperc95() mapped to NRQL percentile(); precision may differ</div>
-</div>
+```diff
+  SPL:  * | stats exactperc95(latency) as exact_p95 by service
+  NRQL: FROM Log SELECT percentile(latency, 95) AS 'exact_p95' FACET service
+  ✅ Confirmed by human
+! ⚠ SPL exactperc95() mapped to NRQL percentile(); precision may differ
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats upperperc99(response_time) by endpoint
-NRQL: FROM Log SELECT percentile(response_time, 99) FACET endpoint</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL upperperc99() mapped to NRQL percentile(); precision may differ</div>
-</div>
+```diff
+  SPL:  * | stats upperperc99(response_time) by endpoint
+  NRQL: FROM Log SELECT percentile(response_time, 99) FACET endpoint
+  ✅ Confirmed by human
+! ⚠ SPL upperperc99() mapped to NRQL percentile(); precision may differ
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats per_second(bytes) as bps by host
-NRQL: FROM Log SELECT rate(sum(bytes), 1 second) AS 'bps' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats per_second(bytes) as bps by host
+  NRQL: FROM Log SELECT rate(sum(bytes), 1 second) AS 'bps' FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats per_minute(requests) as rpm by service
-NRQL: FROM Log SELECT rate(sum(requests), 1 minute) AS 'rpm' FACET service</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats per_minute(requests) as rpm by service
+  NRQL: FROM Log SELECT rate(sum(requests), 1 minute) AS 'rpm' FACET service
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats per_hour(errors) as errors_per_hour by host
-NRQL: FROM Log SELECT rate(sum(errors), 1 hour) AS 'errors_per_hour' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats per_hour(errors) as errors_per_hour by host
+  NRQL: FROM Log SELECT rate(sum(errors), 1 hour) AS 'errors_per_hour' FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats per_day(signups) as daily_signups
-NRQL: FROM Log SELECT rate(sum(signups), 1 day) AS 'daily_signups'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats per_day(signups) as daily_signups
+  NRQL: FROM Log SELECT rate(sum(signups), 1 day) AS 'daily_signups'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats max(a / 1000) as div, min(b * 8) as mul, sum(c + d) as add, avg(e - f) as sub, count(g % 3) as mod, max((h + i) * j) as parens, avg(response.time / 1000) as dotfield, sum(a + b + c) as chained by host
-NRQL: FROM Log SELECT max(numeric(a) / 1000) AS 'div', min(numeric(b) * 8) AS 'mul', sum(numeric(c) + numeric(d)) AS 'add', average(numeric(e) - numeric(f)) AS 'sub', count(mod(numeric(g), 3)) AS 'mod', max((numeric(h) + numeric(i)) * numeric(j)) AS 'parens', average(numeric(`response.time`) / 1000) AS 'dotfield', sum(numeric(a) + numeric(b) + numeric(c)) AS 'chained' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats max(a / 1000) as div, min(b * 8) as mul, sum(c + d) as add, avg(e - f) as sub, count(g % 3) as mod, max((h + i) * j) as parens, avg(response.time / 1000) as dotfield, sum(a + b + c) as chained by host
+  NRQL: FROM Log SELECT max(numeric(a) / 1000) AS 'div', min(numeric(b) * 8) AS 'mul', sum(numeric(c) + numeric(d)) AS 'add', average(numeric(e) - numeric(f)) AS 'sub', count(mod(numeric(g), 3)) AS 'mod', max((numeric(h) + numeric(i)) * numeric(j)) AS 'parens', average(numeric(`response.time`) / 1000) AS 'dotfield', sum(numeric(a) + numeric(b) + numeric(c)) AS 'chained' FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | timechart span=1h avg(bytes * 8 / 1024)
-NRQL: FROM Log SELECT average(numeric(bytes) * 8 / 1024) TIMESERIES 1 hour</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | timechart span=1h avg(bytes * 8 / 1024)
+  NRQL: FROM Log SELECT average(numeric(bytes) * 8 / 1024) TIMESERIES 1 hour
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats perc95(duration / 1000) as p95_sec
-NRQL: FROM Log SELECT percentile(numeric(duration) / 1000, 95) AS 'p95_sec'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats perc95(duration / 1000) as p95_sec
+  NRQL: FROM Log SELECT percentile(numeric(duration) / 1000, 95) AS 'p95_sec'
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### Stats Functions with No NRQL Equivalent
@@ -4012,32 +3355,26 @@ NRQL: FROM Log SELECT percentile(numeric(duration) / 1000, 95) AS 'p95_sec'</pre
 <!-- /spl-table -->
 
 <!-- spl-cases: stats-no-equiv -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats mode(status) by host
-NRQL: FROM Log SELECT * FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL mode() has no direct NRQL equivalent; consider FACET field LIMIT 1 to find most common value</div>
-</div>
+```diff
+  SPL:  * | stats mode(status) by host
+  NRQL: FROM Log SELECT * FACET host
+  ✅ Confirmed by human
+! ⚠ SPL mode() has no direct NRQL equivalent; consider FACET field LIMIT 1 to find most common value
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats earliest_time(message) as first_seen by host
-NRQL: FROM Log SELECT * FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL earliest_time() has no NRQL equivalent; earliest() returns the value, not the timestamp</div>
-</div>
+```diff
+  SPL:  * | stats earliest_time(message) as first_seen by host
+  NRQL: FROM Log SELECT * FACET host
+  ✅ Confirmed by human
+! ⚠ SPL earliest_time() has no NRQL equivalent; earliest() returns the value, not the timestamp
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats rate_avg(cpu) by host
-NRQL: FROM Log SELECT * FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL rate_avg() is Splunk metrics-specific; no NRQL equivalent</div>
-</div>
+```diff
+  SPL:  * | stats rate_avg(cpu) by host
+  NRQL: FROM Log SELECT * FACET host
+  ✅ Confirmed by human
+! ⚠ SPL rate_avg() is Splunk metrics-specific; no NRQL equivalent
+```
 <!-- /spl-cases -->
 
 ---
@@ -4049,79 +3386,61 @@ NRQL: FROM Log SELECT * FACET host</pre>
 SPL time modifiers like `earliest=-24h` and `latest=now` translate to NRQL `SINCE` and `UNTIL` clauses.
 
 <!-- spl-cases: time-constraints -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  earliest=-24h
-NRQL: FROM Log SELECT * SINCE 24 hours ago</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  earliest=-24h
+  NRQL: FROM Log SELECT * SINCE 24 hours ago
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  latest=-1h
-NRQL: FROM Log SELECT * SINCE 24 hours ago UNTIL 1 hour ago</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match</div>
-</div>
+```diff
+  SPL:  latest=-1h
+  NRQL: FROM Log SELECT * SINCE 24 hours ago UNTIL 1 hour ago
+  ✅ Confirmed by human
+! ⚠ SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  latest=now
-NRQL: FROM Log SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  latest=now
+  NRQL: FROM Log SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  earliest=@d
-NRQL: FROM Log SELECT * SINCE today</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  earliest=@d
+  NRQL: FROM Log SELECT * SINCE today
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error earliest=-24h latest=now
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%' SINCE 24 hours ago</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  error earliest=-24h latest=now
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%' SINCE 24 hours ago
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  earliest=-2h latest=-1h status=200
-NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 SINCE 2 hours ago UNTIL 1 hour ago</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  earliest=-2h latest=-1h status=200
+  NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 SINCE 2 hours ago UNTIL 1 hour ago
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  earliest=-24h@h latest=now
-NRQL: FROM Log SELECT * SINCE 24 hours ago</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL snap-to time '@h' ignored; NRQL SINCE/UNTIL does not support rounding to unit boundaries. Use 'today', 'this week', etc. for snap-only expressions.</div>
-</div>
+```diff
+  SPL:  earliest=-24h@h latest=now
+  NRQL: FROM Log SELECT * SINCE 24 hours ago
+  ✅ Confirmed by human
+! ⚠ SPL snap-to time '@h' ignored; NRQL SINCE/UNTIL does not support rounding to unit boundaries. Use 'today', 'this week', etc. for snap-only expressions.
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=500 earliest=-24h host=web
-NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND host = 'web' SINCE 24 hours ago</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  status=500 earliest=-24h host=web
+  NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND host = 'web' SINCE 24 hours ago
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  earliest=-24h earliest=-1h
-NRQL: FROM Log SELECT * SINCE 1 hour ago</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  earliest=-24h earliest=-1h
+  NRQL: FROM Log SELECT * SINCE 1 hour ago
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### Macros
@@ -4129,50 +3448,40 @@ NRQL: FROM Log SELECT * SINCE 1 hour ago</pre>
 SPL time macros and shorthand.
 
 <!-- spl-cases: macros -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  `sysmon` EventCode=10
-NRQL: FROM Log SELECT * WHERE $sysmon AND EventCode = '10' OR numeric(EventCode) = 10</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL macro `sysmon` translated to NRQL macro $sysmon; ensure a matching NRQL macro exists</div>
-</div>
+```diff
+  SPL:  `sysmon` EventCode=10
+  NRQL: FROM Log SELECT * WHERE $sysmon AND EventCode = '10' OR numeric(EventCode) = 10
+  ✅ Confirmed by human
+! ⚠ SPL macro `sysmon` translated to NRQL macro $sysmon; ensure a matching NRQL macro exists
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  `my_macro(arg1, arg2)` status=200
-NRQL: FROM Log SELECT * WHERE $my_macro(arg1, arg2) AND status = '200' OR numeric(status) = 200</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL macro `my_macro` translated to NRQL macro $my_macro(arg1, arg2); ensure a matching NRQL macro exists</div>
-</div>
+```diff
+  SPL:  `my_macro(arg1, arg2)` status=200
+  NRQL: FROM Log SELECT * WHERE $my_macro(arg1, arg2) AND status = '200' OR numeric(status) = 200
+  ✅ Confirmed by human
+! ⚠ SPL macro `my_macro` translated to NRQL macro $my_macro(arg1, arg2); ensure a matching NRQL macro exists
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | `my_macro`
-NRQL: FROM Log SELECT * WHERE $my_macro</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL macro `my_macro` translated to NRQL macro $my_macro; ensure a matching NRQL macro exists</div>
-</div>
+```diff
+  SPL:  * | `my_macro`
+  NRQL: FROM Log SELECT * WHERE $my_macro
+  ✅ Confirmed by human
+! ⚠ SPL macro `my_macro` translated to NRQL macro $my_macro; ensure a matching NRQL macro exists
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | `my_macro(field1, field2)`
-NRQL: FROM Log SELECT * WHERE $my_macro(field1, field2)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL macro `my_macro` translated to NRQL macro $my_macro(field1, field2); ensure a matching NRQL macro exists</div>
-</div>
+```diff
+  SPL:  * | `my_macro(field1, field2)`
+  NRQL: FROM Log SELECT * WHERE $my_macro(field1, field2)
+  ✅ Confirmed by human
+! ⚠ SPL macro `my_macro` translated to NRQL macro $my_macro(field1, field2); ensure a matching NRQL macro exists
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  `my_base_macro` | stats count
-NRQL: FROM Log SELECT count(*) WHERE $my_base_macro</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL macro `my_base_macro` translated to NRQL macro $my_base_macro; ensure a matching NRQL macro exists</div>
-</div>
+```diff
+  SPL:  `my_base_macro` | stats count
+  NRQL: FROM Log SELECT count(*) WHERE $my_base_macro
+  ✅ Confirmed by human
+! ⚠ SPL macro `my_base_macro` translated to NRQL macro $my_base_macro; ensure a matching NRQL macro exists
+```
 <!-- /spl-cases -->
 
 ---
@@ -4184,78 +3493,60 @@ NRQL: FROM Log SELECT count(*) WHERE $my_base_macro</pre>
 Field-value comparisons in the implicit search clause.
 
 <!-- spl-cases: field-comparisons -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status&gt;=400 status!=500 action=purchase
-NRQL: FROM Log SELECT * WHERE numeric(status) &gt;= 400 AND status != '500' AND numeric(status) != 500 AND action = 'purchase'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  status>=400 status!=500 action=purchase
+  NRQL: FROM Log SELECT * WHERE numeric(status) >= 400 AND status != '500' AND numeric(status) != 500 AND action = 'purchase'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=200 offset=-10 score=3.14
-NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND `offset` = '-10' OR numeric(`offset`) = -10 AND score = '3.14' OR numeric(score) = 3.14</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  status=200 offset=-10 score=3.14
+  NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND `offset` = '-10' OR numeric(`offset`) = -10 AND score = '3.14' OR numeric(score) = 3.14
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=OK code=4xx zip=00123
-NRQL: FROM Log SELECT * WHERE status = 'OK' AND code = '4xx' AND zip = '00123'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  status=OK code=4xx zip=00123
+  NRQL: FROM Log SELECT * WHERE status = 'OK' AND code = '4xx' AND zip = '00123'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  _raw=*error*
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ _raw is not a valid NRQL field; mapped to message</div>
-</div>
+```diff
+  SPL:  _raw=*error*
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
+  ✅ Confirmed by human
+! ⚠ _raw is not a valid NRQL field; mapped to message
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  action=OR action=AND action=NOT action=by action=search action=stats group=by
-NRQL: FROM Log SELECT * WHERE action = 'OR' AND action = 'AND' AND action = 'NOT' AND action = 'by' AND action = 'search' AND action = 'stats' AND group = 'by'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  action=OR action=AND action=NOT action=by action=search action=stats group=by
+  NRQL: FROM Log SELECT * WHERE action = 'OR' AND action = 'AND' AND action = 'NOT' AND action = 'by' AND action = 'search' AND action = 'stats' AND group = 'by'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  "log.annotations.node"=NOSTORE
-NRQL: FROM Log SELECT * WHERE `log.annotations.node` = 'NOSTORE'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  "log.annotations.node"=NOSTORE
+  NRQL: FROM Log SELECT * WHERE `log.annotations.node` = 'NOSTORE'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  "details.error"="*"
-NRQL: FROM Log SELECT * WHERE `details.error` LIKE '%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  "details.error"="*"
+  NRQL: FROM Log SELECT * WHERE `details.error` LIKE '%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status = 500
-NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  status = 500
+  NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  level = "ERROR"
-NRQL: FROM Log SELECT * WHERE level = 'ERROR'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  level = "ERROR"
+  NRQL: FROM Log SELECT * WHERE level = 'ERROR'
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### JSON Array Access
@@ -4263,53 +3554,41 @@ NRQL: FROM Log SELECT * WHERE level = 'ERROR'</pre>
 Splunk's `{}` notation for JSON array fields translates to `jparse()` + `contains()` in NRQL.
 
 <!-- spl-cases: json-array-access -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  lineItemList{}.status=active
-NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'lineItemList[*].status'), 'active')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  lineItemList{}.status=active
+  NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'lineItemList[*].status'), 'active')
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  items{}.status != pending
-NRQL: FROM Log SELECT * WHERE NOT contains(jparse(message, 'items[*].status'), 'pending')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  items{}.status != pending
+  NRQL: FROM Log SELECT * WHERE NOT contains(jparse(message, 'items[*].status'), 'pending')
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  orders{}.shipping.carrier=fedex
-NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'orders[*].shipping.carrier'), 'fedex')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  orders{}.shipping.carrier=fedex
+  NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'orders[*].shipping.carrier'), 'fedex')
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  containers{}.image=nginx*
-NRQL: FROM Log SELECT * WHERE jparse(message, 'containers[*].image') LIKE 'nginx%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  containers{}.image=nginx*
+  NRQL: FROM Log SELECT * WHERE jparse(message, 'containers[*].image') LIKE 'nginx%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  items{}.category IN (electronics, clothing)
-NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'items[*].category'), 'electronics') OR contains(jparse(message, 'items[*].category'), 'clothing')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  items{}.category IN (electronics, clothing)
+  NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'items[*].category'), 'electronics') OR contains(jparse(message, 'items[*].category'), 'clothing')
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  sourceIPs{0}=10.0.0.1
-NRQL: FROM Log SELECT * WHERE jparse(message, 'sourceIPs[0]') = '10.0.0.1'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  sourceIPs{0}=10.0.0.1
+  NRQL: FROM Log SELECT * WHERE jparse(message, 'sourceIPs[0]') = '10.0.0.1'
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### Boolean Operators (AND, OR, NOT)
@@ -4317,103 +3596,80 @@ NRQL: FROM Log SELECT * WHERE jparse(message, 'sourceIPs[0]') = '10.0.0.1'</pre>
 Boolean logic in search expressions.
 
 <!-- spl-cases: boolean-operators -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  EventCode=4720 OR EventCode=4732
-NRQL: FROM Log SELECT * WHERE EventCode = '4720' OR numeric(EventCode) = 4720 OR EventCode = '4732' OR numeric(EventCode) = 4732</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  EventCode=4720 OR EventCode=4732
+  NRQL: FROM Log SELECT * WHERE EventCode = '4720' OR numeric(EventCode) = 4720 OR EventCode = '4732' OR numeric(EventCode) = 4732
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  NOT debug
-NRQL: FROM Log SELECT * WHERE NOT message LIKE '%debug%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  NOT debug
+  NRQL: FROM Log SELECT * WHERE NOT message LIKE '%debug%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  (error OR warning) NOT debug
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND NOT message LIKE '%debug%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  (error OR warning) NOT debug
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND NOT message LIKE '%debug%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  `macro_a` AND `macro_b`
-NRQL: FROM Log SELECT * WHERE $macro_a AND $macro_b</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists</div><div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 4px 0 0 0; font-size: 0.9em;">⚠ SPL macro `macro_b` translated to NRQL macro $macro_b; ensure a matching NRQL macro exists</div>
-</div>
+```diff
+  SPL:  `macro_a` AND `macro_b`
+  NRQL: FROM Log SELECT * WHERE $macro_a AND $macro_b
+  ✅ Confirmed by human
+! ⚠ SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists
+! ⚠ SPL macro `macro_b` translated to NRQL macro $macro_b; ensure a matching NRQL macro exists
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  `macro_a` AND status=200
-NRQL: FROM Log SELECT * WHERE $macro_a AND status = '200' OR numeric(status) = 200</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists</div>
-</div>
+```diff
+  SPL:  `macro_a` AND status=200
+  NRQL: FROM Log SELECT * WHERE $macro_a AND status = '200' OR numeric(status) = 200
+  ✅ Confirmed by human
+! ⚠ SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  a=1 OR b=2 c=3
-NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  a=1 OR b=2 c=3
+  NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3)
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  (a=1 OR b=2) AND c=3
-NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  (a=1 OR b=2) AND c=3
+  NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  a=1 b=2 OR c=3 d=4
-NRQL: FROM Log SELECT * WHERE (a = '1' OR numeric(a) = 1 AND b = '2' OR numeric(b) = 2) OR (c = '3' OR numeric(c) = 3 AND d = '4' OR numeric(d) = 4)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  a=1 b=2 OR c=3 d=4
+  NRQL: FROM Log SELECT * WHERE (a = '1' OR numeric(a) = 1 AND b = '2' OR numeric(b) = 2) OR (c = '3' OR numeric(c) = 3 AND d = '4' OR numeric(d) = 4)
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  NOT status=500 host=web
-NRQL: FROM Log SELECT * WHERE NOT (status = '500' OR numeric(status) = 500) AND host = 'web'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  NOT status=500 host=web
+  NRQL: FROM Log SELECT * WHERE NOT (status = '500' OR numeric(status) = 500) AND host = 'web'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  NOT (status=500 host=web)
-NRQL: FROM Log SELECT * WHERE NOT (status = '500' OR numeric(status) = 500 AND host = 'web')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  NOT (status=500 host=web)
+  NRQL: FROM Log SELECT * WHERE NOT (status = '500' OR numeric(status) = 500 AND host = 'web')
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error NOT(level=debug OR level=trace)
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%' AND NOT (level = 'debug' OR level = 'trace')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  error NOT(level=debug OR level=trace)
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%' AND NOT (level = 'debug' OR level = 'trace')
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  NOT() error
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  NOT() error
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### IN Operator
@@ -4421,38 +3677,30 @@ NRQL: FROM Log SELECT * WHERE message LIKE '%error%'</pre>
 The `IN()` operator for matching against a list of values.
 
 <!-- spl-cases: in-operator -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  code IN (200, error, 404)
-NRQL: FROM Log SELECT * WHERE code IN (200, 'error', 404)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  code IN (200, error, 404)
+  NRQL: FROM Log SELECT * WHERE code IN (200, 'error', 404)
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  ScriptBlockText IN (*mimikatz*, *dumpcr*)
-NRQL: FROM Log SELECT * WHERE ScriptBlockText LIKE '%mimikatz%' OR ScriptBlockText LIKE '%dumpcr%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  ScriptBlockText IN (*mimikatz*, *dumpcr*)
+  NRQL: FROM Log SELECT * WHERE ScriptBlockText LIKE '%mimikatz%' OR ScriptBlockText LIKE '%dumpcr%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * NOT [|inputlookup exclude.csv] | stats count
-NRQL: FROM Log SELECT count(*) WHERE {{column}} NOT IN (FROM lookup(exclude) SELECT {{column}} LIMIT MAX)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NOT [|inputlookup exclude.csv] translated to NOT IN lookup subquery. Replace {{column}} with the exclusion field name from exclude.csv. Upload the CSV to New Relic Lookup tables as 'exclude'.</div>
-</div>
+```diff
+  SPL:  * NOT [|inputlookup exclude.csv] | stats count
+  NRQL: FROM Log SELECT count(*) WHERE {{column}} NOT IN (FROM lookup(exclude) SELECT {{column}} LIMIT MAX)
+  ✅ Confirmed by human
+! ⚠ NOT [|inputlookup exclude.csv] translated to NOT IN lookup subquery. Replace {{column}} with the exclusion field name from exclude.csv. Upload the CSV to New Relic Lookup tables as 'exclude'.
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  "parameters.doc_title" IN ("*dhl*", "*invoice*")
-NRQL: FROM Log SELECT * WHERE `parameters.doc_title` LIKE '%dhl%' OR `parameters.doc_title` LIKE '%invoice%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  "parameters.doc_title" IN ("*dhl*", "*invoice*")
+  NRQL: FROM Log SELECT * WHERE `parameters.doc_title` LIKE '%dhl%' OR `parameters.doc_title` LIKE '%invoice%'
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### Wildcards
@@ -4460,29 +3708,23 @@ NRQL: FROM Log SELECT * WHERE `parameters.doc_title` LIKE '%dhl%' OR `parameters
 Wildcard patterns in field values.
 
 <!-- spl-cases: wildcards -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  host=*server host=web* message=*error* path=/api/*/users
-NRQL: FROM Log SELECT * WHERE host LIKE '%server' AND host LIKE 'web%' AND message LIKE '%error%' AND path LIKE '/api/%/users'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  host=*server host=web* message=*error* path=/api/*/users
+  NRQL: FROM Log SELECT * WHERE host LIKE '%server' AND host LIKE 'web%' AND message LIKE '%error%' AND path LIKE '/api/%/users'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  host=*
-NRQL: FROM Log SELECT * WHERE host LIKE '%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  host=*
+  NRQL: FROM Log SELECT * WHERE host LIKE '%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  host!=test*
-NRQL: FROM Log SELECT * WHERE NOT host LIKE 'test%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  host!=test*
+  NRQL: FROM Log SELECT * WHERE NOT host LIKE 'test%'
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### Quoted Strings and Escaping
@@ -4490,53 +3732,41 @@ NRQL: FROM Log SELECT * WHERE NOT host LIKE 'test%'</pre>
 Handling of quoted strings and special characters.
 
 <!-- spl-cases: quoted-strings -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  message="it's"
-NRQL: FROM Log SELECT * WHERE message = 'it\'s'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  message="it's"
+  NRQL: FROM Log SELECT * WHERE message = 'it\'s'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  path="C:\\Windows\\System32"
-NRQL: FROM Log SELECT * WHERE path = 'C:\\Windows\\System32'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  path="C:\\Windows\\System32"
+  NRQL: FROM Log SELECT * WHERE path = 'C:\\Windows\\System32'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  msg="line1\nline2"
-NRQL: FROM Log SELECT * WHERE msg = 'line1\nline2'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  msg="line1\nline2"
+  NRQL: FROM Log SELECT * WHERE msg = 'line1\nline2'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  a="error in module" b="error | fatal" c="key=value" d="" e="日本語エラー" f="error, fatal"
-NRQL: FROM Log SELECT * WHERE a = 'error in module' AND b = 'error | fatal' AND c = 'key=value' AND d = '' AND e = '日本語エラー' AND f = 'error, fatal'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  a="error in module" b="error | fatal" c="key=value" d="" e="日本語エラー" f="error, fatal"
+  NRQL: FROM Log SELECT * WHERE a = 'error in module' AND b = 'error | fatal' AND c = 'key=value' AND d = '' AND e = '日本語エラー' AND f = 'error, fatal'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  message="error in module"
-NRQL: FROM Log SELECT * WHERE message = 'error in module'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  message="error in module"
+  NRQL: FROM Log SELECT * WHERE message = 'error in module'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=web user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)" | stats count by host
-NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  index=web user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)" | stats count by host
+  NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' FACET host
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### NRQL Reserved Words as Field Names
@@ -4544,93 +3774,71 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND user_agent = 'Mozilla/5.0
 Fields that collide with NRQL reserved words are backtick-escaped.
 
 <!-- spl-cases: nrql-keywords -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  my-field=value
-NRQL: FROM Log SELECT * WHERE `my-field` = 'value'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  my-field=value
+  NRQL: FROM Log SELECT * WHERE `my-field` = 'value'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  app:version=1.2.3
-NRQL: FROM Log SELECT * WHERE `app:version` = '1.2.3'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  app:version=1.2.3
+  NRQL: FROM Log SELECT * WHERE `app:version` = '1.2.3'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  kubernetes.labels.app:name=myapp
-NRQL: FROM Log SELECT * WHERE `kubernetes.labels.app:name` = 'myapp'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  kubernetes.labels.app:name=myapp
+  NRQL: FROM Log SELECT * WHERE `kubernetes.labels.app:name` = 'myapp'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by container-name
-NRQL: FROM Log SELECT count(*) FACET `container-name`</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count by container-name
+  NRQL: FROM Log SELECT count(*) FACET `container-name`
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats values(user.groups{}) as user_groups by host
-NRQL: FROM Log SELECT uniques(jparse(message, 'user.groups[*]')) AS 'user_groups' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats values(user.groups{}) as user_groups by host
+  NRQL: FROM Log SELECT uniques(jparse(message, 'user.groups[*]')) AS 'user_groups' FACET host
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | table k8s:namespace, k8s:pod
-NRQL: FROM Log SELECT `k8s:namespace`, `k8s:pod`</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * | table k8s:namespace, k8s:pod
+  NRQL: FROM Log SELECT `k8s:namespace`, `k8s:pod`
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  log-level IN (error, warn, info)
-NRQL: FROM Log SELECT * WHERE `log-level` IN ('error', 'warn', 'info')</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  log-level IN (error, warn, info)
+  NRQL: FROM Log SELECT * WHERE `log-level` IN ('error', 'warn', 'info')
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  x-forwarded-for=10.0.0.1
-NRQL: FROM Log SELECT * WHERE `x-forwarded-for` = '10.0.0.1'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  x-forwarded-for=10.0.0.1
+  NRQL: FROM Log SELECT * WHERE `x-forwarded-for` = '10.0.0.1'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  SELECT=200
-NRQL: FROM Log SELECT * WHERE `SELECT` = '200' OR numeric(`SELECT`) = 200</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  SELECT=200
+  NRQL: FROM Log SELECT * WHERE `SELECT` = '200' OR numeric(`SELECT`) = 200
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  search_term=hello NOT_FOUND=true top_secret=classified earliest_time=noon where=production table=users stats=enabled
-NRQL: FROM Log SELECT * WHERE search_term = 'hello' AND NOT_FOUND = 'true' AND top_secret = 'classified' AND earliest_time = 'noon' AND `where` = 'production' AND table = 'users' AND stats = 'enabled'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  search_term=hello NOT_FOUND=true top_secret=classified earliest_time=noon where=production table=users stats=enabled
+  NRQL: FROM Log SELECT * WHERE search_term = 'hello' AND NOT_FOUND = 'true' AND top_secret = 'classified' AND earliest_time = 'noon' AND `where` = 'production' AND table = 'users' AND stats = 'enabled'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  bytecount=1024
-NRQL: FROM Log SELECT * WHERE bytecount = '1024' OR numeric(bytecount) = 1024</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  bytecount=1024
+  NRQL: FROM Log SELECT * WHERE bytecount = '1024' OR numeric(bytecount) = 1024
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ### Metadata Fields (index, sourcetype, source, host)
@@ -4638,21 +3846,17 @@ NRQL: FROM Log SELECT * WHERE bytecount = '1024' OR numeric(bytecount) = 1024</p
 SPL metadata fields that have no direct NRQL equivalent are translated as attribute filters with a warning.
 
 <!-- spl-cases: metadata-fields -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=web
-NRQL: FROM Log SELECT * WHERE index = 'web'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  index=web
+  NRQL: FROM Log SELECT * WHERE index = 'web'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  sourcetype=access_*
-NRQL: FROM Log SELECT * WHERE sourcetype LIKE 'access_%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  sourcetype=access_*
+  NRQL: FROM Log SELECT * WHERE sourcetype LIKE 'access_%'
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ---
@@ -4664,109 +3868,73 @@ NRQL: FROM Log SELECT * WHERE sourcetype LIKE 'access_%'</pre>
 How the translator handles empty strings, null, and malformed SPL.
 
 <!-- spl-cases: empty-invalid -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  (empty)
-NRQL: FROM Log SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  (empty)
+  NRQL: FROM Log SELECT *
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  (empty)
-NRQL: FROM Log SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  (empty)
+  NRQL: FROM Log SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  |||
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  |||
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  back`tick=value
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  back`tick=value
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:     
-NRQL: FROM Log SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:     
+  NRQL: FROM Log SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  message=
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  message=
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  message=fn(x)
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  message=fn(x)
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  [search index=web | fields host]
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  [search index=web | fields host]
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status IN ()
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  status IN ()
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * || stats count
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * || stats count
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count |
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count |
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  https://example.com/path?q=1
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  https://example.com/path?q=1
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  `mymacro`status=200
-NRQL: null</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  `mymacro`status=200
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 ### Bare Keywords (full-text search)
@@ -4774,77 +3942,59 @@ NRQL: null</pre>
 Bare keywords without field assignments translate to `message LIKE '%keyword%'`. SPL bare keywords search `_raw` (the raw log line), so `message LIKE` is the correct NRQL equivalent — not `allColumnSearch()`, which searches every column and is extremely expensive.
 
 <!-- spl-cases: bare-keywords -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  error
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  "connection timeout"
-NRQL: FROM Log SELECT * WHERE message LIKE '%connection timeout%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  "connection timeout"
+  NRQL: FROM Log SELECT * WHERE message LIKE '%connection timeout%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error warning
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%' AND message LIKE '%warning%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  error warning
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%' AND message LIKE '%warning%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  *
-NRQL: FROM Log SELECT *</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  *
+  NRQL: FROM Log SELECT *
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  100%cpu
-NRQL: FROM Log SELECT * WHERE message LIKE '%100\%cpu%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  100%cpu
+  NRQL: FROM Log SELECT * WHERE message LIKE '%100\%cpu%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * Operation=\"Add member\"
-NRQL: FROM Log SELECT * WHERE Operation = 'Add member'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * Operation=\"Add member\"
+  NRQL: FROM Log SELECT * WHERE Operation = 'Add member'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * $global_time.earliest$ $global_time.latest$
-NRQL: FROM Log SELECT * SINCE {{global_time.earliest}} UNTIL {{global_time.latest}}</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  * $global_time.earliest$ $global_time.latest$
+  NRQL: FROM Log SELECT * SINCE {{global_time.earliest}} UNTIL {{global_time.latest}}
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  TERM("control-connection-state-change") | stats count
-NRQL: FROM Log SELECT count(*) WHERE message LIKE '%control-connection-state-change%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  TERM("control-connection-state-change") | stats count
+  NRQL: FROM Log SELECT count(*) WHERE message LIKE '%control-connection-state-change%'
+  ✅ Confirmed by human
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  TERM("*peer-system-ip:*") | stats count
-NRQL: FROM Log SELECT count(*) WHERE message LIKE '%%peer-system-ip:%%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">✅ Confirmed by human</span>
-</div>
-</div>
+```diff
+  SPL:  TERM("*peer-system-ip:*") | stats count
+  NRQL: FROM Log SELECT count(*) WHERE message LIKE '%%peer-system-ip:%%'
+  ✅ Confirmed by human
+```
 <!-- /spl-cases -->
 
 ---
@@ -4856,207 +4006,157 @@ NRQL: FROM Log SELECT count(*) WHERE message LIKE '%%peer-system-ip:%%'</pre>
 Boundary conditions, unusual syntax, and tricky translations.
 
 <!-- spl-cases: edge-cases -->
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  search error
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  search error
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  | stats count
-NRQL: FROM Log SELECT count(*)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  | stats count
+  NRQL: FROM Log SELECT count(*)
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count by host | sort - count | head 5
-NRQL: FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count by host | sort - count | head 5
+  NRQL: FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  OR status=200
-NRQL: FROM Log SELECT * WHERE message LIKE '%OR%' AND status = '200' OR numeric(status) = 200</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  OR status=200
+  NRQL: FROM Log SELECT * WHERE message LIKE '%OR%' AND status = '200' OR numeric(status) = 200
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  NOT NOT error
-NRQL: FROM Log SELECT * WHERE NOT message LIKE '%NOT%' AND message LIKE '%error%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  NOT NOT error
+  NRQL: FROM Log SELECT * WHERE NOT message LIKE '%NOT%' AND message LIKE '%error%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  -500
-NRQL: FROM Log SELECT * WHERE message LIKE '%-500%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  -500
+  NRQL: FROM Log SELECT * WHERE message LIKE '%-500%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  cpu_usage=95%
-NRQL: FROM Log SELECT * WHERE cpu_usage = '95%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  cpu_usage=95%
+  NRQL: FROM Log SELECT * WHERE cpu_usage = '95%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  host=web,01
-NRQL: FROM Log SELECT * WHERE host = 'web,01'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  host=web,01
+  NRQL: FROM Log SELECT * WHERE host = 'web,01'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  path=C:\
-NRQL: FROM Log SELECT * WHERE path = 'C:\\'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  path=C:\
+  NRQL: FROM Log SELECT * WHERE path = 'C:\\'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  field=***
-NRQL: FROM Log SELECT * WHERE field LIKE '%%%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  field=***
+  NRQL: FROM Log SELECT * WHERE field LIKE '%%%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  host=*web*server*prod*
-NRQL: FROM Log SELECT * WHERE host LIKE '%web%server%prod%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  host=*web*server*prod*
+  NRQL: FROM Log SELECT * WHERE host LIKE '%web%server%prod%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  error|stats count
-NRQL: FROM Log SELECT count(*) WHERE message LIKE '%error%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  error|stats count
+  NRQL: FROM Log SELECT count(*) WHERE message LIKE '%error%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status=200	status=300
-NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND status = '300' OR numeric(status) = 300</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  status=200	status=300
+  NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND status = '300' OR numeric(status) = 300
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  index=web
+```diff
+  SPL:  index=web
 | stats count by host
-NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+  NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET host
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  (a=1 OR (b=2 AND (c=3 OR d=4)))
-NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3 OR d = '4' OR numeric(d) = 4)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  (a=1 OR (b=2 AND (c=3 OR d=4)))
+  NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3 OR d = '4' OR numeric(d) = 4)
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  status IN (200)
-NRQL: FROM Log SELECT * WHERE status IN (200)</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  status IN (200)
+  NRQL: FROM Log SELECT * WHERE status IN (200)
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | head 0
-NRQL: FROM Log SELECT * LIMIT 0</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | head 0
+  NRQL: FROM Log SELECT * LIMIT 0
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * error
-NRQL: FROM Log SELECT * WHERE message LIKE '%error%'</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * error
+  NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where a&gt;1 | where b&lt;2
-NRQL: FROM Log SELECT * WHERE numeric(a) &gt; 1 AND numeric(b) &lt; 2</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | where a>1 | where b<2
+  NRQL: FROM Log SELECT * WHERE numeric(a) > 1 AND numeric(b) < 2
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | where (status &gt;= 400 AND status &lt; 500)
-NRQL: FROM Log SELECT * WHERE numeric(status) &gt;= 400 AND numeric(status) &lt; 500</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | where (status >= 400 AND status < 500)
+  NRQL: FROM Log SELECT * WHERE numeric(status) >= 400 AND numeric(status) < 500
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | sort -count, +name, host
-NRQL: FROM Log SELECT * ORDER BY count DESC</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-<div style="background: #fff3cd; padding: 4px 8px; border-radius: 3px; margin: 8px 0 0 0; font-size: 0.9em;">⚠ NRQL ORDER BY supports only one field; additional sort fields ignored</div>
-</div>
+```diff
+  SPL:  * | sort -count, +name, host
+  NRQL: FROM Log SELECT * ORDER BY count DESC
+  🤖 Confirmed by LLM
+! ⚠ NRQL ORDER BY supports only one field; additional sort fields ignored
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | STATS COUNT BY host
-NRQL: FROM Log SELECT count(*) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | STATS COUNT BY host
+  NRQL: FROM Log SELECT count(*) FACET host
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | Stats Count By Host
-NRQL: FROM Log SELECT count(*) FACET Host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | Stats Count By Host
+  NRQL: FROM Log SELECT count(*) FACET Host
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats count() by host
-NRQL: FROM Log SELECT count(*) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats count() by host
+  NRQL: FROM Log SELECT count(*) FACET host
+  🤖 Confirmed by LLM
+```
 
-<div style="background: #d4edda; padding: 8px; border-radius: 4px; margin: 4px 0;">
-<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-<pre style="margin: 0; flex: 1;">SPL:  * | stats avg(response.time) by host
-NRQL: FROM Log SELECT average(`response.time`) FACET host</pre>
-<span style="background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; white-space: nowrap;">🤖 Confirmed by LLM</span>
-</div>
-</div>
+```diff
+  SPL:  * | stats avg(response.time) by host
+  NRQL: FROM Log SELECT average(`response.time`) FACET host
+  🤖 Confirmed by LLM
+```
 <!-- /spl-cases -->
 
 ### Real-World Queries
