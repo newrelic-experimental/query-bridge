@@ -18,6 +18,21 @@ import { walkEvalExpr } from './evalHandlers.js';
 import { translateAstToIR } from './splToIR.js';
 import * as parser from './splParser.js';
 
+// SPL subsearches can omit the leading `|` for commands like `inputlookup`.
+// The parser needs `|` to recognize them as commands rather than search terms.
+const COMMAND_PREFIXES =
+  /^(inputlookup|lookup|stats|eventstats|top|rare|table|fields|eval|rename|dedup|sort|head|tail|rex|spath|regex|bin|bucket|chart|timechart|where|search|join|append|appendcols|appendpipe|convert|replace|strcat|fillnull|predict|mvexpand|uniq|reverse|transaction|streamstats)\b/i;
+
+function normalizeSubsearch(raw) {
+  const trimmed = raw.trim();
+  // Already has a leading pipe — parse as-is
+  if (trimmed.startsWith('|')) return trimmed;
+  // Starts with a known command name — prepend pipe
+  if (COMMAND_PREFIXES.test(trimmed)) return `| ${trimmed}`;
+  // Otherwise it's a search expression — parse as-is
+  return trimmed;
+}
+
 export function handleJoin(cmd, ir) {
   if (cmd.joinType === 'outer') {
     ir.unsupported.push(
@@ -28,7 +43,7 @@ export function handleJoin(cmd, ir) {
 
   let subIR;
   try {
-    const subAst = parser.parse(cmd.subsearch.trim());
+    const subAst = parser.parse(normalizeSubsearch(cmd.subsearch));
     subIR = translateAstToIR(subAst);
   } catch (e) {
     ir.unsupported.push(`join subsearch could not be parsed: ${e.message}`);
@@ -84,7 +99,7 @@ export function handleAppendpipe(cmd, ir) {
   // Parse the sub-pipeline to understand what it does
   let subIR;
   try {
-    const subAst = parser.parse(cmd.subsearch.trim());
+    const subAst = parser.parse(normalizeSubsearch(cmd.subsearch));
     subIR = translateAstToIR(subAst);
   } catch (e) {
     ir.unsupported.push(
@@ -119,7 +134,7 @@ export function handleAppend(cmd, ir, label) {
   // Parse and translate the subsearch
   let subIR;
   try {
-    const subAst = parser.parse(cmd.subsearch.trim());
+    const subAst = parser.parse(normalizeSubsearch(cmd.subsearch));
     subIR = translateAstToIR(subAst);
   } catch (e) {
     ir.unsupported.push(`${label} subsearch could not be parsed: ${e.message}`);

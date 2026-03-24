@@ -838,8 +838,6 @@ const cases = [
     doc: 'eval-string',
     verified: 'human',
   },
-  // eval trim() → capture with regex (NRQL has no trim)
-  // FIXME: multiple trim() calls would collide on (?P<t>...) named group
   // eval trim() → capture with regex (alias name used as group name to avoid collision)
   {
     spl: '* | eval x=trim(name)',
@@ -1153,7 +1151,14 @@ const cases = [
     doc: 'results-inputlookup',
     verified: 'human',
   },
-  // TODO: join host [inputlookup servers.csv] — grammar doesn't parse inputlookup inside join brackets yet
+  // join with inputlookup subsearch (no leading pipe)
+  {
+    spl: '* | join host [inputlookup servers.csv]',
+    nrql: 'FROM Log JOIN (FROM lookup(servers.csv) SELECT * FACET host LIMIT MAX) ON host = host SELECT *',
+    warningIncludes: 'lookup table',
+    doc: 'results-inputlookup',
+    verified: false,
+  },
   {
     spl: '| inputlookup users.csv where role="admin"',
     nrql: "FROM lookup(users.csv) SELECT * WHERE role = 'admin'",
