@@ -1172,8 +1172,7 @@ const cases = [
   // join with inputlookup subsearch (no leading pipe)
   {
     spl: '* | join host [inputlookup servers.csv]',
-    nrql: 'FROM Log JOIN (FROM lookup(servers.csv) SELECT * FACET host LIMIT MAX) ON host = host SELECT *',
-    warningIncludes: 'lookup table',
+    unsupportedIncludes: 'explicit fields',
     doc: 'results-inputlookup',
     verified: 'human',
   },
@@ -1994,7 +1993,7 @@ const cases = [
     spl: '* | where like(host, "web*")',
     nrql: "FROM Log SELECT * WHERE host LIKE 'web%'",
     doc: 'results-where',
-    verified: 'llm',
+    verified: 'human',
   },
   // where with infix like operator
   {
@@ -2007,13 +2006,13 @@ const cases = [
     spl: '* | where match(host, "^web[0-9]+$")',
     nrql: "FROM Log SELECT * WHERE host RLIKE r'^web[0-9]+$'",
     doc: 'results-where',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | where cidrmatch("10.0.0.0/8", src_ip)',
     nrql: "FROM Log SELECT * WHERE cidrAddress(src_ip, 8) = '10.0.0.0/8'",
     doc: 'results-where',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | where status >= 400 AND status < 500',
@@ -2059,13 +2058,13 @@ const cases = [
     nrql: "FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'other' FACET host LIMIT MAX) ON host = host SELECT *",
     warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | join type=left src_ip [search index=geo | table src_ip, country]',
-    nrql: "FROM Log LEFT JOIN (FROM Log SELECT country WHERE index = 'geo' FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *",
+    nrql: "FROM Log LEFT JOIN (FROM Log SELECT src_ip, country WHERE index = 'geo' LIMIT MAX) ON src_ip = src_ip SELECT *",
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | join type=outer host [search * | stats count by host]',
@@ -2075,10 +2074,10 @@ const cases = [
   },
   {
     spl: '* | join host [search status=500 | table host, message]',
-    nrql: "FROM Log JOIN (FROM Log SELECT message WHERE status = '500' OR numeric(status) = 500 FACET host LIMIT MAX) ON host = host SELECT *",
+    nrql: "FROM Log JOIN (FROM Log SELECT host, message WHERE status = '500' OR numeric(status) = 500 LIMIT MAX) ON host = host SELECT *",
     warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | join src_ip [search * | stats count, avg(bytes) by src_ip]',
@@ -2096,10 +2095,9 @@ const cases = [
   },
   {
     spl: '* | join host [search status=200 host=web*]',
-    nrql: "FROM Log JOIN (FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND host LIKE 'web%' FACET host LIMIT MAX) ON host = host SELECT *",
-    warningIncludes: 'JOIN',
+    unsupportedIncludes: 'explicit fields',
     doc: 'correlation-join',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: 'status=500 | join host [search * | stats count by host]',
@@ -2117,10 +2115,10 @@ const cases = [
   },
   {
     spl: '* | join user [search * | table user, role]',
-    nrql: 'FROM Log JOIN (FROM Log SELECT role FACET user LIMIT MAX) ON user = user SELECT *',
+    nrql: 'FROM Log JOIN (FROM Log SELECT user, role LIMIT MAX) ON user = user SELECT *',
     warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: false,
+    verified: 'human',
   },
   //
   // ── dedup command ───────────────────────────────────────────────

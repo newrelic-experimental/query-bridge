@@ -44,18 +44,35 @@ export function handleJoin(cmd, ir) {
   const key = Identifier(cmd.field);
   const joinType = (cmd.joinType || 'inner').toUpperCase();
 
-  // NRQL requires the join key in FACET, not SELECT.
-  // If the subsearch used table/fields (explicit SELECT, no FACET),
-  // move the join key from SELECT to FACET.
+  // Two patterns for join subqueries:
+  // Pattern A (raw): subsearch has no aggregation → SELECT fields as-is, no FACET
+  // Pattern B (aggregated): subsearch has stats → move join key to FACET, wrap in latest()
   let subSelect = subIR.select.length > 0 ? subIR.select : [Wildcard()];
   let subFacet = subIR.facet;
   if (subFacet.length === 0) {
-    // Remove join key from SELECT if present, add to FACET
-    subSelect = subSelect.filter(
-      (s) => !(s.type === 'Identifier' && s.name === cmd.field),
-    );
-    if (subSelect.length === 0) subSelect = [Wildcard()];
-    subFacet = [key];
+    // Reject wildcard-only or empty SELECT — need explicit fields
+    const hasWildcard = subSelect.some((s) => s.type === 'Wildcard');
+    if (subSelect.length === 0 || hasWildcard) {
+      ir.unsupported.push(
+        'Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over',
+      );
+      return;
+    }
+
+    if (subIR._hasAggregation) {
+      // Pattern B (aggregated): move join key to FACET, wrap bare fields in latest()
+      subSelect = subSelect.filter(
+        (s) => !(s.type === 'Identifier' && s.name === cmd.field),
+      );
+      subSelect = subSelect.map((s) => {
+        if (s.type === 'Identifier') {
+          return Alias(Func('latest', [s]), s.name);
+        }
+        return s;
+      });
+      subFacet = [key];
+    }
+    // Pattern A (raw): keep SELECT as-is, no FACET — subFacet stays empty
   }
 
   ir.join = JoinClause(
