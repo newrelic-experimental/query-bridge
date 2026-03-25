@@ -1397,7 +1397,7 @@ const cases = [
     spl: '* | fillnull value=0',
     unsupportedIncludes: 'field list',
     doc: 'fields-fillnull',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | fillnull value="unknown" host',
@@ -1427,21 +1427,21 @@ const cases = [
     nrql: "FROM Log SELECT src_ip AS 'source_address', *",
     warningIncludes: 'original field names',
     doc: 'fields-rename',
-    verified: false,
+    verified: 'human',
   },
   {
     // rename-after-stats: fold rename into stats alias
     spl: '* | stats avg(bytes) as avg_bytes by host | rename avg_bytes AS average_bytes',
     nrql: "FROM Log SELECT average(bytes) AS 'average_bytes' FACET host",
     doc: 'fields-rename',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | rename _time AS "Time"',
     nrql: "FROM Log SELECT timestamp AS 'Time', *",
     warningIncludes: 'original field names',
     doc: 'fields-rename',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | rename properties.* as *',
@@ -1454,13 +1454,13 @@ const cases = [
     nrql: "FROM Log SELECT src_ip AS 'src', user_name AS 'user', *",
     warningIncludes: 'original field names',
     doc: 'fields-rename',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | rename "IsOutlier(count)" as isOutlier',
     unsupportedIncludes: 'parentheses',
     doc: 'fields-rename',
-    verified: false,
+    verified: 'human',
   },
   //
   // ── strcat command ──────────────────────────────────────────────
@@ -1471,25 +1471,25 @@ const cases = [
     spl: '* | strcat host ":" port address',
     nrql: "FROM Log WITH concat(host, ':', port) AS address SELECT *",
     doc: 'fields-strcat',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | strcat first_name last_name full_name',
     nrql: 'FROM Log WITH concat(first_name, last_name) AS full_name SELECT *',
     doc: 'fields-strcat',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | strcat protocol "://" host ":" port url',
     nrql: "FROM Log WITH concat(protocol, '://', host, ':', port) AS url SELECT *",
     doc: 'fields-strcat',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | strcat host ":" port address | stats count by address',
     nrql: "FROM Log WITH concat(host, ':', port) AS address SELECT count(*) FACET address",
     doc: 'fields-strcat',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── rare command ────────────────────────────────────────────────
@@ -1884,14 +1884,14 @@ const cases = [
     spl: '* | top delay limit=10',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10",
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   // percent subquery includes WHERE from search
   {
     spl: 'error | top 5 status',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── top with groupby ────────────────────────────────────────────
@@ -1901,7 +1901,7 @@ const cases = [
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5",
     warningIncludes: 'top with groupBy',
     doc: 'reports-top-groupby',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── Multiple aggregation ────────────────────────────────────────
@@ -1939,7 +1939,7 @@ const cases = [
     spl: '* | bucket span=5m _time | stats count by _time',
     nrql: 'FROM Log SELECT count(*) TIMESERIES 5 minutes',
     doc: 'reports-bin',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | bin size span=10',
