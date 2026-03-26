@@ -36,23 +36,40 @@ const fields = [
   'container-name',
   'service.name',
   'http.status_code',
+  '_time',
+  '_raw',
+  'source',
+  'sourcetype',
+  'index',
+  'count',
+  'error_rate',
+  'response_time',
+  'cpu_usage',
 ];
 
-const statsAggs = [
-  'count',
-  'count(status)',
-  'avg(duration)',
-  'sum(bytes)',
-  'max(duration)',
-  'min(bytes)',
-  'dc(host)',
-  'values(status)',
-  'latest(message)',
-  'earliest(timestamp)',
-  'perc95(duration)',
-  'median(duration)',
-  'stdev(duration)',
+const values = [
+  '200',
+  '404',
+  '500',
+  '0',
+  '1024',
+  'error',
+  'web01',
+  'prod',
+  '*',
+  'test*',
+  '*error*',
+  '/api/*/users',
+  'true',
+  'false',
+  'INFO',
+  'ERROR',
+  'WARN',
+  'svc-*',
+  '',
 ];
+
+const ops = ['=', '!=', '>', '<', '>=', '<='];
 
 const evalExprs = [
   'x = duration / 1000',
@@ -65,6 +82,20 @@ const evalExprs = [
   'x = replace(message, "error", "ERR")',
   'x = case(status<300, "ok", status<500, "warn", 1=1, "err")',
   'x = mvindex(split(uri, "/"), 1)',
+  'x = tonumber(status)',
+  'x = tostring(bytes, "commas")',
+  'x = round(duration, 2)',
+  'x = abs(bytes - 1000)',
+  'x = upper(method)',
+  'x = trim(message)',
+  'x = urldecode(uri)',
+  'x = now()',
+  'x = mvcount(split(uri, "/"))',
+  'x = mvjoin(split(uri, "/"), "-")',
+  'x = if(isnotnull(user), user, "anon")',
+  'x = host . ":" . status',
+  'x = printf("%s-%d", host, status)',
+  'x = nullif(status, "200")',
 ];
 
 // Where expressions safe for compound combinations (no function calls)
@@ -73,17 +104,19 @@ const whereExprs = [
   'status >= 400 AND status < 500',
   'duration > 1000 OR bytes > 10000',
   'NOT status = 200',
+  'status != 404',
+  'host = "web01"',
+  'method = "GET" OR method = "POST"',
+  'bytes > 0 AND duration < 5000',
+  'status >= 200 AND status < 300 AND method = "GET"',
+  'host like "web%"',
+  'message like "%error%"',
+  'NOT message like "%debug%"',
+  'uri like "/api/%"',
 ];
 
 // FIXME: ALL function-call-form where expressions break in compound contexts
-// (AND/OR/NOT). The where handler catches them at the top level, but compound
-// expressions go through the search expression walker which emits "Unknown
-// search node type: FunctionCall" and produces [object Object] in output.
-//
-// Standalone `where isnotnull(user)` works. `where isnotnull(user) AND x` breaks.
-// Infix `where name like "%test%"` works in compounds. Function `where like(f, p)` breaks.
-//
-// Move back to whereExprs once the where handler's expression walker is fixed.
+// (AND/OR/NOT). Move back to whereExprs once the where handler is fixed.
 const buggyWhereExprs = [
   'isnotnull(user)',
   'isnull(error)',
@@ -94,6 +127,42 @@ const buggyWhereExprs = [
   'match(host, "^web[0-9]+$")',
   'cidrmatch("10.0.0.0/8", src_ip)',
 ];
+
+const timeConstraints = [
+  'earliest=-24h',
+  'earliest=-1h latest=now',
+  'earliest=-7d latest=-1d',
+  'earliest=@d',
+  'earliest=-30m',
+  'earliest=-1w',
+  'earliest=@w',
+  'earliest=-5m latest=-1m',
+  'earliest=-2h@h',
+];
+
+const spans = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
+
+// ── Grammar-level arbitraries (option 3 — easy parts) ───────────────
+
+const arbField = fc.constantFrom(...fields);
+const arbValue = fc.constantFrom(...values);
+const arbOp = fc.constantFrom(...ops);
+
+/** Generate a random search comparison: field op value */
+const arbComparison = fc
+  .tuple(arbField, arbOp, arbValue)
+  .map(([f, o, v]) => `${f}${o}${v}`);
+
+/** Generate a search clause from grammar structure */
+const arbSearchGenerated = fc
+  .tuple(
+    fc.array(arbComparison, { minLength: 1, maxLength: 3 }),
+    fc.constantFrom('', ' AND ', ' OR '),
+  )
+  .map(([comps, joiner]) => {
+    if (comps.length === 1) return comps[0];
+    return comps.join(joiner || ' ');
+  });
 
 const searchClauses = [
   'index=web',
@@ -106,61 +175,173 @@ const searchClauses = [
   '(error OR fail) NOT debug',
   'status IN (200, 301, 404, 500)',
   'host!=test*',
+  'index=web sourcetype=access host=prod*',
+  'level=ERROR method=POST',
+  'bytes>10000 NOT status=200',
 ];
 
-const timeConstraints = [
-  'earliest=-24h',
-  'earliest=-1h latest=now',
-  'earliest=-7d latest=-1d',
-  'earliest=@d',
-  'earliest=-30m',
-];
+/** Generate a random eval expression from grammar structure */
+const arbEvalGenerated = fc
+  .tuple(
+    fc.constantFrom('a', 'b', 'c', 'x', 'y', 'result', 'val'),
+    fc.oneof(
+      // arithmetic: field op field/number
+      fc
+        .tuple(arbField, fc.constantFrom('+', '-', '*', '/', '%'), arbField)
+        .map(([f1, o, f2]) => `${f1} ${o} ${f2}`),
+      // function call: func(field)
+      fc
+        .tuple(
+          fc.constantFrom(
+            'lower',
+            'upper',
+            'len',
+            'trim',
+            'abs',
+            'round',
+            'floor',
+            'ceiling',
+            'tonumber',
+            'tostring',
+            'urldecode',
+          ),
+          arbField,
+        )
+        .map(([fn, f]) => `${fn}(${f})`),
+      // conditional: if(field op value, true, false)
+      fc
+        .tuple(arbField, arbOp, arbValue)
+        .map(([f, o, v]) => `if(${f}${o}${v}, "yes", "no")`),
+      // string concat with dot operator
+      fc.tuple(arbField, arbField).map(([f1, f2]) => `${f1} . " " . ${f2}`),
+    ),
+  )
+  .map(([name, expr]) => `${name} = ${expr}`);
+
+/** Generate a random stats clause from grammar structure */
+const arbStatsGenerated = fc
+  .tuple(
+    fc.array(
+      fc
+        .tuple(
+          fc.constantFrom(
+            'count',
+            'avg',
+            'sum',
+            'max',
+            'min',
+            'dc',
+            'values',
+            'latest',
+            'earliest',
+            'median',
+            'perc95',
+            'stdev',
+            'range',
+          ),
+          fc.oneof(fc.constant(null), arbField),
+          fc.option(
+            fc.constantFrom('total', 'result', 'val', 'cnt', 'avg_val'),
+            { nil: undefined },
+          ),
+        )
+        .map(([fn, f, alias]) => {
+          const call = f
+            ? `${fn}(${f})`
+            : fn === 'count'
+              ? 'count'
+              : `${fn}(duration)`;
+          return alias ? `${call} as ${alias}` : call;
+        }),
+      { minLength: 1, maxLength: 3 },
+    ),
+    fc.option(
+      fc
+        .array(arbField, { minLength: 1, maxLength: 2 })
+        .map((fs) => fs.join(', ')),
+      { nil: undefined },
+    ),
+  )
+  .map(([aggs, by]) => `stats ${aggs.join(', ')}${by ? ` by ${by}` : ''}`);
+
+// ── Pipe command generators ─────────────────────────────────────────
 
 const pipeCommands = [
-  (f) => `stats ${fc.sample(fc.constantFrom(...statsAggs), 1)[0]} by ${f}`,
   (f) => `stats count by ${f}`,
+  (f) => `stats avg(duration), max(duration), count by ${f}`,
+  (f) => `stats dc(${f}) as unique_${f.replace(/[^a-zA-Z]/g, '')}`,
   (f) => `timechart span=5m count by ${f}`,
-  (_f) => `timechart span=1h avg(duration)`,
+  (_f) =>
+    `timechart span=${fc.sample(fc.constantFrom(...spans), 1)[0]} avg(duration)`,
   (f) => `top 10 ${f}`,
+  (f) => `top limit=5 showperc=false ${f}`,
   (f) => `rare ${f}`,
-  (f) => `table ${f}, status, duration`,
+  (f) => `table ${f}, status, duration, message`,
   (f) => `fields ${f}, status`,
+  (f) => `fields - ${f}`,
   (_f) => `sort -duration`,
+  (f) => `sort +${f}`,
   (_f) => `head 100`,
+  (_f) => `head 1`,
   (f) => `rename ${f} AS source_host`,
+  (f) => `rename ${f} AS renamed_field status AS http_status`,
   (f) => `dedup ${f}`,
-  (_f) => `eval x = duration / 1000`,
+  (f) => `dedup ${f} status`,
+  (_f) => `eval ${fc.sample(arbEvalGenerated, 1)[0]}`,
   (_f) => `rex field=message "user=(?<username>\\w+)"`,
+  (_f) => `rex field=uri "\\/api\\/(?<version>v\\d+)\\/(?<endpoint>\\w+)"`,
   (_f) => `fillnull value=0 duration`,
+  (_f) => `fillnull value="N/A"`,
   (_f) => `bin _time span=5m`,
+  (f) => `bin ${f} span=100`,
   (_f) => `where status > 400`,
+  (_f) => `where duration < 1000 AND status != 200`,
+  (_f) => `where bytes > 0`,
   // FIXME: re-enable once where handler's like() function call bug is fixed:
   // (_f) => `where like(message, "%error%")`,
-  // (_f) => `where NOT like(message, "%test%")`,
-  // (_f) => `where like(host, "%web%") AND status=500`,
   (_f) => `strcat host ":" status endpoint`,
   (_f) => `convert num(bytes)`,
+  (_f) => `convert auto(duration)`,
+  (_f) => `convert rmcomma(bytes)`,
+  (_f) => `convert ctime(timestamp)`,
   (_f) => `regex message="error|fail"`,
+  (_f) => `regex _raw!="DEBUG"`,
   (_f) => `spath input=message path=data.id output=data_id`,
   (_f) => `search status=500`,
+  (_f) => `search host=web*`,
   (_f) => `reverse`,
+  // stats-after-stats (nested aggregation)
+  (f) => `stats count as cnt by ${f} | stats sum(cnt)`,
+  (f) => `stats count by ${f} | where count > 10`,
+  // eventstats
+  (f) => `eventstats count as total by ${f}`,
+  (_f) => `eventstats avg(duration) as avg_dur`,
+  // join with subsearch
+  (f) =>
+    `join ${f} [search index=web | stats avg(duration) as avg_dur by ${f}]`,
+  // append
+  (_f) => `append [search index=web status=500 | stats count as errors]`,
+  // lookup
+  (f) => `lookup my_lookup ${f} OUTPUT category`,
 ];
 
 // ── Arbitraries ─────────────────────────────────────────────────────
 
-const arbField = fc.constantFrom(...fields);
-const arbSearch = fc.constantFrom(...searchClauses);
+const arbSearch = fc.oneof(
+  fc.constantFrom(...searchClauses),
+  arbSearchGenerated,
+);
 const arbTime = fc.constantFrom(...timeConstraints);
 const arbPipe = fc.constantFrom(...pipeCommands);
 const arbWhereExpr = fc.constantFrom(...whereExprs);
-const arbEvalExpr = fc.constantFrom(...evalExprs);
+const arbEvalExpr = fc.oneof(fc.constantFrom(...evalExprs), arbEvalGenerated);
 
-/** Generate a random SPL query: search clause + 0-3 pipe commands */
+/** Generate a random SPL query: search clause + 0-4 pipe commands */
 const arbSplQuery = fc
   .tuple(
     arbSearch,
     fc.option(arbTime, { nil: undefined }),
-    fc.array(arbPipe, { minLength: 0, maxLength: 3 }),
+    fc.array(arbPipe, { minLength: 0, maxLength: 4 }),
     arbField,
   )
   .map(([search, time, pipes, field]) => {
@@ -182,18 +363,25 @@ const arbEvalMulti = fc
   .array(arbEvalExpr, { minLength: 1, maxLength: 3 })
   .map((exprs) => {
     // Rename variables to avoid collision: x → x1, x2, etc.
-    const renamed = exprs.map((e, i) => e.replace('x =', `x${i + 1} =`));
+    const renamed = exprs.map((e, i) => e.replace(/^[a-z]+ =/, `v${i + 1} =`));
     return `* | eval ${renamed.join(', ')}`;
   });
 
 /** Generate stats-after-stats (nested aggregation) */
-const arbStatsChain = fc
-  .tuple(arbField, arbField)
-  .map(([f1, f2]) => `* | stats count by ${f1} | stats sum(count) by ${f2}`);
+const arbStatsChain = fc.oneof(
+  fc
+    .tuple(arbField, arbField)
+    .map(([f1, f2]) => `* | stats count by ${f1} | stats sum(count) by ${f2}`),
+  fc
+    .tuple(arbField)
+    .map(([f]) => `* | stats count as cnt by ${f} | where cnt > 5`),
+  arbStatsGenerated.map((s) => `* | ${s}`),
+);
 
 // ── Properties ──────────────────────────────────────────────────────
 
 describe('SPL→NRQL property-based fuzz tests', () => {
+  // 500 default; bump to 5000+ for deep fuzz runs
   const numRuns = 500;
 
   it('never produces [object Object] in NRQL output', () => {
@@ -508,6 +696,7 @@ const mutations = {
 const mutationNames = Object.keys(mutations);
 
 describe('mutation-based fuzzing', () => {
+  // 300 default; bump to 3000+ for deep fuzz runs
   const numRuns = 300;
 
   it('mutated real-world queries never crash or produce [object Object]', () => {
