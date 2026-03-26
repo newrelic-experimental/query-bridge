@@ -83,6 +83,11 @@ export function handleRename(cmd, ir) {
   }
 }
 
+// TODO: dedup sortby — SPL `dedup host sortby -duration` keeps the row with
+//   the highest duration per host. Our grammar doesn't parse sortby/keepevents
+//   options, and the handler ignores sort order (always uses latest()).
+//   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+//   Feasibility: grammar change + handler change to use max()/min() instead of latest().
 export function handleDedup(cmd, ir) {
   for (const field of cmd.fields) {
     const id = Identifier(field);
@@ -122,6 +127,11 @@ export function handleBin(cmd, ir) {
 
 export function handleReverse(cmd, ir) {
   ir.orderBy = OrderBy(Identifier('timestamp'), false);
+  if (ir._hasAggregation) {
+    ir.warnings.push(
+      'reverse after aggregation may not produce correct results; NRQL ORDER BY timestamp ASC does not match SPL row-order reversal',
+    );
+  }
 }
 
 export function handleFillnull(cmd, ir) {

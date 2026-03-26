@@ -1582,13 +1582,13 @@ const cases = [
     spl: '* | stats count(eval(status>=400)) as errors',
     nrql: "FROM Log SELECT filter(count(*), WHERE numeric(status) >= 400) AS 'errors'",
     doc: 'reports-stats',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | stats count(eval(EventCode=4648)) as attempts, count(eval(EventCode=4624)) as successes',
     nrql: "FROM Log SELECT filter(count(*), WHERE EventCode = '4648' OR numeric(EventCode) = 4648) AS 'attempts', filter(count(*), WHERE EventCode = '4624' OR numeric(EventCode) = 4624) AS 'successes'",
     doc: 'reports-stats',
-    verified: false,
+    verified: 'human',
   },
   //
   // ── stats functions ─────────────────────────────────────────────
@@ -1806,7 +1806,7 @@ const cases = [
     nrql: 'FROM Log SELECT count(*) TIMESERIES AUTO PREDICT',
     warningIncludes: 'PREDICT requires TIMESERIES',
     doc: 'reports-timechart',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── chart command ───────────────────────────────────────────────
@@ -1827,34 +1827,34 @@ const cases = [
     spl: '* | top categoryId',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10",
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | top 20 host',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20",
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   // limit=N keyword form
   {
     spl: '* | top limit=20 host',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20",
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   // limit=0 means unlimited → LIMIT MAX
   {
     spl: '* | top limit=0 status',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX",
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   // countfield option renames the count column
   {
     spl: '* | top limit=5 countfield=total host',
     nrql: "FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   // showperc=false suppresses percent select
   {
@@ -1869,14 +1869,14 @@ const cases = [
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5",
     warningIncludes: 'useother',
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   // percentfield option renames the percent column
   {
     spl: '* | top 5 percentfield=pct host',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5",
     doc: 'reports-top',
-    verified: 'llm',
+    verified: 'human',
   },
   // limit=N after field name
   {
@@ -1944,7 +1944,7 @@ const cases = [
     spl: '* | bin size span=10',
     nrql: 'FROM Log SELECT histogram(size, 10)',
     doc: 'reports-bin',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── where (pipe) ────────────────────────────────────────────────
@@ -2001,6 +2001,39 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE name LIKE '%test%'",
     doc: 'results-where',
     verified: 'human',
+  },
+  // FIXME: where like(message, ...) — migration guide gap #1.
+  //   Works correctly but emits spurious "Unknown search node type: FunctionCall" warning.
+  //   The where handler recognizes like() but the search expr walker also sees it and warns.
+  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  {
+    spl: '* | where like(message, "%error%")',
+    nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
+    warningIncludes: 'Unknown search node type',
+    doc: 'results-where',
+    verified: false,
+  },
+  // FIXME: where NOT like(...) produces `WHERE [object Object]` instead of `WHERE NOT ... LIKE ...`.
+  //   The NOT wrapping of the like() result isn't emitted correctly in the where handler's
+  //   expression walker — the Like IR node isn't being wrapped in Not() properly.
+  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  {
+    spl: '* | where NOT like(message, "%debug%")',
+    nrql: "FROM Log SELECT * WHERE NOT message LIKE '%debug%'",
+    doc: 'results-where',
+    verified: false,
+    skip: true,
+  },
+  // FIXME: where like(...) AND field=value — the like() part is silently dropped,
+  //   only the field comparison survives. The where handler's expression walker doesn't
+  //   return a value for like() as a function call, so AND loses the left operand.
+  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  {
+    spl: '* | where like(message, "%timeout%") AND status=500',
+    nrql: "FROM Log SELECT * WHERE message LIKE '%timeout%' AND (status = '500' OR numeric(status) = 500)",
+    doc: 'results-where',
+    verified: false,
+    skip: true,
   },
   {
     spl: '* | where match(host, "^web[0-9]+$")',
@@ -2070,7 +2103,7 @@ const cases = [
     spl: '* | join type=outer host [search * | stats count by host]',
     unsupportedIncludes: 'outer join',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | join host [search status=500 | table host, message]',
@@ -2084,14 +2117,14 @@ const cases = [
     nrql: 'FROM Log JOIN (FROM Log SELECT count(*), average(bytes) FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *',
     warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | join host [search * | stats count by host | head 100]',
     nrql: 'FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT 100) ON host = host SELECT *',
     warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | join host [search status=200 host=web*]',
@@ -2104,14 +2137,14 @@ const cases = [
     nrql: "FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT MAX) ON host = host SELECT * WHERE status = '500' OR numeric(status) = 500",
     warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | stats count by host | join host [search * | stats avg(cpu) by host]',
     nrql: 'FROM Log JOIN (FROM Log SELECT average(cpu) FACET host LIMIT MAX) ON host = host SELECT count(*) FACET host',
     warningIncludes: 'JOIN',
     doc: 'correlation-join',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | join user [search * | table user, role]',
@@ -2130,21 +2163,21 @@ const cases = [
     nrql: 'FROM Log SELECT latest(timestamp) FACET host LIMIT MAX',
     warningIncludes: 'dedup',
     doc: 'results-dedup',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | dedup host, status',
     nrql: 'FROM Log SELECT latest(timestamp) FACET host, status LIMIT MAX',
     warningIncludes: 'dedup',
     doc: 'results-dedup',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | stats count by host | dedup host',
     nrql: 'FROM Log SELECT count(*) FACET host LIMIT MAX',
     warningIncludes: 'dedup',
     doc: 'results-dedup',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── regex command ───────────────────────────────────────────────
@@ -2155,31 +2188,31 @@ const cases = [
     spl: '* | regex message="error\\\\d+"',
     nrql: "FROM Log SELECT * WHERE message RLIKE r'error\\\\d+'",
     doc: 'results-regex',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | regex status!="^2\\\\d{2}$"',
     nrql: "FROM Log SELECT * WHERE status NOT RLIKE r'^2\\\\d{2}$'",
     doc: 'results-regex',
-    verified: false,
+    verified: 'human',
   },
   {
     spl: '* | regex "fatal|critical"',
     nrql: "FROM Log SELECT * WHERE message RLIKE r'fatal|critical'",
     doc: 'results-regex',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'status=500 | regex message="timeout"',
     nrql: "FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'timeout'",
     doc: 'results-regex',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | regex uri_path="^/api/v[0-9]+"',
     nrql: "FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'",
     doc: 'results-regex',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── table / fields ──────────────────────────────────────────────
@@ -2190,13 +2223,13 @@ const cases = [
     spl: '* | table _time, host, status, bytes, url',
     nrql: 'FROM Log SELECT timestamp, host, status, bytes, url',
     doc: 'results-table',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | table *',
     nrql: 'FROM Log SELECT *',
     doc: 'results-table',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   //
@@ -2204,20 +2237,20 @@ const cases = [
     spl: '* | fields host, status',
     nrql: 'FROM Log SELECT host, status',
     doc: 'results-table',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | fields _time, host, status',
     nrql: 'FROM Log SELECT timestamp, host, status',
     doc: 'results-table',
-    verified: 'llm',
+    verified: 'human',
   },
   // fields + prefix (explicit include)
   {
     spl: '* | fields + host, status',
     nrql: 'FROM Log SELECT host, status',
     doc: 'results-table',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── fields - exclude ────────────────────────────────────────────
@@ -2227,7 +2260,7 @@ const cases = [
     nrql: 'FROM Log SELECT *',
     warningIncludes: 'fields - (exclude mode)',
     doc: 'results-table',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── search (pipe) ───────────────────────────────────────────────
@@ -2238,25 +2271,25 @@ const cases = [
     spl: 'index=web | stats count by status | search status=200',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND status = '200' OR numeric(status) = 200 FACET status",
     doc: 'results-search',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'status=500 | search error',
     nrql: "FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message LIKE '%error%'",
     doc: 'results-search',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | search status=200 OR status=301',
     nrql: "FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 OR status = '301' OR numeric(status) = 301",
     doc: 'results-search',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '| search host=web01',
     nrql: "FROM Log SELECT * WHERE host = 'web01'",
     doc: 'results-search',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── uniq command ────────────────────────────────────────────────
@@ -2267,7 +2300,7 @@ const cases = [
     spl: '* | sort host | uniq',
     unsupportedIncludes: 'uniq',
     doc: 'results-uniq',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── sort command ────────────────────────────────────────────────
@@ -2278,37 +2311,37 @@ const cases = [
     spl: '* | sort - count',
     nrql: 'FROM Log SELECT * ORDER BY count DESC',
     doc: 'results-sort',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | sort + name',
     nrql: 'FROM Log SELECT * ORDER BY name ASC',
     doc: 'results-sort',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | sort name',
     nrql: 'FROM Log SELECT * ORDER BY name ASC',
     doc: 'results-sort',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | sort 0 host',
     nrql: 'FROM Log SELECT * ORDER BY host ASC',
     doc: 'results-sort',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | sort count desc',
     nrql: 'FROM Log SELECT * ORDER BY count DESC',
     doc: 'results-sort',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | sort 0 - firstTime',
     nrql: 'FROM Log SELECT * ORDER BY firstTime DESC',
     doc: 'results-sort',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── head command ────────────────────────────────────────────────
@@ -2326,13 +2359,23 @@ const cases = [
     spl: '* | reverse',
     nrql: 'FROM Log SELECT * ORDER BY timestamp ASC',
     doc: 'results-reverse',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'error | table message | reverse',
     nrql: "FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp ASC",
     doc: 'results-reverse',
-    verified: 'llm',
+    verified: 'human',
+  },
+  // reverse after aggregation — ORDER BY timestamp ASC is wrong here;
+  // reverse should flip the current row order, not sort by time.
+  // FIXME: handler should detect post-aggregation context and warn or use FACET order.
+  {
+    spl: '* | stats count by host | reverse',
+    nrql: 'FROM Log SELECT count(*) FACET host ORDER BY timestamp ASC',
+    warningIncludes: 'reverse',
+    doc: 'results-reverse',
+    verified: false,
   },
   //
   // ── Unsupported commands ────────────────────────────────────────
@@ -2345,13 +2388,13 @@ const cases = [
     spl: '* | transaction clientip maxspan=10m',
     unsupportedIncludes: 'transaction',
     doc: 'correlation-transaction',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '| tstats count FROM datamodel=Endpoint.Processes',
     unsupportedIncludes: 'tstats',
     doc: 'data-tstats',
-    verified: 'llm',
+    verified: 'human',
   },
   // eventstats with BY → subquery JOIN
   {
@@ -2359,7 +2402,7 @@ const cases = [
     nrql: "FROM Log JOIN (FROM Log SELECT count(*) AS 'count' FACET host LIMIT MAX) ON host = host SELECT *",
     warningIncludes: '5,000',
     doc: 'reports-eventstats',
-    verified: 'llm',
+    verified: 'human',
   },
   // eventstats with alias and BY
   {
@@ -2367,23 +2410,26 @@ const cases = [
     nrql: "FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur' FACET host LIMIT MAX) ON host = host SELECT *",
     warningIncludes: '5,000',
     doc: 'reports-eventstats',
-    verified: 'llm',
+    verified: 'human',
   },
   // eventstats with multiple BY fields — unsupported (NRQL JOIN only supports single ON key)
   {
     spl: '* | eventstats sum(bytes) AS total BY host, status',
     unsupportedIncludes: 'multiple BY fields',
     doc: 'reports-eventstats',
-    verified: 'llm',
+    verified: 'human',
   },
   // eventstats without BY → scalar subquery in SELECT
   {
     spl: '* | eventstats count AS total',
     nrql: "FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'",
     doc: 'reports-eventstats',
-    verified: 'llm',
+    verified: 'human',
   },
   // real-world pattern: stats then eventstats (chained aggregation, no BY)
+  // FIXME: doubly-nested subquery needs validation — verify the inner/middle/outer nesting is correct
+  // NOTE: this is the #1 eventstats pattern (~47% of real usage) per the
+  //   splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
   {
     spl: '* | stats count as appCount by app | eventstats sum(appCount) as namespaceCount',
     nrql: "FROM Log SELECT count(*) AS 'appCount', (FROM (FROM Log SELECT count(*) AS 'appCount' FACET app LIMIT MAX) SELECT sum(appCount)) AS 'namespaceCount' FACET app",
@@ -2553,6 +2599,14 @@ const cases = [
     unsupportedIncludes: 'anomalies',
     doc: 'anomalies-anomalies',
     verified: 'llm',
+  },
+  // anomalydetection is a separate command name from anomalies — migration guide uses this form
+  // Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  {
+    spl: '* | timechart span=5m avg(duration) | anomalydetection',
+    unsupportedIncludes: 'anomalydetection',
+    doc: 'anomalies-anomalies',
+    verified: false,
   },
   {
     spl: '* | cluster showcount=true',

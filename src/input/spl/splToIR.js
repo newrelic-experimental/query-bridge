@@ -342,6 +342,10 @@ const handlers = {
   FieldsCommand: handleFields,
   SortCommand: handleSort,
   HeadCommand: handleHead,
+  // TODO: add TailCommand handler — grammar doesn't parse `tail` yet either.
+  //   Would need: grammar rule, handler (ORDER BY timestamp ASC + LIMIT?).
+  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  //   Feasibility unclear — NRQL has no native "last N rows" without ORDER BY flip.
   RenameCommand: handleRename,
   DedupCommand: handleDedup,
   BinCommand: handleBin,
@@ -399,6 +403,10 @@ function applyCommand(cmd, ir) {
       return;
     }
     case 'UnsupportedCommand':
+      // TODO: give timewrap a more helpful unsupported message suggesting
+      //   NRQL's COMPARE WITH clause as the closest equivalent.
+      //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+      //   Feasibility: easy — just a special-case message, no translation needed.
       ir.unsupported.push(
         `SPL command '${cmd.name}' has no known NRQL equivalent`,
       );
