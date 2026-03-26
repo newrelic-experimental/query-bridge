@@ -378,6 +378,148 @@ const arbStatsChain = fc.oneof(
   arbStatsGenerated.map((s) => `* | ${s}`),
 );
 
+// ── Weird-corner arbitraries ─────────────────────────────────────────
+// Target areas that the combinatorial fuzzer doesn't reach: deep nesting,
+// state interactions, and boundary conditions.
+
+const evalFuncs = [
+  'lower',
+  'upper',
+  'len',
+  'trim',
+  'abs',
+  'round',
+  'floor',
+  'ceiling',
+  'tonumber',
+  'tostring',
+  'urldecode',
+  'typeof',
+];
+
+/** Deeply nested if/case expressions — stress the eval walker's recursion */
+const arbDeepEval = fc
+  .tuple(
+    fc.integer({ min: 2, max: 6 }), // nesting depth
+    arbField,
+    fc.constantFrom(...values),
+  )
+  .map(([depth, field, _val]) => {
+    // Build if(field>0, if(field>1, if(..., "deep", "d2"), "d1"), "d0")
+    let expr = `"leaf"`;
+    for (let i = depth; i >= 0; i--) {
+      expr = `if(${field}>${i}, ${expr}, "level${i}")`;
+    }
+    return `* | eval result = ${expr}`;
+  });
+
+/** Deeply nested case() — different code path from if() */
+const arbDeepCase = fc
+  .tuple(fc.integer({ min: 2, max: 5 }), arbField)
+  .map(([depth, field]) => {
+    const pairs = [];
+    for (let i = 0; i < depth; i++) {
+      pairs.push(`${field}>${i}, "level${i}"`);
+    }
+    pairs.push('1=1, "default"');
+    return `* | eval result = case(${pairs.join(', ')})`;
+  });
+
+/** Nested function calls — func(func(func(field))) */
+const arbNestedFuncs = fc
+  .tuple(
+    fc.array(fc.constantFrom(...evalFuncs), { minLength: 2, maxLength: 5 }),
+    arbField,
+  )
+  .map(([funcs, field]) => {
+    let expr = field;
+    for (const fn of funcs) {
+      expr = `${fn}(${expr})`;
+    }
+    return `* | eval result = ${expr}`;
+  });
+
+/** State interaction: fillnull + rename + eval referencing the same fields */
+const arbStateInteraction = fc
+  .tuple(arbField, arbField, fc.constantFrom('0', 'N/A', 'unknown', ''))
+  .map(([f1, f2, fillVal]) => {
+    const pipes = [
+      `fillnull value="${fillVal}" ${f1}`,
+      `rename ${f1} AS renamed_${f1.replace(/[^a-zA-Z]/g, '')}`,
+      `eval computed = renamed_${f1.replace(/[^a-zA-Z]/g, '')} . " " . ${f2}`,
+    ];
+    return `* | ${pipes.join(' | ')}`;
+  });
+
+/** fillnull then stats — fillnull modifies _fillnullMap, stats consumes fields */
+const arbFillnullStats = fc
+  .tuple(
+    arbField,
+    arbField,
+    fc.constantFrom('0', '1', 'N/A', 'missing'),
+    fc.constantFrom('count', 'avg', 'sum', 'max', 'dc'),
+  )
+  .map(([f1, f2, fillVal, agg]) => {
+    return `* | fillnull value="${fillVal}" ${f1} | stats ${agg}(${f1}) by ${f2}`;
+  });
+
+/** Multiple renames chaining — rename A AS B | rename B AS C */
+const arbRenameChain = fc
+  .array(arbField, { minLength: 2, maxLength: 4 })
+  .map((fields) => {
+    const renames = [];
+    for (let i = 0; i < fields.length - 1; i++) {
+      renames.push(`rename ${fields[i]} AS field_${i}`);
+    }
+    return `* | ${renames.join(' | ')} | table field_0`;
+  });
+
+/** Stats after fillnull after eval — three state-modifying commands */
+const arbTripleState = fc.tuple(arbField, arbField).map(([f1, f2]) => {
+  return `* | eval ratio = ${f1} / ${f2} | fillnull value=0 ratio | stats avg(ratio) by ${f2}`;
+});
+
+/** Join with complex subsearch containing its own stats + eval */
+const arbComplexJoin = fc.tuple(arbField, arbField).map(([f1, f2]) => {
+  return `* | join ${f1} [search * | eval x = ${f2} / 1000 | stats avg(x) as avg_x by ${f1}]`;
+});
+
+/** Append with stats on both sides — tests merge logic */
+const arbAppendStats = fc.tuple(arbField, arbField).map(([f1, f2]) => {
+  return `* | stats count by ${f1} | append [search * | stats count by ${f2}]`;
+});
+
+/** Eventstats with same field as both aggregation target and group-by */
+const arbEventstatsSelf = fc
+  .tuple(arbField, fc.constantFrom('count', 'avg', 'sum', 'max', 'dc'))
+  .map(([f, agg]) => {
+    return `* | eventstats ${agg}(${f}) as ${f}_total by ${f}`;
+  });
+
+/** dedup + stats — dedup sets _hasAggregation, then stats hits the "already aggregated" path */
+const arbDedupStats = fc
+  .tuple(arbField, arbField)
+  .map(([f1, f2]) => `* | dedup ${f1} | stats count by ${f2}`);
+
+/** Multiple evals overwriting the same variable */
+const arbEvalOverwrite = fc
+  .tuple(arbField, arbField, arbField)
+  .map(([f1, f2, f3]) => {
+    return `* | eval x = ${f1} | eval x = ${f2} | eval x = ${f3} | table x`;
+  });
+
+/** Pipeline that produces empty intermediate results */
+const arbEmptyPipeline = fc
+  .tuple(arbField)
+  .map(
+    ([f]) => `* | where ${f} = "IMPOSSIBLE_VALUE_12345" | stats count by ${f}`,
+  );
+
+/** Subsearch in append referencing fields from outer query's eval */
+const arbCrossRefAppend = fc.tuple(arbField, arbField).map(([f1, f2]) => {
+  return `* | eval x = ${f1} / 1000 | append [search * | eval y = ${f2} * 2 | stats avg(y) by ${f1}]`;
+});
+
 // ── Properties ──────────────────────────────────────────────────────
 
 describe('SPL→NRQL property-based fuzz tests', () => {
@@ -609,6 +751,134 @@ describe('SPL→NRQL property-based fuzz tests', () => {
         const r = translateSplToNrql(spl);
         expect(() => translateSplToNrql(spl)).not.toThrow();
         expect(r.nrql).not.toContain('[object Object]');
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  // ── Weird-corner property tests ─────────────────────────────────
+
+  it('deeply nested if() expressions never crash or leak objects', () => {
+    fc.assert(
+      fc.property(arbDeepEval, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('deeply nested case() expressions never crash or leak objects', () => {
+    fc.assert(
+      fc.property(arbDeepCase, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('nested function calls (func(func(func(x)))) never crash', () => {
+    fc.assert(
+      fc.property(arbNestedFuncs, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('fillnull + rename + eval state interactions never crash', () => {
+    fc.assert(
+      fc.property(arbStateInteraction, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('fillnull then stats never crashes or produces malformed NRQL', () => {
+    fc.assert(
+      fc.property(arbFillnullStats, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('chained renames never crash', () => {
+    fc.assert(
+      fc.property(arbRenameChain, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('eval + fillnull + stats triple-state interaction never crashes', () => {
+    fc.assert(
+      fc.property(arbTripleState, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('join with complex subsearch (eval + stats) never crashes', () => {
+    fc.assert(
+      fc.property(arbComplexJoin, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('append with stats on both sides never crashes', () => {
+    fc.assert(
+      fc.property(arbAppendStats, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('eventstats with self-referencing field never crashes', () => {
+    fc.assert(
+      fc.property(arbEventstatsSelf, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('dedup then stats (double aggregation path) never crashes', () => {
+    fc.assert(
+      fc.property(arbDedupStats, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('multiple evals overwriting same variable never crashes', () => {
+    fc.assert(
+      fc.property(arbEvalOverwrite, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it('empty-result pipeline (impossible WHERE) never crashes', () => {
+    fc.assert(
+      fc.property(arbEmptyPipeline, (spl) => {
+        assertInvariants(spl);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it('append referencing fields from outer eval never crashes', () => {
+    fc.assert(
+      fc.property(arbCrossRefAppend, (spl) => {
+        assertInvariants(spl);
       }),
       { numRuns: 200 },
     );
