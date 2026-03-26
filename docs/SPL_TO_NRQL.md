@@ -1852,6 +1852,22 @@ NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT
 
 > [!WARNING]
 > PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically
+
+---
+
+```
+❓ Not confirmed
+SPL:  * | timechart span=1m count | stats count by _time
+NRQL: FROM (FROM Log SELECT count(*)) SELECT count(*) TIMESERIES 1 minute
+```
+
+---
+
+```
+❓ Not confirmed
+SPL:  * | timechart span=5m count | stats sum(count)
+NRQL: FROM (FROM Log SELECT count(*)) SELECT sum(count) TIMESERIES 5 minutes
+```
 <!-- /spl-cases -->
 
 #### `timewrap` — Not supported
