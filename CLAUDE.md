@@ -73,6 +73,7 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 ### Tests
 - `test/spl/spl.test.js` — Unit tests + real-world regression suite
 - `test/spl/spl-real-world.json` — 339 real-world SPL queries for regression testing
+- `test/spl/spl-fuzz.test.js` — Property-based fuzz tests (fast-check): combinatorial, corpus, mutation
 - `test/spl/v2-show.test.js` — Quick output viewer: edit queries array, run, see NRQL + warnings
 - `test/ir/` and `test/output/` — IR and emitter unit tests
 
