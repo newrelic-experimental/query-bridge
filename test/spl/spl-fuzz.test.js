@@ -405,16 +405,32 @@ describe('SPL→NRQL property-based fuzz tests', () => {
     );
   });
 
-  it('never produces "null" as a literal string in NRQL (outside IS NULL)', () => {
+  it('never produces "null" in a structural position (WHERE/FACET/SELECT/FROM)', () => {
     fc.assert(
       fc.property(arbSplQuery, (spl) => {
         const r = translateSplToNrql(spl);
         if (r.nrql) {
-          // Strip legitimate IS NULL / IS NOT NULL before checking
-          const stripped = r.nrql
-            .replace(/IS NOT NULL/g, '')
-            .replace(/IS NULL/g, '');
-          expect(stripped).not.toMatch(/\bnull\b/i);
+          // null appearing right after a keyword means a JS null leaked
+          // into a position where a field/expression should be
+          expect(r.nrql).not.toMatch(
+            /\b(?:WHERE|FACET|SELECT|FROM|BY|ON|AND|OR)\s+null\b/i,
+          );
+          expect(r.nrql).not.toMatch(
+            /\bnull\s*(?:AND|OR|FACET|ORDER|LIMIT|SINCE|UNTIL)\b/i,
+          );
+        }
+      }),
+      { numRuns },
+    );
+  });
+
+  it('never produces NaN or Infinity in NRQL output', () => {
+    fc.assert(
+      fc.property(arbSplQuery, (spl) => {
+        const r = translateSplToNrql(spl);
+        if (r.nrql) {
+          expect(r.nrql).not.toMatch(/\bNaN\b/);
+          expect(r.nrql).not.toMatch(/\bInfinity\b/);
         }
       }),
       { numRuns },
@@ -484,6 +500,69 @@ describe('SPL→NRQL property-based fuzz tests', () => {
     );
   });
 
+  // ── Structural NRQL invariants ─────────────────────────────────────
+
+  it('NRQL output has balanced parentheses', () => {
+    fc.assert(
+      fc.property(arbSplQuery, (spl) => {
+        const r = translateSplToNrql(spl);
+        if (r.nrql) {
+          const balance = countUnescaped(r.nrql, '(', ')');
+          if (balance !== 0) {
+            throw new Error(
+              `Unbalanced parens (depth ${balance}): ${r.nrql.slice(0, 200)}`,
+            );
+          }
+        }
+      }),
+      { numRuns },
+    );
+  });
+
+  it('NRQL output has no duplicate adjacent keywords', () => {
+    fc.assert(
+      fc.property(arbSplQuery, (spl) => {
+        const r = translateSplToNrql(spl);
+        if (r.nrql) {
+          const dup = hasDuplicateKeywords(r.nrql);
+          if (dup) {
+            throw new Error(`Duplicate "${dup}": ${r.nrql.slice(0, 200)}`);
+          }
+        }
+      }),
+      { numRuns },
+    );
+  });
+
+  it('NRQL output has valid clause structure', () => {
+    fc.assert(
+      fc.property(arbSplQuery, (spl) => {
+        const r = translateSplToNrql(spl);
+        if (r.nrql && r.errors.length === 0 && r.unsupported.length === 0) {
+          const err = hasValidStructure(r.nrql);
+          if (err) {
+            throw new Error(`${err}: ${r.nrql.slice(0, 200)}`);
+          }
+        }
+      }),
+      { numRuns },
+    );
+  });
+
+  it('no IR node leaks in warning/unsupported/error messages', () => {
+    fc.assert(
+      fc.property(arbSplQuery, (spl) => {
+        const r = translateSplToNrql(spl);
+        const allMessages = [...r.warnings, ...r.unsupported, ...r.errors];
+        for (const msg of allMessages) {
+          expect(msg).not.toContain('[object Object]');
+          expect(msg).not.toContain('undefined');
+        }
+      }),
+      { numRuns },
+    );
+  });
+
   // ── Targeted combinatorial tests ──────────────────────────────────
   // These specifically target the feature-interaction class of bugs
 
@@ -546,26 +625,151 @@ function isKnownBuggy(spl) {
 }
 const cleanCorpus = realWorldCorpus.filter((spl) => !isKnownBuggy(spl));
 
+// ── Structural validation helpers ────────────────────────────────────
+
+/** Count occurrences of a char, skipping escaped and inside strings */
+function countUnescaped(str, open, close) {
+  let depth = 0;
+  let inSingle = false;
+  let inRegex = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    const prev = i > 0 ? str[i - 1] : '';
+    if (prev === '\\') continue;
+    // Track single-quoted strings
+    if (ch === "'" && !inRegex) {
+      inSingle = !inSingle;
+      continue;
+    }
+    // Track regex literals r'...'
+    if (ch === 'r' && str[i + 1] === "'" && !inSingle) {
+      inRegex = true;
+      i++;
+      continue;
+    }
+    if (ch === "'" && inRegex) {
+      inRegex = false;
+      continue;
+    }
+    if (inSingle || inRegex) continue;
+    if (ch === open) depth++;
+    if (ch === close) depth--;
+  }
+  return depth;
+}
+
+/** Check for duplicate adjacent NRQL keywords */
+const nrqlKeywords = [
+  'SELECT',
+  'FROM',
+  'WHERE',
+  'FACET',
+  'LIMIT',
+  'ORDER BY',
+  'TIMESERIES',
+  'SINCE',
+  'UNTIL',
+];
+function hasDuplicateKeywords(nrql) {
+  for (const kw of nrqlKeywords) {
+    // Look for keyword appearing twice with only whitespace between
+    // But allow legitimate nesting: FROM (FROM ...) is valid (subqueries)
+    const pattern = new RegExp(`\\b${kw}\\s+${kw}\\b`);
+    if (pattern.test(nrql)) return kw;
+  }
+  return null;
+}
+
+/** Check NRQL has valid clause structure (FROM before SELECT, etc.) */
+function hasValidStructure(nrql) {
+  // Strip subqueries (content inside balanced parens) for top-level check
+  let top = nrql;
+  let depth = 0;
+  let result = '';
+  for (const ch of top) {
+    if (ch === '(') depth++;
+    if (depth === 0) result += ch;
+    if (ch === ')') depth--;
+  }
+  top = result;
+
+  // Must have FROM and SELECT at top level
+  if (!top.includes('FROM')) return 'missing FROM';
+  if (!top.includes('SELECT')) return 'missing SELECT';
+
+  // FROM must come before SELECT at top level
+  const fromIdx = top.indexOf('FROM');
+  const selectIdx = top.indexOf('SELECT');
+  if (selectIdx < fromIdx) return 'SELECT before FROM';
+
+  // No empty WHERE (WHERE followed immediately by FACET/LIMIT/ORDER/SINCE/UNTIL/end)
+  const emptyWhere = /\bWHERE\s*(?:FACET|LIMIT|ORDER|SINCE|UNTIL|TIMESERIES|$)/;
+  if (emptyWhere.test(top)) return 'empty WHERE clause';
+
+  // No empty SELECT (SELECT followed immediately by WHERE/FACET/LIMIT/ORDER/SINCE/UNTIL)
+  const emptySelect =
+    /\bSELECT\s*(?:WHERE|FACET|LIMIT|ORDER|SINCE|UNTIL|TIMESERIES|$)/;
+  if (emptySelect.test(top)) return 'empty SELECT clause';
+
+  return null;
+}
+
 /** Shared invariant checker — reused across corpus and mutation tests */
 function assertInvariants(spl) {
   let r;
   try {
     r = translateSplToNrql(spl);
   } catch (e) {
-    // Translator should never throw — parse errors should be caught
     throw new Error(`Translator threw on: ${spl}\n${e.message}`);
   }
+
+  // Shape invariants
   expect(r).toHaveProperty('nrql');
   expect(typeof r.nrql).toBe('string');
+
+  // No JS object stringification in NRQL
   expect(r.nrql).not.toContain('[object Object]');
   expect(r.nrql).not.toContain('undefined');
-  for (const w of r.warnings) expect(typeof w).toBe('string');
-  for (const u of r.unsupported) expect(typeof u).toBe('string');
-  for (const e of r.errors) expect(typeof e).toBe('string');
+
+  // Messages are all strings, no IR node leaks (#5)
+  for (const w of r.warnings) {
+    expect(typeof w).toBe('string');
+    expect(w).not.toContain('[object Object]');
+  }
+  for (const u of r.unsupported) {
+    expect(typeof u).toBe('string');
+    expect(u).not.toContain('[object Object]');
+  }
+  for (const e of r.errors) {
+    expect(typeof e).toBe('string');
+    expect(e).not.toContain('[object Object]');
+  }
+
   if (r.errors.length === 0 && r.unsupported.length === 0) {
     expect(r.nrql.length).toBeGreaterThan(0);
     expect(r.nrql).toMatch(/^FROM /);
+
+    // #1: Balanced parentheses
+    const parenBalance = countUnescaped(r.nrql, '(', ')');
+    if (parenBalance !== 0) {
+      throw new Error(
+        `Unbalanced parentheses (depth ${parenBalance}) in:\n  ${r.nrql}`,
+      );
+    }
+
+    // #2: No duplicate adjacent keywords
+    const dupKw = hasDuplicateKeywords(r.nrql);
+    if (dupKw) {
+      throw new Error(`Duplicate keyword "${dupKw}" in:\n  ${r.nrql}`);
+    }
+
+    // #3 + #6: Valid NRQL structure (FROM before SELECT, no empty clauses)
+    const structErr = hasValidStructure(r.nrql);
+    if (structErr) {
+      throw new Error(`Invalid NRQL structure (${structErr}) in:\n  ${r.nrql}`);
+    }
   }
+
   return r;
 }
 
