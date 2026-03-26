@@ -1808,6 +1808,20 @@ const cases = [
     doc: 'reports-timechart',
     verified: 'human',
   },
+  // timechart then stats — _time FACET absorbed by TIMESERIES (found by model-based fuzz)
+  {
+    spl: '* | timechart span=1m count | stats count by _time',
+    nrql: 'FROM (FROM Log SELECT count(*)) SELECT count(*) TIMESERIES 1 minute',
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  // timechart then stats with non-_time aggregation
+  {
+    spl: '* | timechart span=5m count | stats sum(count)',
+    nrql: 'FROM (FROM Log SELECT count(*)) SELECT sum(count) TIMESERIES 5 minutes',
+    doc: 'reports-timechart',
+    verified: false,
+  },
   //
   // ── chart command ───────────────────────────────────────────────
   //
