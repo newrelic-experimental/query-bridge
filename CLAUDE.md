@@ -73,6 +73,7 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 ### Tests
 - `test/spl/spl.test.js` — Unit tests + real-world regression suite
 - `test/spl/spl-real-world.json` — 339 real-world SPL queries for regression testing
+- `test/spl/spl-fuzz.test.js` — Property-based fuzz tests (fast-check): combinatorial, corpus, mutation
 - `test/spl/v2-show.test.js` — Quick output viewer: edit queries array, run, see NRQL + warnings
 - `test/ir/` and `test/output/` — IR and emitter unit tests
 
@@ -112,7 +113,8 @@ When analyzing a new SPL command:
 
 ## Expert Agents
 
-Three custom agents in `.claude/agents/`. Invoke via the Agent tool with `subagent_type: "general-purpose"` and the agent file as context, or use Claude Code's `/agent` command:
+Four custom agents in `.claude/agents/`. Invoke via the Agent tool with `subagent_type: "general-purpose"` and the agent file as context, or use Claude Code's `/agent` command:
 - **spl-expert** — SPL query intent, syntax edge cases, command semantics. Research-only (no edits).
 - **nrql-expert** — NRQL equivalents, syntax validation, optimal query approaches. Research-only (no edits).
 - **nrql-validator** — Executes NRQL against account 1 via MCP (`execute_nrql_query`), classifies as SUCCESS/FAILURE with exact error messages. Use to bulk-validate translated queries.
+- **datadog-expert** - Datadog query expert, query intent, syntax. Research-only (no edits).

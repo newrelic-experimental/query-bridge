@@ -159,6 +159,7 @@ These are non-obvious NRQL behaviors that cause silent bugs in SPL-to-NRQL trans
 - **`uniques(field)` silently truncates at 1000.** Pass explicit limit: `uniques(field, 10000)`.
 - **`latest(field)` returns the field value, not the whole row.** For dedup-like behavior, need `latest(field)` for each field individually.
 - **Percentage of total pattern**: `FROM (inner FACET x) SELECT cnt / sum(cnt) * 100 FACET x` — no simpler way.
+- **`LIKE` underscore is literal, not a wildcard.** Unlike SQL, `_` in NRQL LIKE is a literal character, not a single-char wildcard. `LIKE 'access_combined'` matches only `access_combined`, not `access1combined`. No need to escape underscores.
 
 ## Special event types
 

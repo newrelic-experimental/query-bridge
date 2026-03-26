@@ -72,6 +72,11 @@ export function handleTop(cmd, ir) {
   ir.select = [countExpr];
 
   // Percent column: count(*) * 100.0 / (SELECT count(*) FROM Log [WHERE ...])
+  // TODO: consider emitting NRQL's native percentage(count(*), WHERE cond) when
+  //   the pattern fits. Currently we always emit the manual subquery division.
+  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  //   Feasibility unclear — percentage() only works for "percentage of total matching
+  //   a condition", not for arbitrary ratio calculations like eventstats patterns.
   if (cmd.showperc !== false) {
     const subqWhere = ir.where ? { ...ir.where } : null;
     const subquery = SelectQuery({

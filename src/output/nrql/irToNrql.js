@@ -139,6 +139,8 @@ const NRQL_RESERVED_WORDS = new Set([
 ]);
 
 function smartEscape(name) {
+  // Tuple destructuring names like (a, b) pass through as-is
+  if (name.startsWith('(') && name.endsWith(')')) return name;
   // Macro references ($name) and template vars ({{name}}) pass through as-is
   if (name.startsWith('$') || name.startsWith('{{')) return name;
   if (

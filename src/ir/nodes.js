@@ -87,6 +87,8 @@ export const SelectQuery = (overrides = {}) => ({
   warnings: [],
   unsupported: [],
   errors: [],
+  /** @type {boolean} internal: true after stats/dedup/top/rare set aggregation mode */
+  _hasAggregation: false,
   /** @type {Object|undefined} internal: fillnull default-value map, consumed during IR build */
   _fillnullMap: undefined,
   /** @type {Map<string,string>|undefined} internal: field rename map, consumed during IR build */
