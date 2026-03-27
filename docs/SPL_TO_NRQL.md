@@ -95,7 +95,7 @@ NRQL: FROM Log SELECT filter(average(duration), WHERE status = '500' OR numeric(
 ```
 ✅ Confirmed by human
 SPL:  index=web | append [search index=api]
-🔴 `append` with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query
+🔴 `append` with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query, or use separate widgets for each data source
 ```
 
 ```
@@ -103,6 +103,12 @@ SPL:  index=web | append [search index=api]
 SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
 🟡 `append` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `append` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | append [search * | table host]
+🔴 `append` with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query, or use separate widgets for each data source
 ```
 <!-- /spl-cases -->
 
