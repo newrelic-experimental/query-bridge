@@ -23,7 +23,7 @@ import { parseSplTime } from '../../src/input/spl/splTime.js';
 import { messages } from '../../src/messages.js';
 
 // AI-DEV: To add test cases, append to the `cases` array.
-// Use `warningFunc`/`unsupportedFunc` (message key from messages.js) for new tests.
+// Use `warningFunc`/`unsupportedFunc` (message key or array of keys from messages.js) for new tests.
 // Legacy `warningIncludes`/`unsupportedIncludes` (substring match) still work but are being migrated.
 const cases = [
   //
@@ -2911,17 +2911,21 @@ const cases = [
   {
     spl: '* | dedup userId | stats count by routeName',
     nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) FACET routeName LIMIT MAX',
-    warningFunc: 'dedup_limit_max_cap',
+    warningFunc: ['dedup_facet_warning', 'dedup_limit_max_cap'],
     doc: 'dedup',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
   {
     spl: '* | dedup userId | timechart count span=1m',
     nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) LIMIT MAX TIMESERIES 1 minute',
-    warningFunc: 'dedup_timeseries_warning',
+    warningFunc: [
+      'dedup_facet_warning',
+      'dedup_limit_max_cap',
+      'dedup_timeseries_warning',
+    ],
     doc: 'timechart',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #7 — >5 rex commands: warn about capture() limit
   {
@@ -2929,7 +2933,7 @@ const cases = [
     nrql: "FROM Log WITH capture(f1, r'.*(?P<a>\\w+).*') AS (a), capture(f2, r'.*(?P<b>\\w+).*') AS (b), capture(f3, r'.*(?P<c>\\w+).*') AS (c), capture(f4, r'.*(?P<d>\\w+).*') AS (d), capture(f5, r'.*(?P<e>\\w+).*') AS (e), capture(f6, r'.*(?P<f>\\w+).*') AS (f) SELECT *",
     warningFunc: 'rex_capture_limit',
     doc: 'rex',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #13 — split() multi-char delimiter
   {
@@ -2937,50 +2941,50 @@ const cases = [
     nrql: "FROM Log WITH split(field, '},{') AS parts SELECT *",
     warningFunc: 'split_multi_char_delimiter',
     doc: 'eval',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #3 — cascading mvexpand
   {
     spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels',
-    unsupportedFunc: 'mvexpand_cascading',
+    unsupportedFunc: ['mvexpand_unsupported', 'mvexpand_cascading'],
     doc: 'mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #5 — mvzip unsupported
   {
     spl: '* | eval paired = mvzip(nodes, skus)',
     unsupportedFunc: 'mvzip_unsupported',
     doc: 'eval',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #22 — streamstats
   {
     spl: '* | streamstats count as row_num',
     unsupportedFunc: 'streamstats_unsupported',
     doc: 'streamstats',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #10 — kvparse / extract
   {
     spl: '* | extract',
     unsupportedFunc: 'kvparse_unsupported',
     doc: 'extract',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #15 — list() order not preserved
   {
     spl: '* | stats list(eventType) by orderId',
     nrql: 'FROM Log SELECT uniques(eventType) FACET orderId',
-    warningFunc: 'list_order_warning',
+    warningFunc: ['list_order_warning', 'facet_default_limit'],
     doc: 'stats',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #4 — cross-expand field matching (two mvexpands on different fields)
   {
     spl: '* | spath input=_raw output=validation path=validations{} | mvexpand validation | spath input=_raw output=sku_data path=items{} | mvexpand sku_data',
-    unsupportedFunc: 'mvexpand_cascading',
+    unsupportedFunc: ['mvexpand_unsupported', 'mvexpand_cascading'],
     doc: 'mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #12 — FACET default 10 warning
   {
@@ -2988,21 +2992,21 @@ const cases = [
     nrql: 'FROM Log SELECT count(*) FACET host',
     warningFunc: 'facet_default_limit',
     doc: 'stats',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #16 — append workaround hint
   {
     spl: '* | append [search * | table host]',
     unsupportedFunc: 'append_no_agg',
     doc: 'correlation-append',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #17 — coalesce translates to OR chain (already implemented)
   {
     spl: '* | eval combined = coalesce(msg, message)',
     nrql: 'FROM Log WITH (msg OR message) AS combined SELECT *',
     doc: 'eval',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #18 — multi-column ORDER BY (already covered by sort_single_field)
   {
@@ -3010,7 +3014,7 @@ const cases = [
     nrql: 'FROM Log SELECT * ORDER BY host ASC',
     warningFunc: 'sort_single_field',
     doc: 'sort',
-    verified: false,
+    verified: 'llm',
   },
 
   //
@@ -3112,10 +3116,14 @@ describe('translateSplToNrql', () => {
         expect(joined).toContain(c.errorIncludes);
       }
       if ('warningFunc' in c) {
-        expect(spies[c.warningFunc]).toHaveBeenCalled();
+        for (const fn of [].concat(c.warningFunc)) {
+          expect(spies[fn]).toHaveBeenCalled();
+        }
       }
       if ('unsupportedFunc' in c) {
-        expect(spies[c.unsupportedFunc]).toHaveBeenCalled();
+        for (const fn of [].concat(c.unsupportedFunc)) {
+          expect(spies[fn]).toHaveBeenCalled();
+        }
       }
       if ('warningIncludes' in c) {
         const joined = r.warnings.join(' ');
