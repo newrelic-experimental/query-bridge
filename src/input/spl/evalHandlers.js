@@ -27,6 +27,7 @@ import {
 } from './splExprUtils.js';
 // Circular import — safe because translateSearchExpr is only called at runtime, not at module load time
 import { translateSearchExpr } from './splToIR.js';
+import { messages } from '../../messages.js';
 
 // ── Command handlers ────────────────────────────────────────
 
@@ -69,7 +70,7 @@ function translateEvalExpr(cmd, ir) {
   if (cmd.rawText) {
     // Try dot-concat: field = expr . expr . ...
     if (tryParseDotConcat(cmd.rawText, ir)) return null;
-    ir.unsupported.push(`eval expression not supported: ${cmd.rawText}`);
+    ir.unsupported.push(messages.eval_not_supported(cmd.rawText));
     return null;
   }
   // Return the first assignment's expression as IR
@@ -337,9 +338,7 @@ function walkEvalFunc(node, ir) {
     case 'len':
     case 'length':
     case 'mvcount': {
-      ir.warnings.push(
-        'length() returns string length in NRQL, not multivalue count; results may differ for non-array fields',
-      );
+      ir.warnings.push(messages.eval_length_warning());
       return Func(
         'length',
         args.map((a) => walkEvalExpr(a, ir)).filter(Boolean),
@@ -390,9 +389,7 @@ function walkEvalFunc(node, ir) {
           regexCoreRe.test(pattern) ||
           (!isUrlOrPath && wordQuantifierRe.test(pattern))
         ) {
-          ir.unsupported.push(
-            `replace() with regex pattern '${pattern}' not supported — NRQL replace() is literal-only`,
-          );
+          ir.unsupported.push(messages.eval_replace_regex(pattern));
         }
       }
       return Func('replace', translated);
@@ -487,9 +484,7 @@ function walkEvalFunc(node, ir) {
       return Func('true', []);
 
     case 'mvjoin':
-      ir.unsupported.push(
-        'mvjoin() has no NRQL equivalent — NRQL cannot join array elements into a delimited string',
-      );
+      ir.unsupported.push(messages.eval_mvjoin_unsupported());
       return walkEvalExpr(args[0], ir);
 
     case 'mvappend':
@@ -506,9 +501,7 @@ function walkEvalFunc(node, ir) {
 
     case 'mvindex': {
       if (args.length < 2) {
-        ir.warnings.push(
-          'mvindex() requires at least 2 arguments (field, index)',
-        );
+        ir.warnings.push(messages.eval_mvindex_args());
         return walkEvalExpr(args[0], ir);
       }
       return Func(
@@ -570,13 +563,13 @@ function walkEvalFunc(node, ir) {
     case 'typeof':
     case 'isbool':
     case 'isstr': {
-      ir.unsupported.push(`eval function ${name}() has no NRQL equivalent`);
+      ir.unsupported.push(messages.eval_func_unsupported(name));
       return null;
     }
 
     default: {
       // Unknown function — pass through with warning
-      ir.unsupported.push(`eval function ${name}() has no NRQL equivalent`);
+      ir.unsupported.push(messages.eval_func_unsupported(name));
       return Func(name, args.map((a) => walkEvalExpr(a, ir)).filter(Boolean));
     }
   }
