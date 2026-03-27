@@ -15,6 +15,7 @@ import {
   Binding,
 } from '../../ir/nodes.js';
 import { mapFieldName, formatSpan, looksLikeNumber } from './splExprUtils.js';
+import { messages } from '../../messages.js';
 
 export function handleTable(cmd, ir) {
   ir.select = cmd.fields.map((f) => Identifier(mapFieldName(f)));
@@ -24,7 +25,7 @@ export function handleFields(cmd, ir) {
   if (cmd.mode === '-') {
     // fields - X removes X from select (if explicit) or is a no-op
     // In NRQL, there's no way to exclude fields from SELECT *
-    ir.warnings.push('fields - (exclude mode) has limited NRQL support');
+    ir.warnings.push(messages.fields_exclude_limited());
   } else {
     ir.select = cmd.fields.map((f) => Identifier(mapFieldName(f)));
   }
@@ -38,9 +39,7 @@ export function handleSort(cmd, ir) {
   // Additional sort fields become ORDER BY field1 DESC, field2 ASC
   // NRQL only supports single ORDER BY — warn if multiple
   if (cmd.fields.length > 1) {
-    ir.warnings.push(
-      'NRQL ORDER BY supports only one field; additional sort fields ignored',
-    );
+    ir.warnings.push(messages.sort_single_field());
   }
 }
 
@@ -57,15 +56,11 @@ export function handleRename(cmd, ir) {
   let added = 0;
   for (const rename of cmd.renames) {
     if (rename.from.includes('*') || rename.to.includes('*')) {
-      ir.unsupported.push(
-        `Wildcard rename (${rename.from} as ${rename.to}) not supported in NRQL; rename specific fields`,
-      );
+      ir.unsupported.push(messages.rename_wildcard(rename.from, rename.to));
       continue;
     }
     if (/[()]/.test(rename.from)) {
-      ir.unsupported.push(
-        `Cannot rename field with parentheses in name: "${rename.from}"`,
-      );
+      ir.unsupported.push(messages.rename_parens(rename.from));
       continue;
     }
     // If renaming a stats alias, fold into the existing alias instead of adding a new one
@@ -82,9 +77,7 @@ export function handleRename(cmd, ir) {
   // Keep all other fields — NRQL has no rename-and-drop-original
   if (added > 0 && !ir._hasAggregation) {
     ir.select.push(Wildcard());
-    ir.warnings.push(
-      'NRQL rename keeps original field names alongside aliases',
-    );
+    ir.warnings.push(messages.rename_keeps_original());
   }
 }
 
@@ -105,9 +98,7 @@ export function handleDedup(cmd, ir) {
   }
   ir.limit = 'MAX';
   ir._hasAggregation = true;
-  ir.warnings.push(
-    'dedup translated to FACET; add latest(field) for each field you want to keep',
-  );
+  ir.warnings.push(messages.dedup_facet_warning());
 }
 
 export function handleBin(cmd, ir) {
@@ -124,18 +115,14 @@ export function handleBin(cmd, ir) {
     ];
     ir._hasAggregation = true;
   } else {
-    ir.unsupported.push(
-      'bin command not fully supported; use TIMESERIES for time or histogram() for numeric fields',
-    );
+    ir.unsupported.push(messages.bin_unsupported());
   }
 }
 
 export function handleReverse(cmd, ir) {
   ir.orderBy = OrderBy(Identifier('timestamp'), false);
   if (ir._hasAggregation) {
-    ir.warnings.push(
-      'reverse after aggregation may not produce correct results; NRQL ORDER BY timestamp ASC does not match SPL row-order reversal',
-    );
+    ir.warnings.push(messages.reverse_after_agg());
   }
 }
 
@@ -154,9 +141,7 @@ export function handleFillnull(cmd, ir) {
       ir._fillnullMap[field] = litValue;
     }
   } else {
-    ir.unsupported.push(
-      'fillnull without field list not supported — NRQL requires explicit field names',
-    );
+    ir.unsupported.push(messages.fillnull_no_fields());
   }
 }
 
@@ -165,9 +150,7 @@ export function handleConvert(cmd, ir) {
   const specs = cmd.specs;
   if (!specs || specs.length === 0) {
     if (cmd.rawText) {
-      ir.unsupported.push(
-        `convert command could not be fully parsed: ${cmd.rawText}`,
-      );
+      ir.unsupported.push(messages.convert_parse_failed(cmd.rawText));
     }
     return;
   }
@@ -180,9 +163,7 @@ export function handleConvert(cmd, ir) {
         expr = Func('numeric', [Identifier(field)]);
         break;
       case 'auto':
-        ir.unsupported.push(
-          `convert auto(${field}) is not supported; NRQL has no auto-type-detection function`,
-        );
+        ir.unsupported.push(messages.convert_auto_unsupported(field));
         return;
       case 'rmcomma':
         // '1,234' → numeric(replace(field, ',', ''))
@@ -203,26 +184,20 @@ export function handleConvert(cmd, ir) {
         expr = Func('toTimestamp', [Identifier(field)]);
         break;
       case 'dur2sec':
-        ir.unsupported.push(
-          `convert dur2sec(${field}) is not supported; NRQL has no duration string parser`,
-        );
+        ir.unsupported.push(messages.convert_dur2sec_unsupported(field));
         return;
       case 'mstime':
-        ir.unsupported.push(
-          `convert mstime(${field}) is not supported; NRQL has no mm:ss.ms parser`,
-        );
+        ir.unsupported.push(messages.convert_mstime_unsupported(field));
         return;
       default:
-        ir.unsupported.push(`convert ${func}(${field}) not supported in NRQL`);
+        ir.unsupported.push(messages.convert_func_unsupported(func, field));
         continue;
     }
     if (alias) {
       ir.bindings.push(Binding(alias, expr));
     } else {
       ir.bindings.push(Binding(outputName, expr));
-      ir.warnings.push(
-        `convert ${func}(${field}): NRQL cannot overwrite a field in-place; aliased to ${outputName}`,
-      );
+      ir.warnings.push(messages.convert_alias_warning(func, field, outputName));
     }
   }
 }
@@ -252,7 +227,7 @@ export function handleStrcat(cmd, ir) {
   // Last part is the destination field, rest are concat args
   const parts = cmd.parts;
   if (!parts || parts.length < 2) {
-    ir.unsupported.push('strcat requires at least 2 arguments');
+    ir.unsupported.push(messages.strcat_too_few_args());
     return;
   }
   const destPart = parts[parts.length - 1];
@@ -265,11 +240,9 @@ export function handleStrcat(cmd, ir) {
 }
 
 export function handleMvexpand(cmd, ir) {
-  ir.unsupported.push(
-    'mvexpand is not supported; NRQL cannot expand multivalue fields into separate rows',
-  );
+  ir.unsupported.push(messages.mvexpand_unsupported());
 }
 
 export function handleUniq(_cmd, ir) {
-  ir.unsupported.push('uniq has no direct NRQL equivalent');
+  ir.unsupported.push(messages.uniq_unsupported());
 }
