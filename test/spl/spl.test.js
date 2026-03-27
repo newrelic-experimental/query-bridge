@@ -2910,98 +2910,98 @@ const cases = [
     spl: '* | dedup userId | stats count by routeName',
     warningIncludes: '5,000 facets',
     doc: 'dedup',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
   {
     spl: '* | dedup userId | timechart count span=1m',
     warningIncludes: 'first time bucket',
     doc: 'timechart',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #7 — >5 rex commands: warn about capture() limit
   {
     spl: '* | rex field=f1 "(?<a>\\w+)" | rex field=f2 "(?<b>\\w+)" | rex field=f3 "(?<c>\\w+)" | rex field=f4 "(?<d>\\w+)" | rex field=f5 "(?<e>\\w+)" | rex field=f6 "(?<f>\\w+)"',
     warningIncludes: 'capture() is limited to 5',
     doc: 'rex',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #13 — split() multi-char delimiter
   {
     spl: '* | eval parts = split(field, "},{")',
     warningIncludes: 'multi-character delimiter',
     doc: 'eval',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #3 — cascading mvexpand
   {
     spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels',
     unsupportedIncludes: 'cascading mvexpand',
     doc: 'mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #5 — mvzip unsupported
   {
     spl: '* | eval paired = mvzip(nodes, skus)',
     unsupportedIncludes: 'zip two arrays element-wise',
     doc: 'eval',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #22 — streamstats
   {
     spl: '* | streamstats count as row_num',
     unsupportedIncludes: 'streamstats has no NRQL equivalent',
     doc: 'streamstats',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #10 — kvparse / extract
   {
     spl: '* | extract',
     unsupportedIncludes: 'key=value extraction',
     doc: 'extract',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #15 — list() order not preserved
   {
     spl: '* | stats list(eventType) by orderId',
     warningIncludes: 'insertion order is not preserved',
     doc: 'stats',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #4 — cross-expand field matching (two mvexpands on different fields)
   {
     spl: '* | spath input=_raw output=validation path=validations{} | mvexpand validation | spath input=_raw output=sku_data path=items{} | mvexpand sku_data',
     unsupportedIncludes: 'cascading mvexpand',
     doc: 'mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #12 — FACET default 10 warning
   {
     spl: '* | stats count by host',
     warningIncludes: 'FACET defaults to 10 groups',
     doc: 'stats',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #16 — append workaround hint
   {
     spl: '* | append [search * | table host]',
     unsupportedIncludes: 'consider using filter()',
     doc: 'correlation-append',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #17 — coalesce translates to OR chain (already implemented)
   {
     spl: '* | eval combined = coalesce(msg, message)',
     nrql: 'FROM Log WITH (msg OR message) AS combined SELECT *',
     doc: 'eval',
-    verified: false,
+    verified: 'llm',
   },
   // Gap #18 — multi-column ORDER BY (already covered by sort_single_field)
   {
     spl: '* | sort host, -duration',
     warningIncludes: 'ORDER BY supports only one field',
     doc: 'sort',
-    verified: false,
+    verified: 'llm',
   },
 
   //
