@@ -12,29 +12,29 @@ import { optimize } from '../../src/ir/optimize.js';
 describe('optimize', () => {
   describe('eliminateDoubleNot', () => {
     it('NOT(NOT(x)) → x', () => {
-      const ir = SelectQuery({ where: Not(Not(Identifier('a'))) });
+      const ir = SelectQuery({ where: [Not(Not(Identifier('a')))] });
       const result = optimize(ir);
-      expect(result.where).toEqual(Identifier('a'));
+      expect(result.where[0]).toEqual(Identifier('a'));
     });
 
     it('NOT(NOT(NOT(NOT(x)))) → x (nested pairs)', () => {
       const ir = SelectQuery({
-        where: Not(Not(Not(Not(Identifier('a'))))),
+        where: [Not(Not(Not(Not(Identifier('a')))))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(Identifier('a'));
+      expect(result.where[0]).toEqual(Identifier('a'));
     });
 
     it('single NOT is preserved', () => {
-      const ir = SelectQuery({ where: Not(Identifier('a')) });
+      const ir = SelectQuery({ where: [Not(Identifier('a'))] });
       const result = optimize(ir);
-      expect(result.where).toEqual(Not(Identifier('a')));
+      expect(result.where[0]).toEqual(Not(Identifier('a')));
     });
 
     it('triple NOT reduces to single NOT', () => {
-      const ir = SelectQuery({ where: Not(Not(Not(Identifier('a')))) });
+      const ir = SelectQuery({ where: [Not(Not(Not(Identifier('a'))))] });
       const result = optimize(ir);
-      expect(result.where).toEqual(Not(Identifier('a')));
+      expect(result.where[0]).toEqual(Not(Identifier('a')));
     });
   });
 
@@ -131,51 +131,51 @@ describe('optimize', () => {
   describe('eliminateTautologies', () => {
     it('x AND true → x', () => {
       const ir = SelectQuery({
-        where: BinOp('AND', Identifier('a'), Literal(true, 'boolean')),
+        where: [BinOp('AND', Identifier('a'), Literal(true, 'boolean'))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(Identifier('a'));
+      expect(result.where[0]).toEqual(Identifier('a'));
     });
 
     it('true AND x → x', () => {
       const ir = SelectQuery({
-        where: BinOp('AND', Literal(true, 'boolean'), Identifier('a')),
+        where: [BinOp('AND', Literal(true, 'boolean'), Identifier('a'))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(Identifier('a'));
+      expect(result.where[0]).toEqual(Identifier('a'));
     });
 
     it('x OR false → x', () => {
       const ir = SelectQuery({
-        where: BinOp('OR', Identifier('a'), Literal(false, 'boolean')),
+        where: [BinOp('OR', Identifier('a'), Literal(false, 'boolean'))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(Identifier('a'));
+      expect(result.where[0]).toEqual(Identifier('a'));
     });
 
     it('false OR x → x', () => {
       const ir = SelectQuery({
-        where: BinOp('OR', Literal(false, 'boolean'), Identifier('a')),
+        where: [BinOp('OR', Literal(false, 'boolean'), Identifier('a'))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(Identifier('a'));
+      expect(result.where[0]).toEqual(Identifier('a'));
     });
 
     it('preserves non-tautological expressions', () => {
       const expr = BinOp('AND', Identifier('a'), Identifier('b'));
-      const ir = SelectQuery({ where: expr });
+      const ir = SelectQuery({ where: [expr] });
       const result = optimize(ir);
-      expect(result.where).toEqual(expr);
+      expect(result.where[0]).toEqual(expr);
     });
   });
 
   describe('expandDualChecks', () => {
     it("expands equality: DualCheck(field, =, 500) → field = '500' OR numeric(field) = 500", () => {
       const ir = SelectQuery({
-        where: DualCheck(Identifier('status'), '=', Literal(500, 'number')),
+        where: [DualCheck(Identifier('status'), '=', Literal(500, 'number'))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(
+      expect(result.where[0]).toEqual(
         BinOp(
           'OR',
           BinOp('=', Identifier('status'), Literal('500', 'string')),
@@ -190,10 +190,10 @@ describe('optimize', () => {
 
     it("expands inequality: DualCheck(field, !=, 500) → field != '500' AND numeric(field) != 500", () => {
       const ir = SelectQuery({
-        where: DualCheck(Identifier('status'), '!=', Literal(500, 'number')),
+        where: [DualCheck(Identifier('status'), '!=', Literal(500, 'number'))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(
+      expect(result.where[0]).toEqual(
         BinOp(
           'AND',
           BinOp('!=', Identifier('status'), Literal('500', 'string')),
@@ -208,14 +208,16 @@ describe('optimize', () => {
 
     it('expands DualCheck nested in AND', () => {
       const ir = SelectQuery({
-        where: BinOp(
-          'AND',
-          DualCheck(Identifier('status'), '=', Literal(200, 'number')),
-          Identifier('other'),
-        ),
+        where: [
+          BinOp(
+            'AND',
+            DualCheck(Identifier('status'), '=', Literal(200, 'number')),
+            Identifier('other'),
+          ),
+        ],
       });
       const result = optimize(ir);
-      expect(result.where.left).toEqual(
+      expect(result.where[0].left).toEqual(
         BinOp(
           'OR',
           BinOp('=', Identifier('status'), Literal('200', 'string')),
@@ -226,15 +228,15 @@ describe('optimize', () => {
           ),
         ),
       );
-      expect(result.where.right).toEqual(Identifier('other'));
+      expect(result.where[0].right).toEqual(Identifier('other'));
     });
 
     it('handles float values: DualCheck(field, =, 3.14)', () => {
       const ir = SelectQuery({
-        where: DualCheck(Identifier('score'), '=', Literal(3.14, 'number')),
+        where: [DualCheck(Identifier('score'), '=', Literal(3.14, 'number'))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(
+      expect(result.where[0]).toEqual(
         BinOp(
           'OR',
           BinOp('=', Identifier('score'), Literal('3.14', 'string')),
@@ -250,10 +252,10 @@ describe('optimize', () => {
     it('handles complex field expression (e.g., from jparse)', () => {
       const field = Func('lower', [Identifier('status')]);
       const ir = SelectQuery({
-        where: DualCheck(field, '=', Literal(200, 'number')),
+        where: [DualCheck(field, '=', Literal(200, 'number'))],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(
+      expect(result.where[0]).toEqual(
         BinOp(
           'OR',
           BinOp(
@@ -274,19 +276,17 @@ describe('optimize', () => {
   describe('pipeline composition', () => {
     it('applies multiple passes: NOT(NOT(x)) AND true → x', () => {
       const ir = SelectQuery({
-        where: BinOp(
-          'AND',
-          Not(Not(Identifier('a'))),
-          Literal(true, 'boolean'),
-        ),
+        where: [
+          BinOp('AND', Not(Not(Identifier('a'))), Literal(true, 'boolean')),
+        ],
       });
       const result = optimize(ir);
-      expect(result.where).toEqual(Identifier('a'));
+      expect(result.where[0]).toEqual(Identifier('a'));
     });
 
     it('preserves warnings/unsupported/errors arrays', () => {
       const ir = SelectQuery({
-        where: Identifier('a'),
+        where: [Identifier('a')],
         warnings: ['w1'],
         unsupported: ['u1'],
         errors: ['e1'],

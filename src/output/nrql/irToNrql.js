@@ -256,8 +256,9 @@ function emitSelectQuery(q) {
   parts.push(`SELECT ${select}`);
 
   // WHERE
-  if (q.where) {
-    parts.push(`WHERE ${emitExpr(q.where)}`);
+  if (q.where.length > 0) {
+    const conditions = q.where.map(emitExpr);
+    parts.push(`WHERE ${conditions.join(' AND ')}`);
   }
 
   // FACET

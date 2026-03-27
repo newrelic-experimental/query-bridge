@@ -127,7 +127,7 @@ describe('IR query nodes', () => {
     expect(q.type).toBe('SelectQuery');
     expect(q.dataSource).toEqual({ type: 'EventType', names: ['Log'] });
     expect(q.select).toEqual([]);
-    expect(q.where).toBeNull();
+    expect(q.where).toEqual([]);
     expect(q.facet).toEqual([]);
     expect(q.bindings).toEqual([]);
     expect(q.join).toBeNull();

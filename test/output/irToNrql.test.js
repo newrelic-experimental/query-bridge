@@ -143,7 +143,7 @@ describe('emitQuery', () => {
 
   it('SelectQuery with where', () => {
     const q = SelectQuery({
-      where: BinOp('=', Identifier('status'), Literal(500, 'number')),
+      where: [BinOp('=', Identifier('status'), Literal(500, 'number'))],
     });
     expect(emitQuery(q)).toBe('FROM Log SELECT * WHERE status = 500');
   });

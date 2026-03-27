@@ -8,7 +8,6 @@
 import {
   Identifier,
   Literal,
-  BinOp,
   Not,
   Func,
   Regex,
@@ -110,11 +109,9 @@ export function handleRegex(cmd, ir) {
   const fieldId = field === '_raw' ? Identifier('message') : Identifier(field);
   const pattern = cmd.pattern;
   if (cmd.negate) {
-    const rlike = Not(Rlike(fieldId, pattern));
-    ir.where = ir.where ? BinOp('AND', ir.where, rlike) : rlike;
+    ir.where.push(Not(Rlike(fieldId, pattern)));
   } else {
-    const rlike = Rlike(fieldId, pattern);
-    ir.where = ir.where ? BinOp('AND', ir.where, rlike) : rlike;
+    ir.where.push(Rlike(fieldId, pattern));
   }
 }
 
@@ -122,9 +119,9 @@ export function handleSearchPipe(cmd, ir) {
   // | search is like an additional WHERE clause
   const searchNode = cmd.search || cmd.expression;
   if (searchNode) {
-    const { expr, warnings, unsupported } = translateSearchExpr(searchNode);
+    const { expr, warnings, unsupported } = translateSearchExpr(searchNode, ir);
     if (expr) {
-      ir.where = ir.where ? BinOp('AND', ir.where, expr) : expr;
+      ir.where.push(expr);
     }
     ir.warnings.push(...warnings);
     ir.unsupported.push(...unsupported);
