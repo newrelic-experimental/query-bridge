@@ -48,6 +48,11 @@ export function handleHead(cmd, ir) {
   ir.limit = cmd.count;
 }
 
+export function handleTail(cmd, ir) {
+  ir.limit = cmd.count;
+  ir.orderBy = OrderBy(Identifier('timestamp'), false); // ASC = oldest first
+}
+
 export function handleRename(cmd, ir) {
   let added = 0;
   for (const rename of cmd.renames) {
@@ -175,8 +180,10 @@ export function handleConvert(cmd, ir) {
         expr = Func('numeric', [Identifier(field)]);
         break;
       case 'auto':
-        expr = Func('numeric', [Identifier(field)]);
-        break;
+        ir.unsupported.push(
+          `convert auto(${field}) is not supported; NRQL has no auto-type-detection function`,
+        );
+        return;
       case 'rmcomma':
         // '1,234' → numeric(replace(field, ',', ''))
         expr = Func('numeric', [
@@ -195,22 +202,16 @@ export function handleConvert(cmd, ir) {
         // datetime string → epoch ms
         expr = Func('toTimestamp', [Identifier(field)]);
         break;
-      case 'dur2sec': {
-        // Duration string → seconds. NRQL has no built-in; approximate with warning.
-        ir.warnings.push(
-          `convert dur2sec(${field}): NRQL has no duration parser; using numeric(${field}) as approximation — verify data format`,
+      case 'dur2sec':
+        ir.unsupported.push(
+          `convert dur2sec(${field}) is not supported; NRQL has no duration string parser`,
         );
-        expr = Func('numeric', [Identifier(field)]);
-        break;
-      }
-      case 'mstime': {
-        // mm:ss.ms → seconds. NRQL has no built-in; approximate with warning.
-        ir.warnings.push(
-          `convert mstime(${field}): NRQL has no mm:ss.ms parser; using numeric(${field}) as approximation — verify data format`,
+        return;
+      case 'mstime':
+        ir.unsupported.push(
+          `convert mstime(${field}) is not supported; NRQL has no mm:ss.ms parser`,
         );
-        expr = Func('numeric', [Identifier(field)]);
-        break;
-      }
+        return;
       default:
         ir.unsupported.push(`convert ${func}(${field}) not supported in NRQL`);
         continue;
@@ -264,8 +265,8 @@ export function handleStrcat(cmd, ir) {
 }
 
 export function handleMvexpand(cmd, ir) {
-  ir.warnings.push(
-    `mvexpand ${cmd.field} skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work`,
+  ir.unsupported.push(
+    'mvexpand is not supported; NRQL cannot expand multivalue fields into separate rows',
   );
 }
 
