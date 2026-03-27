@@ -3237,9 +3237,8 @@ afterAll(() => {
   // Generate table of contents from headings
   const TOC_RE = /<!-- toc -->\n[\s\S]*?\n<!-- \/toc -->/;
   const SKIP_TOC = new Set([
+    'SPL-to-NRQL Translation Reference',
     'CLI tool',
-    'How this document works',
-    'Legend',
     'Quick start',
     'Install globally (optional)',
     'Output formats',
@@ -3248,20 +3247,28 @@ afterAll(() => {
     'Usage telemetry (optional)',
     'Rebuilding the bundle',
   ]);
+  // Sections where ## sub-items are collapsed out of the ToC
+  const COLLAPSE_CHILDREN = new Set([
+    'No Observed Usage',
+    'Rare Use Commands (1–19 occurrences)',
+  ]);
   doc = doc.replace(TOC_RE, () => {
     const headings = [];
+    let inCollapsed = false;
     for (const line of doc.split('\n')) {
-      const m = line.match(/^(#{2,3})\s+(.+)/);
+      const m = line.match(/^(#{1,2})\s+(.+)/);
       if (!m) continue;
-      const level = m[1].length; // 2=##, 3=###, etc.
+      const level = m[1].length; // 1=#, 2=##
       const text = m[2];
       if (SKIP_TOC.has(text)) continue;
+      if (level === 1) inCollapsed = COLLAPSE_CHILDREN.has(text);
+      if (level === 2 && inCollapsed) continue;
       const slug = text
         .toLowerCase()
         .replace(/[`()]/g, '')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '');
-      const indent = '  '.repeat(level - 2);
+      const indent = '  '.repeat(level - 1);
       headings.push(`${indent}- [${text}](#${slug})`);
     }
     return `<!-- toc -->\n${headings.join('\n')}\n<!-- /toc -->`;
