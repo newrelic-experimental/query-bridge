@@ -27,6 +27,10 @@ export const messages = {
   rex_lookaround: () =>
     'rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround',
 
+  // SPL: `* | rex "(?<a>\\w+)" | rex "(?<b>\\w+)" | ... (6+ rex commands)`
+  rex_capture_limit: (count) =>
+    `query uses ${count} rex extractions but NRQL capture() is limited to 5 per query; consider using aparse() for anchor-based patterns`,
+
   // SPL: `* | spath input=message`
   spath_no_path: () =>
     'spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field',
@@ -60,6 +64,14 @@ export const messages = {
   // SPL: `* | dedup host`
   dedup_facet_warning: () =>
     'dedup translated to FACET; add latest(field) for each field you want to keep',
+
+  // SPL: `* | dedup userId | stats count by routeName`
+  dedup_limit_max_cap: () =>
+    'dedup translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields',
+
+  // SPL: `* | dedup userId | timechart count span=1m`
+  dedup_timeseries_warning: () =>
+    'dedup with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.',
 
   // SPL: `* | bin size span=10`
   bin_unsupported: () =>
@@ -104,6 +116,14 @@ export const messages = {
   mvexpand_unsupported: () =>
     'mvexpand is not supported; NRQL cannot expand multivalue fields into separate rows',
 
+  // SPL: `* | spath path=Items{} | mvexpand items | spath path=Channels{} | mvexpand channels`
+  mvexpand_cascading: () =>
+    'cascading mvexpand (expand-then-expand) not directly supported; use nested FROM with EXPAND at each level as a workaround',
+
+  // SPL: `* | mvexpand validations | mvexpand items | where val_sku=sku_data_sku`
+  mvexpand_cross_field: () =>
+    'expanding and matching across two different arrays in the same event is not supported in NRQL; split into separate queries',
+
   // SPL: `* | uniq`
   uniq_unsupported: () => 'uniq has no direct NRQL equivalent',
 
@@ -127,6 +147,18 @@ export const messages = {
   // SPL: `* | eval x = mvindex(field)`
   eval_mvindex_args: () =>
     'mvindex() requires at least 2 arguments (field, index)',
+
+  // SPL: `* | eval parts = split(field, "},{")`
+  split_multi_char_delimiter: (delimiter) =>
+    `split() with multi-character delimiter '${delimiter}' not supported; NRQL split() accepts single characters only`,
+
+  // SPL: `* | eval paired = mvzip(nodes, skus)`
+  mvzip_unsupported: () =>
+    'mvzip() has no NRQL equivalent; cannot zip two arrays element-wise into paired tuples',
+
+  // SPL: `* | eval last = mvindex(result, mvcount(result)-1)`
+  mvindex_last_element: () =>
+    'mvindex with computed index (e.g., mvcount-1 for last element) not supported; NRQL jparse() does not support negative array indexing',
 
   // SPL: `* | eval x = typeof(field)`
   eval_func_unsupported: (name) =>
@@ -270,6 +302,22 @@ export const messages = {
   tstats_unsupported: () =>
     'tstats queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. ' +
     'To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.',
+
+  // SPL: `* | stats count by host`
+  facet_default_limit: () =>
+    'NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.',
+
+  // SPL: `* | streamstats count as row_num`
+  streamstats_unsupported: () =>
+    'streamstats has no NRQL equivalent; NRQL does not support row-to-row references (LAG/LEAD) or running aggregations',
+
+  // SPL: `* | kvparse` or `* | extract`
+  kvparse_unsupported: () =>
+    'key=value extraction from unstructured text has no NRQL equivalent; use Grok parsing rules to extract fields at ingest time, or restructure logs as JSON',
+
+  // SPL: `* | stats list(eventType) by orderId`
+  list_order_warning: () =>
+    'SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved',
 
   // SPL: `* | timewrap 1d`
   unsupported_command: (name) =>

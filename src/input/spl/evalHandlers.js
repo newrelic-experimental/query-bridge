@@ -511,6 +511,15 @@ function walkEvalFunc(node, ir) {
     }
 
     case 'split': {
+      // Gap #13: NRQL split() only supports single-character delimiters
+      const delimArg = args[1];
+      if (
+        delimArg &&
+        delimArg.type === 'StringLiteral' &&
+        delimArg.value.length > 1
+      ) {
+        ir.warnings.push(messages.split_multi_char_delimiter(delimArg.value));
+      }
       return Func(
         'split',
         args.map((a) => walkEvalExpr(a, ir)).filter(Boolean),
@@ -564,6 +573,12 @@ function walkEvalFunc(node, ir) {
     case 'isbool':
     case 'isstr': {
       ir.unsupported.push(messages.eval_func_unsupported(name));
+      return null;
+    }
+
+    // Gap #5: mvzip has no NRQL equivalent
+    case 'mvzip': {
+      ir.unsupported.push(messages.mvzip_unsupported());
       return null;
     }
 

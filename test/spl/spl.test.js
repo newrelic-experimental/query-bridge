@@ -2900,6 +2900,147 @@ const cases = [
     doc: 'correlation-append',
     verified: false,
   },
+
+  //
+  // ── NRQL Feature Gaps (customer migration feedback) ───────────────
+  //
+
+  // Gap #2 — dedup + stats: warn about 5K LIMIT MAX sampling
+  {
+    spl: '* | dedup userId | stats count by routeName',
+    warningIncludes: '5,000 facets',
+    doc: 'dedup',
+    verified: false,
+  },
+  // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
+  {
+    spl: '* | dedup userId | timechart count span=1m',
+    warningIncludes: 'first time bucket',
+    doc: 'timechart',
+    verified: false,
+  },
+  // Gap #7 — >5 rex commands: warn about capture() limit
+  {
+    spl: '* | rex field=f1 "(?<a>\\w+)" | rex field=f2 "(?<b>\\w+)" | rex field=f3 "(?<c>\\w+)" | rex field=f4 "(?<d>\\w+)" | rex field=f5 "(?<e>\\w+)" | rex field=f6 "(?<f>\\w+)"',
+    warningIncludes: 'capture() is limited to 5',
+    doc: 'rex',
+    verified: false,
+  },
+  // Gap #13 — split() multi-char delimiter
+  {
+    spl: '* | eval parts = split(field, "},{")',
+    warningIncludes: 'multi-character delimiter',
+    doc: 'eval',
+    verified: false,
+  },
+  // Gap #3 — cascading mvexpand
+  {
+    spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels',
+    unsupportedIncludes: 'cascading mvexpand',
+    doc: 'mvexpand',
+    verified: false,
+  },
+  // Gap #5 — mvzip unsupported
+  {
+    spl: '* | eval paired = mvzip(nodes, skus)',
+    unsupportedIncludes: 'zip two arrays element-wise',
+    doc: 'eval',
+    verified: false,
+  },
+  // Gap #22 — streamstats
+  {
+    spl: '* | streamstats count as row_num',
+    unsupportedIncludes: 'streamstats has no NRQL equivalent',
+    doc: 'streamstats',
+    verified: false,
+  },
+  // Gap #10 — kvparse / extract
+  {
+    spl: '* | extract',
+    unsupportedIncludes: 'key=value extraction',
+    doc: 'extract',
+    verified: false,
+  },
+  // Gap #15 — list() order not preserved
+  {
+    spl: '* | stats list(eventType) by orderId',
+    warningIncludes: 'insertion order is not preserved',
+    doc: 'stats',
+    verified: false,
+  },
+
+  //
+  // ── NRQL Feature Gaps — B-tier FIXME tests (skip: true) ──────────
+  //
+
+  // Gap #3 — FIXME: cascading mvexpand workaround generation
+  // When implemented, the translator should emit a nested-FROM pattern:
+  //   FROM (FROM Log EXPAND jparse(Items) AS item SELECT item[Sku], item[Channels]
+  //     FACET ... LIMIT MAX)
+  //   EXPAND jparse(Channels) AS channel SELECT channel[Name]
+  // See customer positive feedback: "Triple-nested FROM with double EXPAND"
+  {
+    skip: true,
+    spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels | spath input=channels path=Name output=channelName',
+    nrql: 'FIXME: should emit nested FROM with EXPAND at each level',
+    doc: 'mvexpand',
+    verified: false,
+  },
+  // Gap #2 — FIXME: dedup + timechart should emit nested subquery approach
+  // SPL dedup keeps first event per userId (most recent in historical search).
+  // The eval before dedup tags Submit as orders=1; after dedup, only shoppers
+  // whose last action was Submit retain orders=1. Then eval addtobags tags the rest.
+  // Formula: (shoppers whose last action = Submit) / (last action = AddBag) × 100
+  //
+  // Best-effort NRQL: nested latest(routeName) FACET userId, then filter/count.
+  // Limitations: LIMIT MAX caps at 5K (customer has <N> users/hr),
+  // TIMESERIES on outer query produces nulls after first bucket.
+  //
+  // BLOCKER: `timechart eval(...)` doesn't parse — the grammar only recognizes
+  // `name(eval(...))` (e.g., count(eval(if(...)))) but not bare `eval(expr)` as a
+  // top-level stats_function. The customer's `timechart eval((sum(x)*100)/sum(y))`
+  // uses eval as the top-level expression wrapping arithmetic over aggregation fns.
+  //
+  // FIX: Add an alternative to `stats_function` in spl.grammar that accepts
+  // `eval(expr) as alias` as a top-level entry. The eval parser (eval_inner_expr)
+  // already exists and handles nested parens — just needs to be reused:
+  //   stats_function = ... / _* 'eval'i '(' _* expr:eval_inner_expr _* ')' alias:as_clause?
+  //     { return { name: 'eval', args: [], alias: alias, evalFilter: expr }; }
+  // The handler (aggregationHandlers.js handleTimechart) would then need to
+  // recognize evalFilter on a bare eval entry and translate the arithmetic.
+  {
+    skip: true,
+    spl: '(routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as orderCompletionRate span=1m',
+    nrql: 'FIXME: needs grammar change for timechart eval(), then nested FROM (SELECT latest(routeName) AS lastRoute FACET userId LIMIT MAX) with filter/count formula + warnings',
+    doc: 'dedup',
+    verified: false,
+  },
+
+  // Gap #1 — FIXME: {} multivalue field syntax should use jparse + EXPAND
+  // SPL `stats count by validations{}.code` auto-expands the array and groups by each
+  // element's .code subfield. No explicit mvexpand needed in SPL.
+  // Translator currently backtick-escapes the field name literally, producing wrong NRQL.
+  // MCP-validated: val[code] works in SELECT but fails in FACET ("unexpected '['").
+  // Workaround: getField(val, 'code') works in both SELECT and FACET.
+  {
+    skip: true,
+    spl: '* | stats count by validations{}.code',
+    nrql: "FROM Log SELECT count(val) EXPAND jparse(validations) AS val FACET getField(val, 'code') LIMIT MAX",
+    doc: 'stats',
+    verified: false,
+  },
+
+  // Gap #14 — FIXME: mvindex last-element workaround
+  // SPL mvindex(result, -1) natively supports negative indexes.
+  // NRQL workaround: nested if() with length check for each possible array size.
+  // See customer doc for 14-level nested if() example.
+  {
+    skip: true,
+    spl: '* | eval last = mvindex(result, -1)',
+    unsupportedIncludes: 'negative array indexing',
+    doc: 'eval',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

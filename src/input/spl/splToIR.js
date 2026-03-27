@@ -89,8 +89,44 @@ export function translateAstToIR(ast) {
   }
 
   // Pipeline: each command transforms the IR
+  let sawDedup = false;
+  let mvexpandCount = 0;
   for (const cmd of ast.commands) {
+    if (cmd.type === 'DedupCommand') sawDedup = true;
+    if (cmd.type === 'MvexpandCommand') mvexpandCount++;
+    // Gap #2, #9: warn when dedup precedes aggregation
+    if (
+      sawDedup &&
+      (cmd.type === 'StatsCommand' ||
+        cmd.type === 'TimechartCommand' ||
+        cmd.type === 'ChartCommand')
+    ) {
+      ir.warnings.push(messages.dedup_limit_max_cap());
+      if (cmd.type === 'TimechartCommand') {
+        ir.warnings.push(messages.dedup_timeseries_warning());
+      }
+    }
     applyCommand(cmd, ir);
+  }
+
+  // Gap #3: cascading mvexpand detection
+  if (mvexpandCount > 1) {
+    ir.unsupported.push(messages.mvexpand_cascading());
+  }
+
+  // Gap #12: Splunk computes all groups by default; NRQL FACET defaults to 10.
+  // Don't inject LIMIT MAX — it can cause performance issues in UI contexts.
+  // Warn so the user can decide.
+  if (ir.facet.length > 0 && ir.limit == null) {
+    ir.warnings.push(messages.facet_default_limit());
+  }
+
+  // Gap #7: NRQL limits capture() to 5 calls per query.
+  const captureCount = ir.bindings.filter(
+    (b) => b.expr.type === 'Function' && b.expr.name === 'capture',
+  ).length;
+  if (captureCount > 5) {
+    ir.warnings.push(messages.rex_capture_limit(captureCount));
   }
 
   // Remove _time from FACET when TIMESERIES is present (TIMESERIES already groups by time)
@@ -402,13 +438,22 @@ function applyCommand(cmd, ir) {
       ir.where.push(macroExpr);
       return;
     }
-    case 'UnsupportedCommand':
+    case 'UnsupportedCommand': {
       // TODO: give timewrap a more helpful unsupported message suggesting
       //   NRQL's COMPARE WITH clause as the closest equivalent.
       //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
       //   Feasibility: easy — just a special-case message, no translation needed.
-      ir.unsupported.push(messages.unsupported_command(cmd.name));
+      const name = cmd.name;
+      // Gap #22, #10: special-case commands that deserve more helpful messages
+      if (name === 'streamstats') {
+        ir.unsupported.push(messages.streamstats_unsupported());
+      } else if (name === 'kvparse' || name === 'extract' || name === 'kv') {
+        ir.unsupported.push(messages.kvparse_unsupported());
+      } else {
+        ir.unsupported.push(messages.unsupported_command(name));
+      }
       return;
+    }
     default:
       ir.unsupported.push(messages.command_not_implemented(cmd.type));
       return;

@@ -50,14 +50,18 @@ NRQL: FROM Log SELECT average(duration), max(duration)
 ✅ Confirmed by human
 SPL:  error | stats count by host | append [search success | stats count by host]
 NRQL: FROM Log SELECT filter(count(*), WHERE message LIKE '%error%'), filter(count(*), WHERE message LIKE '%success%') FACET host
+🟡 `append` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count by host | append [search * | stats avg(duration) by host]
 NRQL: FROM Log SELECT count(*), average(duration) FACET host
+🟡 `append` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🟡 `append` merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -97,6 +101,7 @@ SPL:  index=web | append [search index=api]
 ```
 ✅ Confirmed by human
 SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
+🟡 `append` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `append` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
 ```
 <!-- /spl-cases -->
@@ -116,6 +121,7 @@ NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests'
 ```
 ✅ Confirmed by human
 SPL:  * | stats count as total | appendcols [search * | stats count by host]
+🟡 `appendcols` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `appendcols` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
 ```
 <!-- /spl-cases -->
@@ -154,6 +160,7 @@ NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
 ✅ Confirmed by human
 SPL:  * | bucket span=5m _time | stats count by _time
 NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -172,6 +179,7 @@ Creates a data table suitable for charting. Translates to NRQL `SELECT ... FACET
 ✅ Confirmed by human
 SPL:  * | chart count by status
 NRQL: FROM Log SELECT count(*) FACET status
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 <!-- /spl-cases -->
 
@@ -309,6 +317,7 @@ NRQL: FROM Log WITH numeric(count) / 100 AS pct, numeric(a) + numeric(b) + numer
 ✅ Confirmed by human
 SPL:  * | eval size_mb = bytes / 1048576 | eval size_gb = size_mb / 1024 | stats avg(size_mb) by host
 NRQL: FROM Log WITH numeric(bytes) / 1048576 AS size_mb, numeric(size_mb) / 1024 AS size_gb SELECT average(size_mb) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -431,6 +440,7 @@ NRQL: FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'
 SPL:  * | stats count as appCount by app | eventstats sum(appCount) as namespaceCount
 NRQL: FROM Log SELECT count(*) AS 'appCount', (FROM (FROM Log SELECT count(*) AS 'appCount' FACET app LIMIT MAX) SELECT sum(appCount)) AS 'namespaceCount' FACET app
 🟡 `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -462,7 +472,7 @@ Extracts key-value pairs using automatic field discovery. NRQL has no equivalent
 ```
 ✅ Confirmed by human
 SPL:  * | extract pairdelim=","
-🔴 SPL command 'extract' has no known NRQL equivalent
+🔴 Key=value extraction from unstructured text has no NRQL equivalent; use Grok parsing rules to extract fields at ingest time, or restructure logs as JSON
 ```
 <!-- /spl-cases -->
 
@@ -542,6 +552,7 @@ NRQL: FROM Log SELECT host OR 'unknown', *
 ✅ Confirmed by human
 SPL:  * | fillnull value=0 bytes | stats sum(bytes) by host
 NRQL: FROM Log SELECT sum(bytes OR 0) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -596,6 +607,7 @@ Combines results from a subsearch with current results using a shared field. Tra
 ✅ Confirmed by human
 SPL:  * | join host [search index=other | stats count by host]
 NRQL: FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'other' FACET host LIMIT MAX) ON host = host SELECT *
+🟡 `join` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
 
@@ -617,6 +629,7 @@ NRQL: FROM Log JOIN (FROM Log SELECT host, message WHERE status = '500' OR numer
 ✅ Confirmed by human
 SPL:  * | join src_ip [search * | stats count, avg(bytes) by src_ip]
 NRQL: FROM Log JOIN (FROM Log SELECT count(*), average(bytes) FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *
+🟡 `join` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
 
@@ -631,6 +644,7 @@ NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT 100) ON host = ho
 ✅ Confirmed by human
 SPL:  status=500 | join host [search * | stats count by host]
 NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT MAX) ON host = host SELECT * WHERE status = '500' OR numeric(status) = 500
+🟡 `join` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
 
@@ -638,7 +652,9 @@ NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT MAX) ON host = ho
 ✅ Confirmed by human
 SPL:  * | stats count by host | join host [search * | stats avg(cpu) by host]
 NRQL: FROM Log JOIN (FROM Log SELECT average(cpu) FACET host LIMIT MAX) ON host = host SELECT count(*) FACET host
+🟡 `join` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -830,19 +846,22 @@ SPL:  * | stats values(title) as title | mvexpand title
 ```
 ❓ Not confirmed
 SPL:  * | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 
 ```
 ❓ Not confirmed
 SPL:  index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber
-🟡 SPL list() mapped to NRQL uniques(); duplicates will be removed
+🟡 SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 <!-- /spl-cases -->
@@ -863,6 +882,7 @@ NRQL: FROM Log SELECT src_ip AS 'source_address', *
 ✅ Confirmed by human
 SPL:  * | stats avg(bytes) as avg_bytes by host | rename avg_bytes AS average_bytes
 NRQL: FROM Log SELECT average(bytes) AS 'average_bytes' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -939,6 +959,7 @@ NRQL: FROM Log SELECT replace(message, 'error', 'warning'), *
 ✅ Confirmed by human
 SPL:  * | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype
 NRQL: FROM Log SELECT count(*) FACET replace(sourcetype, 'kube:container:', '')
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -981,6 +1002,7 @@ NRQL: FROM Log WITH capture(message, r'.*dlq\/(?P<dlq_key>\d+),.*') AS (dlq_key)
 ✅ Confirmed by human
 SPL:  * | rex "status=(?<code>\d+)" | stats count by code
 NRQL: FROM Log WITH capture(message, r'.*status=(?P<code>\d+).*') AS (code) SELECT count(*) FACET code
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -1035,6 +1057,7 @@ Filters results with search criteria (same as implicit search). Translates to ad
 ✅ Confirmed by human
 SPL:  index=web | stats count by status | search status=200
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND status = '200' OR numeric(status) = 200 FACET status
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -1087,6 +1110,7 @@ NRQL: FROM Log WITH jparse(message, 'data.id') AS id SELECT *
 SPL:  * | spath path=response.code output=code | stats count by code
 NRQL: FROM Log WITH jparse(message, 'response.code') AS code SELECT count(*) FACET code
 🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -1166,30 +1190,35 @@ Computes aggregate statistics over events. Translates to NRQL `SELECT aggregate(
 ✅ Confirmed by human
 SPL:  index=web | stats count by status
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET status
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats avg(response_time) as avg_response_time by host
 NRQL: FROM Log SELECT average(response_time) AS 'avg_response_time' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  index=web | stats count, dc(clientip) AS unique_clients BY status
 NRQL: FROM Log SELECT count(*), uniqueCount(clientip) AS 'unique_clients' WHERE index = 'web' FACET status
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count min(_time) as firstTime max(_time) as lastTime BY user dest
 NRQL: FROM Log SELECT count(*), min(timestamp) AS 'firstTime', max(timestamp) AS 'lastTime' FACET user, dest
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count(status) by host
 NRQL: FROM Log SELECT count(status) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -1287,7 +1316,7 @@ Computes running statistics over events in stream order. Like `eventstats`, NRQL
 ```
 ✅ Confirmed by human
 SPL:  * | streamstats count by host
-🔴 SPL command 'streamstats' has no known NRQL equivalent
+🔴 `streamstats` has no NRQL equivalent; NRQL does not support row-to-row references (LAG/LEAD) or running aggregations
 ```
 <!-- /spl-cases -->
 
@@ -1318,6 +1347,7 @@ NRQL: FROM Log WITH concat(protocol, '://', host, ':', port) AS url SELECT *
 ✅ Confirmed by human
 SPL:  * | strcat host ":" port address | stats count by address
 NRQL: FROM Log WITH concat(host, ':', port) AS address SELECT count(*) FACET address
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 <!-- /spl-cases -->
 
@@ -1342,18 +1372,21 @@ NRQL: FROM Log SELECT count(*) TIMESERIES AUTO
 ✅ Confirmed by human
 SPL:  sourcetype=access_* | timechart span=1h count by status
 NRQL: FROM Log SELECT count(*) WHERE sourcetype LIKE 'access_%' FACET status TIMESERIES 1 hour
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | timechart span=5m count BY host
 NRQL: FROM Log SELECT count(*) FACET host TIMESERIES 5 minutes
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | timechart span=1d sum(price) by productName
 NRQL: FROM Log SELECT sum(price) FACET productName TIMESERIES 1 day
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -1391,6 +1424,7 @@ NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT
 ❓ Not confirmed
 SPL:  * | timechart span=1m count | stats count by _time
 NRQL: FROM (FROM Log SELECT count(*)) SELECT count(*) TIMESERIES 1 minute
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2372,6 +2406,7 @@ NRQL: FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp AS
 SPL:  * | stats count by host | reverse
 NRQL: FROM Log SELECT count(*) FACET host ORDER BY timestamp ASC
 🟡 `reverse` after aggregation may not produce correct results; NRQL ORDER BY timestamp ASC does not match SPL row-order reversal
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 <!-- /spl-cases -->
 
@@ -2508,23 +2543,23 @@ Commands not recognized by the translator produce a generic unsupported message.
 <!-- spl-table: stats-functions -->
 | SPL function | NRQL function | Notes |
 |---|---|---|
-| `dc(field)` | `uniqueCount(field), average(bytes), sum(bytes), median(latency), average(latency), uniqueCount(user), uniques(status), percentile(field, 95), percentile(latency, 99), stddev(latency)` |  |
-| `min(field)` | `min(field), max(duration)` |  |
+| `dc(field)` | `uniqueCount(field), average(bytes), sum(bytes), median(latency), average(latency), uniqueCount(user), uniques(status), percentile(field, 95), percentile(latency, 99), stddev(latency)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `min(field)` | `min(field), max(duration)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `stdevp(field)` | `stddev(field)` | stdevp() is population stddev; mapped to NRQL stddev() which is sample stddev. Results may differ. |
-| `earliest(field)` | `earliest(field), latest(timestamp)` |  |
-| `first(field)` | `latest(field)` |  |
-| `last(field)` | `earliest(field)` |  |
-| `rate(field)` | `rate(sum(field), 1 second)` |  |
-| `list(field)` | `uniques(field)` | list() mapped to NRQL uniques(); duplicates will be removed |
+| `earliest(field)` | `earliest(field), latest(timestamp)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `first(field)` | `latest(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `last(field)` | `earliest(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `rate(field)` | `rate(sum(field), 1 second)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `list(field)` | `uniques(field)` | list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved |
 | `xyzfunc(field)` | `*` | function xyzfunc() has no known NRQL equivalent |
-| `estdc(field)` | `uniqueCount(field)` |  |
+| `estdc(field)` | `uniqueCount(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `exactperc95(field)` | `percentile(field, 95)` | exactperc95() mapped to NRQL percentile(); precision may differ |
 | `upperperc99(field)` | `percentile(field, 99)` | upperperc99() mapped to NRQL percentile(); precision may differ |
-| `per_second(field)` | `rate(sum(field), 1 second)` |  |
-| `per_minute(field)` | `rate(sum(field), 1 minute)` |  |
-| `per_hour(field)` | `rate(sum(field), 1 hour)` |  |
+| `per_second(field)` | `rate(sum(field), 1 second)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `per_minute(field)` | `rate(sum(field), 1 minute)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `per_hour(field)` | `rate(sum(field), 1 hour)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `per_day(field)` | `—` |  |
-| `max(field)` | `max(numeric(field) / 1000)` |  |
+| `max(field)` | `max(numeric(field) / 1000)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `perc95(field)` | `—` |  |
 <!-- /spl-table -->
 
@@ -2533,12 +2568,14 @@ Commands not recognized by the translator produce a generic unsupported message.
 ✅ Confirmed by human
 SPL:  * | stats dc(clientip), avg(bytes), sum(bytes), median(latency), mean(latency), distinct_count(user), values(status), perc95(latency), p99(latency), stdev(latency) by host
 NRQL: FROM Log SELECT uniqueCount(clientip), average(bytes), sum(bytes), median(latency), average(latency), uniqueCount(user), uniques(status), percentile(latency, 95), percentile(latency, 99), stddev(latency) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats min(duration), max(duration) by host
 NRQL: FROM Log SELECT min(duration), max(duration) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2546,37 +2583,43 @@ NRQL: FROM Log SELECT min(duration), max(duration) FACET host
 SPL:  * | stats stdevp(latency) by host
 NRQL: FROM Log SELECT stddev(latency) FACET host
 🟡 SPL stdevp() is population stddev; mapped to NRQL stddev() which is sample stddev. Results may differ.
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats earliest(timestamp), latest(timestamp) by host
 NRQL: FROM Log SELECT earliest(timestamp), latest(timestamp) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats first(status) by host
 NRQL: FROM Log SELECT latest(status) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats last(status) by host
 NRQL: FROM Log SELECT earliest(status) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats rate(bytes) by host
 NRQL: FROM Log SELECT rate(sum(bytes), 1 second) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats list(user) by host
 NRQL: FROM Log SELECT uniques(user) FACET host
-🟡 SPL list() mapped to NRQL uniques(); duplicates will be removed
+🟡 SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2584,12 +2627,14 @@ NRQL: FROM Log SELECT uniques(user) FACET host
 SPL:  * | stats xyzfunc(field) by host
 NRQL: FROM Log SELECT * FACET host
 🟡 SPL function xyzfunc() has no known NRQL equivalent
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats estdc(clientip) as approx_unique by host
 NRQL: FROM Log SELECT uniqueCount(clientip) AS 'approx_unique' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2597,6 +2642,7 @@ NRQL: FROM Log SELECT uniqueCount(clientip) AS 'approx_unique' FACET host
 SPL:  * | stats exactperc95(latency) as exact_p95 by service
 NRQL: FROM Log SELECT percentile(latency, 95) AS 'exact_p95' FACET service
 🟡 SPL exactperc95() mapped to NRQL percentile(); precision may differ
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2604,24 +2650,28 @@ NRQL: FROM Log SELECT percentile(latency, 95) AS 'exact_p95' FACET service
 SPL:  * | stats upperperc99(response_time) by endpoint
 NRQL: FROM Log SELECT percentile(response_time, 99) FACET endpoint
 🟡 SPL upperperc99() mapped to NRQL percentile(); precision may differ
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats per_second(bytes) as bps by host
 NRQL: FROM Log SELECT rate(sum(bytes), 1 second) AS 'bps' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats per_minute(requests) as rpm by service
 NRQL: FROM Log SELECT rate(sum(requests), 1 minute) AS 'rpm' FACET service
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats per_hour(errors) as errors_per_hour by host
 NRQL: FROM Log SELECT rate(sum(errors), 1 hour) AS 'errors_per_hour' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2634,6 +2684,7 @@ NRQL: FROM Log SELECT rate(sum(signups), 1 day) AS 'daily_signups'
 ✅ Confirmed by human
 SPL:  * | stats max(a / 1000) as div, min(b * 8) as mul, sum(c + d) as add, avg(e - f) as sub, count(g % 3) as mod, max((h + i) * j) as parens, avg(response.time / 1000) as dotfield, sum(a + b + c) as chained by host
 NRQL: FROM Log SELECT max(numeric(a) / 1000) AS 'div', min(numeric(b) * 8) AS 'mul', sum(numeric(c) + numeric(d)) AS 'add', average(numeric(e) - numeric(f)) AS 'sub', count(mod(numeric(g), 3)) AS 'mod', max((numeric(h) + numeric(i)) * numeric(j)) AS 'parens', average(numeric(`response.time`) / 1000) AS 'dotfield', sum(numeric(a) + numeric(b) + numeric(c)) AS 'chained' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2665,6 +2716,7 @@ NRQL: FROM Log SELECT percentile(numeric(duration) / 1000, 95) AS 'p95_sec'
 SPL:  * | stats mode(status) by host
 NRQL: FROM Log SELECT * FACET host
 🟡 SPL mode() has no direct NRQL equivalent; consider FACET field LIMIT 1 to find most common value
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2672,6 +2724,7 @@ NRQL: FROM Log SELECT * FACET host
 SPL:  * | stats earliest_time(message) as first_seen by host
 NRQL: FROM Log SELECT * FACET host
 🟡 SPL earliest_time() has no NRQL equivalent; earliest() returns the value, not the timestamp
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -2679,6 +2732,7 @@ NRQL: FROM Log SELECT * FACET host
 SPL:  * | stats rate_avg(cpu) by host
 NRQL: FROM Log SELECT * FACET host
 🟡 SPL rate_avg() is Splunk metrics-specific; no NRQL equivalent
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 <!-- /spl-cases -->
 
@@ -3071,6 +3125,7 @@ NRQL: FROM Log SELECT * WHERE message = 'error in module'
 ✅ Confirmed by human
 SPL:  index=web user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)" | stats count by host
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 <!-- /spl-cases -->
 
@@ -3101,12 +3156,14 @@ NRQL: FROM Log SELECT * WHERE `kubernetes.labels.app:name` = 'myapp'
 ✅ Confirmed by human
 SPL:  * | stats count by container-name
 NRQL: FROM Log SELECT count(*) FACET `container-name`
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats values(user.groups{}) as user_groups by host
 NRQL: FROM Log SELECT uniques(jparse(message, 'user.groups[*]')) AS 'user_groups' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -3398,6 +3455,7 @@ NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND status
 SPL:  index=web
 | stats count by host
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -3447,24 +3505,28 @@ NRQL: FROM Log SELECT * ORDER BY count DESC
 ✅ Confirmed by human
 SPL:  * | STATS COUNT BY host
 NRQL: FROM Log SELECT count(*) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | Stats Count By Host
 NRQL: FROM Log SELECT count(*) FACET Host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count() by host
 NRQL: FROM Log SELECT count(*) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats avg(response.time) by host
 NRQL: FROM Log SELECT average(`response.time`) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 <!-- /spl-cases -->
 

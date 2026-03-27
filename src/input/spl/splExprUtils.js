@@ -15,6 +15,7 @@ import {
   SelectQuery,
 } from '../../ir/nodes.js';
 import { escapeStringWildcardForNrql } from '../../output/nrql/nrqlEncoding.js';
+import { messages } from '../../messages.js';
 
 // ── Field name mapping ──────────────────────────────────────
 
@@ -70,7 +71,7 @@ const SPL_TO_NRQL_FUNCS = {
   values: { nrql: 'uniques' },
   list: {
     nrql: 'uniques',
-    warning: 'SPL list() mapped to NRQL uniques(); duplicates will be removed',
+    warning: messages.list_order_warning(),
   },
   earliest: { nrql: 'earliest' },
   latest: { nrql: 'latest' },
