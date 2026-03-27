@@ -2474,56 +2474,45 @@ const cases = [
   //
   // ── mvexpand patterns ─────────────────────────────────────────
   //
-  // Pattern 1: expand-then-filter (most common ~40%) — NRQL works without expansion
+  // Pattern 1: expand-then-filter (most common ~40%)
   {
     spl: '* | spath path=cloudformation{}.stack_prefix output=stack_prefix | mvexpand stack_prefix | search stack_prefix="fff000-gitlabrole"',
-    nrql: "FROM Log WITH jparse(message, 'cloudformation[*].stack_prefix') AS stack_prefix SELECT * WHERE stack_prefix = 'fff000-gitlabrole'",
-    warningIncludes: 'mvexpand',
+    unsupportedIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
-    verified: 'human',
+    verified: false,
   },
   // mvexpand with function-call field name (stats list() creates literal field name)
-  // FIXME: mvexpand should be unsupported, not silently skipped — produces wrong results
   {
     spl: '* | mvexpand list(orderNumber)',
-    nrql: 'FROM Log SELECT *',
-    warningIncludes: 'mvexpand',
+    unsupportedIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
     verified: false,
   },
-  // Pattern 2: dedup round-trip (~30%) — NRQL works without expansion
-  // FIXME: mvexpand should be unsupported, not silently skipped
+  // Pattern 2: dedup round-trip (~30%)
   {
     spl: '* | stats values(title) as title | mvexpand title',
-    nrql: "FROM Log SELECT uniques(title) AS 'title'",
-    warningIncludes: 'mvexpand',
+    unsupportedIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
     verified: false,
   },
-  // Pattern 3: expand + aggregate by expanded field — truly unsupported
-  // FIXME: mvexpand should be unsupported, not silently skipped
+  // Pattern 3: expand + aggregate by expanded field
   {
     spl: '* | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms',
-    warningIncludes: 'mvexpand',
-    nrql: "FROM Log WITH split(permissions, ',') AS perms SELECT count(*) FACET perms",
+    unsupportedIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
     verified: false,
   },
-  // Pattern 4: symmetric counting — truly unsupported (aggregates by expanded field)
-  // FIXME: mvexpand should be unsupported, not silently skipped
+  // Pattern 4: symmetric counting
   {
     spl: '* | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset',
-    warningIncludes: 'mvexpand',
-    nrql: 'FROM Log WITH mvappend(notable_src, notable_dest) AS notable_asset SELECT count(*) FACET notable_asset',
+    unsupportedIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
     verified: false,
   },
-  // Pattern 5: expand + sort only (no aggregation by field) — NRQL works without expansion
-  // FIXME: mvexpand should be unsupported, not silently skipped
+  // Pattern 5: expand + sort only (no aggregation by field)
   {
     spl: 'index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber',
-    nrql: "FROM Log SELECT uniques(orderNumber) AS 'orderNumber' WHERE index = 'k8s_main' AND message LIKE '%bopus%' AND orderType = 'BOPUS' AND storeNumber LIKE '%' AND orderNumber LIKE '%' FACET orderStatus, storeNumber ORDER BY orderNumber DESC",
-    warningIncludes: 'mvexpand',
+    unsupportedIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
     verified: false,
   },
@@ -2691,20 +2680,14 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: dur2sec parses duration strings like '346.319097ms' → 0.346
-    // numeric() only works if the value is already a plain number. Should be unsupported.
     spl: '* | convert dur2sec(duration)',
-    nrql: 'FROM Log WITH numeric(duration) AS duration_converted SELECT *',
-    warningIncludes: 'dur2sec',
+    unsupportedIncludes: 'dur2sec',
     doc: 'fields-convert',
     verified: false,
   },
   {
-    // FIXME: mstime parses mm:ss.ms strings like '02:30.500' → 150.5
-    // numeric() only works if the value is already a plain number. Should be unsupported.
     spl: '* | convert mstime(elapsed)',
-    nrql: 'FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *',
-    warningIncludes: 'mstime',
+    unsupportedIncludes: 'mstime',
     doc: 'fields-convert',
     verified: false,
   },
@@ -2717,11 +2700,8 @@ const cases = [
     verified: false,
   },
   {
-    // FIXME: auto() detects and converts any type (number, boolean, timestamp).
-    // numeric() only handles the number case. Should be unsupported.
     spl: '* | convert auto(field)',
-    nrql: 'FROM Log WITH numeric(field) AS field_converted SELECT *',
-    warningIncludes: 'cannot overwrite a field in-place',
+    unsupportedIncludes: 'auto',
     doc: 'fields-convert',
     verified: false,
   },
@@ -2758,9 +2738,8 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: tail 10 should be ORDER BY timestamp ASC LIMIT 10, not unsupported
     spl: '* | tail 10',
-    unsupportedIncludes: 'tail',
+    nrql: 'FROM Log SELECT * ORDER BY timestamp ASC LIMIT 10',
     doc: 'results-tail',
     verified: false,
   },
@@ -2825,13 +2804,6 @@ const cases = [
     doc: 'unsupported-unknown',
     verified: 'human',
   },
-  {
-    // FIXME: tail 20 should be ORDER BY timestamp ASC LIMIT 20, not unsupported
-    spl: '* | tail 20',
-    unsupportedIncludes: 'tail',
-    doc: 'results-tail',
-    verified: false,
-  },
   //
   // ── Edge cases ──────────────────────────────────────────────────
   //
@@ -2864,10 +2836,8 @@ const cases = [
     verified: 'human',
   },
   {
-    // FIXME: double NOT should be collapsed by the optimizer's double-NOT elimination pass.
-    // Expected: WHERE message LIKE '%error%'
     spl: 'NOT NOT error',
-    nrql: "FROM Log SELECT * WHERE message NOT LIKE '%NOT%' AND message LIKE '%error%'",
+    nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
     doc: 'edge-cases',
     verified: false,
   },
@@ -3164,24 +3134,15 @@ afterAll(() => {
 
   function renderEntry(e) {
     const badge = VERIFIED_BADGES[e.verified] || '❓ Not confirmed';
-    // Code block for SPL/NRQL + badge (gray background)
     const codeLines = [badge, `SPL:  ${e.spl || '(empty)'}`];
-    codeLines.push(`NRQL: ${e.nrql || ''}`);
-    const parts = ['```\n' + codeLines.join('\n') + '\n```'];
-    // Alert boxes for warnings/unsupported
+    if (e.nrql) codeLines.push(`NRQL: ${e.nrql}`);
     if (e.warnings) {
-      parts.push(
-        `> [!WARNING]\n` +
-          e.warnings.map((w) => `> ${formatMessage(w)}`).join('\n>\n'),
-      );
+      for (const w of e.warnings) codeLines.push(`🟡 ${formatMessage(w)}`);
     }
     if (e.unsupported) {
-      parts.push(
-        `> [!CAUTION]\n` +
-          e.unsupported.map((u) => `> ${formatMessage(u)}`).join('\n>\n'),
-      );
+      for (const u of e.unsupported) codeLines.push(`🔴 ${formatMessage(u)}`);
     }
-    return parts.join('\n\n');
+    return '```\n' + codeLines.join('\n') + '\n```';
   }
 
   doc = doc.replace(SENTINEL_RE, (match, tag) => {
@@ -3197,7 +3158,7 @@ afterAll(() => {
     const blocks = sorted.map(renderEntry);
     return (
       `<!-- spl-cases: ${tag} -->\n` +
-      blocks.join('\n\n---\n\n') +
+      blocks.join('\n\n') +
       `\n<!-- /spl-cases -->`
     );
   });

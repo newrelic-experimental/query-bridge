@@ -91,109 +91,69 @@ Appends the results of a subsearch to the current results. The translator merges
 ✅ Confirmed by human
 SPL:  index=main "Cache hit" | stats count as Hits | append [search index=main "Cache miss" | stats count as Misses]
 NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main' AND message LIKE '%Cache hit%') AS 'Hits', filter(count(*), WHERE index = 'main' AND message LIKE '%Cache miss%') AS 'Misses'
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
-
-> [!WARNING]
-> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats avg(duration) | append [search * | stats max(duration)]
 NRQL: FROM Log SELECT average(duration), max(duration)
+🟡 `append` merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
 ```
-
-> [!WARNING]
-> `append` merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  error | stats count by host | append [search success | stats count by host]
 NRQL: FROM Log SELECT filter(count(*), WHERE message LIKE '%error%'), filter(count(*), WHERE message LIKE '%success%') FACET host
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
-
-> [!WARNING]
-> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count by host | append [search * | stats avg(duration) by host]
 NRQL: FROM Log SELECT count(*), average(duration) FACET host
+🟡 `append` merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
 ```
-
-> [!WARNING]
-> `append` merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  error | stats avg(duration) as err_dur | append [search success | stats avg(duration) as ok_dur]
 NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%') AS 'err_dur', filter(average(duration), WHERE message LIKE '%success%') AS 'ok_dur'
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
-
-> [!WARNING]
-> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  error | stats avg(duration) | append [search success | stats max(duration)]
 NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), filter(max(duration), WHERE message LIKE '%success%')
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
-
-> [!WARNING]
-> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
-
----
 
 ```
 ❓ Not confirmed
 SPL:  index=web | stats count as web_count | append [search index=api | stats count as api_count]
 NRQL: FROM Log SELECT filter(count(*), WHERE index = 'web') AS 'web_count', filter(count(*), WHERE index = 'api') AS 'api_count'
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
-
-> [!WARNING]
-> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | where status=500 | stats avg(duration) as err_dur | append [search * | stats avg(duration) as all_dur]
 NRQL: FROM Log SELECT filter(average(duration), WHERE status = '500' OR numeric(status) = 500) AS 'err_dur', average(duration) AS 'all_dur'
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
-
-> [!WARNING]
-> `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  index=web | append [search index=api]
-NRQL: 
+🔴 `append` with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query
 ```
-
-> [!CAUTION]
-> `append` with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
-NRQL: 
+🔴 `append` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
 ```
-
-> [!CAUTION]
-> `append` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
 <!-- /spl-cases -->
 
 #### `appendcols` — Supported
@@ -205,21 +165,14 @@ Adds subsearch results as new columns. Uses the same merge logic as `append` —
 ✅ Confirmed by human
 SPL:  index=main | stats count as total_requests | appendcols [search index=main level=error | stats count as errors]
 NRQL: FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests', filter(count(*), WHERE index = 'main' AND level = 'error') AS 'errors'
+🟡 `appendcols` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
-
-> [!WARNING]
-> `appendcols` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count as total | appendcols [search * | stats count by host]
-NRQL: 
+🔴 `appendcols` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
 ```
-
-> [!CAUTION]
-> `appendcols` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
 <!-- /spl-cases -->
 
 #### `appendpipe` — Supported
@@ -231,10 +184,8 @@ Runs a subpipeline and appends results. In practice, used for zero-fill fallback
 ✅ Confirmed by human
 SPL:  * | stats count as search_count | appendpipe [stats count | where count=0]
 NRQL: FROM Log SELECT count(*) AS 'search_count'
+🟡 `appendpipe` adds summary rows to results; NRQL cannot append rows to a query. The sub-pipeline aggregation is available as a nested query, but the "append as new row" behavior must be handled by the UI.
 ```
-
-> [!WARNING]
-> `appendpipe` adds summary rows to results; NRQL cannot append rows to a query. The sub-pipeline aggregation is available as a nested query, but the "append as new row" behavior must be handled by the UI.
 <!-- /spl-cases -->
 
 #### `bin` / `bucket` — Supported
@@ -248,23 +199,17 @@ SPL:  * | bin _time span=5m
 NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | bucket _time span=5m
 NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | bucket span=5m _time | stats count by _time
 NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -303,23 +248,15 @@ Converts field values between formats. Translates to NRQL `WITH` expressions. No
 ✅ Confirmed by human
 SPL:  * | convert num(bytes)
 NRQL: FROM Log WITH numeric(bytes) AS bytes_converted SELECT *
+🟡 `convert` num(bytes): NRQL cannot overwrite a field in-place; aliased to bytes_converted
 ```
-
-> [!WARNING]
-> `convert` num(bytes): NRQL cannot overwrite a field in-place; aliased to bytes_converted
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | convert rmcomma(total)
 NRQL: FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *
+🟡 `convert` rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
 ```
-
-> [!WARNING]
-> `convert` rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
-
----
 
 ```
 ✅ Confirmed by human
@@ -327,88 +264,50 @@ SPL:  * | convert ctime(timestamp) AS readable
 NRQL: FROM Log WITH toDatetime(timestamp) AS readable SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | convert mktime(timestr)
 NRQL: FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *
+🟡 `convert` mktime(timestr): NRQL cannot overwrite a field in-place; aliased to timestr_converted
 ```
-
-> [!WARNING]
-> `convert` mktime(timestr): NRQL cannot overwrite a field in-place; aliased to timestr_converted
-
----
-
-```
-❓ Not confirmed
-SPL:  * | convert dur2sec(duration)
-NRQL: FROM Log WITH numeric(duration) AS duration_converted SELECT *
-```
-
-> [!WARNING]
-> `convert` dur2sec(duration): NRQL has no duration parser; using numeric(duration) as approximation — verify data format
->
-> `convert` dur2sec(duration): NRQL cannot overwrite a field in-place; aliased to duration_converted
-
----
-
-```
-❓ Not confirmed
-SPL:  * | convert mstime(elapsed)
-NRQL: FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *
-```
-
-> [!WARNING]
-> `convert` mstime(elapsed): NRQL has no mm:ss.ms parser; using numeric(elapsed) as approximation — verify data format
->
-> `convert` mstime(elapsed): NRQL cannot overwrite a field in-place; aliased to elapsed_converted
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | convert num(status), rmcomma(total)
 NRQL: FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, ',', '')) AS total_converted SELECT *
+🟡 `convert` num(status): NRQL cannot overwrite a field in-place; aliased to status_converted
+🟡 `convert` rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
 ```
 
-> [!WARNING]
-> `convert` num(status): NRQL cannot overwrite a field in-place; aliased to status_converted
->
-> `convert` rmcomma(total): NRQL cannot overwrite a field in-place; aliased to total_converted
+```
+❓ Not confirmed
+SPL:  * | convert dur2sec(duration)
+🔴 `convert` dur2sec(duration) is not supported; NRQL has no duration string parser
+```
 
----
+```
+❓ Not confirmed
+SPL:  * | convert mstime(elapsed)
+🔴 `convert` mstime(elapsed) is not supported; NRQL has no mm:ss.ms parser
+```
 
 ```
 ❓ Not confirmed
 SPL:  * | convert auto(field)
-NRQL: FROM Log WITH numeric(field) AS field_converted SELECT *
+🔴 `convert` auto(field) is not supported; NRQL has no auto-type-detection function
 ```
-
-> [!WARNING]
-> `convert` auto(field): NRQL cannot overwrite a field in-place; aliased to field_converted
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | convert rmunit(field)
-NRQL: 
+🔴 `convert` rmunit(field) not supported in NRQL
 ```
-
-> [!CAUTION]
-> `convert` rmunit(field) not supported in NRQL
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | convert memk(field)
-NRQL: 
+🔴 `convert` memk(field) not supported in NRQL
 ```
-
-> [!CAUTION]
-> `convert` memk(field) not supported in NRQL
 <!-- /spl-cases -->
 
 #### `dedup` — Supported
@@ -420,32 +319,22 @@ Removes duplicate events based on field values. Translates to NRQL `FACET` with 
 ✅ Confirmed by human
 SPL:  * | dedup host
 NRQL: FROM Log SELECT latest(timestamp) FACET host LIMIT MAX
+🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
 ```
-
-> [!WARNING]
-> `dedup` translated to FACET; add latest(field) for each field you want to keep
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | dedup host, status
 NRQL: FROM Log SELECT latest(timestamp) FACET host, status LIMIT MAX
+🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
 ```
-
-> [!WARNING]
-> `dedup` translated to FACET; add latest(field) for each field you want to keep
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count by host | dedup host
 NRQL: FROM Log SELECT count(*) FACET host LIMIT MAX
+🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
 ```
-
-> [!WARNING]
-> `dedup` translated to FACET; add latest(field) for each field you want to keep
 <!-- /spl-cases -->
 
 #### `eval` — Supported
@@ -459,15 +348,11 @@ SPL:  * | eval d = bytes / 1024, m = price * quantity, a = sent + received, s = 
 NRQL: FROM Log WITH numeric(bytes) / 1024 AS d, numeric(price) * numeric(quantity) AS m, numeric(sent) + numeric(received) AS a, numeric(end_time) - numeric(start_time) AS s, mod(numeric(x), 10) AS r SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval p1 = a * b + c, p2 = a + b / c, p3 = (a + b) / c, p4 = (a + b) * (c - d)
 NRQL: FROM Log WITH numeric(a) * numeric(b) + numeric(c) AS p1, numeric(a) + numeric(b) / numeric(c) AS p2, (numeric(a) + numeric(b)) / numeric(c) AS p3, (numeric(a) + numeric(b)) * (numeric(c) - numeric(d)) AS p4 SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -475,15 +360,11 @@ SPL:  * | eval pct = count / 100.0, chain = a + b + c + d, mul = a * b * c, kb =
 NRQL: FROM Log WITH numeric(count) / 100 AS pct, numeric(a) + numeric(b) + numeric(c) + numeric(d) AS chain, numeric(a) * numeric(b) * numeric(c) AS mul, numeric(bytes) / 1024 AS kb, numeric(bytes) / 1048576 AS mb, numeric(bytes) / 1073741824 AS gb SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval size_mb = bytes / 1048576 | eval size_gb = size_mb / 1024 | stats avg(size_mb) by host
 NRQL: FROM Log WITH numeric(bytes) / 1048576 AS size_mb, numeric(size_mb) / 1024 AS size_gb SELECT average(size_mb) FACET host
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -491,26 +372,18 @@ SPL:  status=200 | eval duration_sec = duration / 1000 | table host, duration_se
 NRQL: FROM Log WITH numeric(duration) / 1000 AS duration_sec SELECT host, duration_sec WHERE status = '200' OR numeric(status) = 200
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=a+b, alias = original, lit = 42, parens = ((a + b)), hyph = http-status / 100, col = aws:region, dot = http.status / 100
 NRQL: FROM Log WITH numeric(a) + numeric(b) AS x, original AS alias, 42 AS lit, numeric(a) + numeric(b) AS parens, numeric(`http-status`) / 100 AS hyph, `aws:region` AS col, numeric(`http.status`) / 100 AS dot SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | spath input=payload path=user.id output=uid | eval uid_num = uid / 1
 NRQL: FROM Log WITH jparse(payload, 'user.id') AS uid, numeric(uid) / 1 AS uid_num SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
@@ -518,24 +391,18 @@ SPL:  * | fillnull value=0 bytes | eval kb = bytes / 1024
 NRQL: FROM Log WITH numeric(bytes OR 0) / 1024 AS kb SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval rate = count / duration | sort -rate | head 10
 NRQL: FROM Log WITH numeric(count) / numeric(duration) AS rate SELECT * ORDER BY rate DESC LIMIT 10
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval kb = bytes / 1024 | rename kb as kilobytes
 NRQL: FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *
+🟡 NRQL rename keeps original field names alongside aliases
 ```
-
-> [!WARNING]
-> NRQL rename keeps original field names alongside aliases
 <!-- /spl-cases -->
 
 #### `eventstats` — Supported
@@ -597,76 +464,49 @@ Computes aggregation statistics and adds them as new fields to every event (with
 ✅ Confirmed by human
 SPL:  * | eventstats count by host
 NRQL: FROM Log JOIN (FROM Log SELECT count(*) AS 'count' FACET host LIMIT MAX) ON host = host SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eventstats avg(duration) AS avg_dur BY host
 NRQL: FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur' FACET host LIMIT MAX) ON host = host SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eventstats count AS total
 NRQL: FROM Log SELECT *, (FROM Log SELECT count(*)) AS 'total'
+🟡 `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
 ```
-
-> [!WARNING]
-> `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | stats count as appCount by app | eventstats sum(appCount) as namespaceCount
 NRQL: FROM Log SELECT count(*) AS 'appCount', (FROM (FROM Log SELECT count(*) AS 'appCount' FACET app LIMIT MAX) SELECT sum(appCount)) AS 'namespaceCount' FACET app
+🟡 `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
 ```
-
-> [!WARNING]
-> `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eventstats max(timestamp) as lastImport BY source
 NRQL: FROM Log JOIN (FROM Log SELECT max(timestamp) AS 'lastImport' FACET source LIMIT MAX) ON source = source SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eventstats avg(duration) AS avg_dur, max(duration) AS max_dur BY host
 NRQL: FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur', max(duration) AS 'max_dur' FACET host LIMIT MAX) ON host = host SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eventstats sum(bytes) AS total BY host, status
-NRQL: 
+🔴 `eventstats` with multiple BY fields (host, status) cannot be translated; NRQL subquery JOIN only supports a single ON key
 ```
-
-> [!CAUTION]
-> `eventstats` with multiple BY fields (host, status) cannot be translated; NRQL subquery JOIN only supports a single ON key
 <!-- /spl-cases -->
 
 #### `extract` (`kv`) — Not supported
@@ -677,11 +517,8 @@ Extracts key-value pairs using automatic field discovery. NRQL has no equivalent
 ```
 ✅ Confirmed by human
 SPL:  * | extract pairdelim=","
-NRQL: 
+🔴 SPL command 'extract' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'extract' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `table` / `fields` — Partial support
@@ -695,15 +532,11 @@ SPL:  * | table _time, host, status, bytes, url
 NRQL: FROM Log SELECT timestamp, host, status, bytes, url
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | table *
 NRQL: FROM Log SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -711,15 +544,11 @@ SPL:  * | fields host, status
 NRQL: FROM Log SELECT host, status
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | fields _time, host, status
 NRQL: FROM Log SELECT timestamp, host, status
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -727,16 +556,12 @@ SPL:  * | fields + host, status
 NRQL: FROM Log SELECT host, status
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | fields - _raw, _time
 NRQL: FROM Log SELECT *
+🟡 `fields` - (exclude mode) has limited NRQL support
 ```
-
-> [!WARNING]
-> `fields` - (exclude mode) has limited NRQL support
 <!-- /spl-cases -->
 
 #### `fillnull` — Supported
@@ -750,15 +575,11 @@ SPL:  * | fillnull value=N/A host status
 NRQL: FROM Log SELECT host OR 'N/A', status OR 'N/A', *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | fillnull value=0 bytes duration
 NRQL: FROM Log SELECT bytes OR 0, duration OR 0, *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -766,15 +587,11 @@ SPL:  * | fillnull bytes
 NRQL: FROM Log SELECT bytes OR '0', *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | fillnull value="unknown" host
 NRQL: FROM Log SELECT host OR 'unknown', *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -782,24 +599,17 @@ SPL:  * | fillnull value=0 bytes | stats sum(bytes) by host
 NRQL: FROM Log SELECT sum(bytes OR 0) FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | fillnull value=0 field1, field2, field3
 NRQL: FROM Log SELECT field1 OR 0, field2 OR 0, field3 OR 0, *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | fillnull value=0
-NRQL: 
+🔴 `fillnull` without field list not supported — NRQL requires explicit field names
 ```
-
-> [!CAUTION]
-> `fillnull` without field list not supported — NRQL requires explicit field names
 <!-- /spl-cases -->
 
 #### `foreach` — Not supported
@@ -810,11 +620,8 @@ Runs a template expression over a set of fields matching a wildcard pattern. NRQ
 ```
 ✅ Confirmed by human
 SPL:  * | foreach count_* [eval total=total+<<FIELD>>]
-NRQL: 
+🔴 SPL command 'foreach' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'foreach' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `head` — Supported
@@ -827,8 +634,6 @@ Returns the first N results. Translates to NRQL `LIMIT N`.
 SPL:  * | head 10
 NRQL: FROM Log SELECT * LIMIT 10
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -846,109 +651,69 @@ Combines results from a subsearch with current results using a shared field. Tra
 ✅ Confirmed by human
 SPL:  * | join host [search index=other | stats count by host]
 NRQL: FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'other' FACET host LIMIT MAX) ON host = host SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | join type=left src_ip [search index=geo | table src_ip, country]
 NRQL: FROM Log LEFT JOIN (FROM Log SELECT src_ip, country WHERE index = 'geo' LIMIT MAX) ON src_ip = src_ip SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | join host [search status=500 | table host, message]
 NRQL: FROM Log JOIN (FROM Log SELECT host, message WHERE status = '500' OR numeric(status) = 500 LIMIT MAX) ON host = host SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | join src_ip [search * | stats count, avg(bytes) by src_ip]
 NRQL: FROM Log JOIN (FROM Log SELECT count(*), average(bytes) FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | join host [search * | stats count by host | head 100]
 NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT 100) ON host = host SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  status=500 | join host [search * | stats count by host]
 NRQL: FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT MAX) ON host = host SELECT * WHERE status = '500' OR numeric(status) = 500
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats count by host | join host [search * | stats avg(cpu) by host]
 NRQL: FROM Log JOIN (FROM Log SELECT average(cpu) FACET host LIMIT MAX) ON host = host SELECT count(*) FACET host
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | join user [search * | table user, role]
 NRQL: FROM Log JOIN (FROM Log SELECT user, role LIMIT MAX) ON user = user SELECT *
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 ```
-
-> [!WARNING]
-> NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | join type=outer host [search * | stats count by host]
-NRQL: 
+🔴 NRQL does not support full outer join; only INNER and LEFT joins are available
 ```
-
-> [!CAUTION]
-> NRQL does not support full outer join; only INNER and LEFT joins are available
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | join host [search status=200 host=web*]
-NRQL: 
+🔴 Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over
 ```
-
-> [!CAUTION]
-> Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over
 <!-- /spl-cases -->
 
 #### `lookup` — Supported
@@ -960,32 +725,22 @@ Enriches events with fields from a lookup table. Translates to NRQL `JOIN` with 
 ✅ Confirmed by human
 SPL:  * | lookup geo_table src_ip
 NRQL: FROM Log JOIN (FROM lookup(geo_table) SELECT * FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *
+🟡 Ensure lookup table 'geo_table' is uploaded via the Lookups UI
 ```
-
-> [!WARNING]
-> Ensure lookup table 'geo_table' is uploaded via the Lookups UI
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | lookup ip_to_country src_ip OUTPUT country
 NRQL: FROM Log JOIN (FROM lookup(ip_to_country) SELECT country FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *
+🟡 Ensure lookup table 'ip_to_country' is uploaded via the Lookups UI
 ```
-
-> [!WARNING]
-> Ensure lookup table 'ip_to_country' is uploaded via the Lookups UI
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | lookup users_lookup username AS user OUTPUT department
 NRQL: FROM Log JOIN (FROM lookup(users_lookup) SELECT department FACET username LIMIT MAX) ON user = username SELECT *
+🟡 Ensure lookup table 'users_lookup' is uploaded via the Lookups UI
 ```
-
-> [!WARNING]
-> Ensure lookup table 'users_lookup' is uploaded via the Lookups UI
 <!-- /spl-cases -->
 
 #### `mvcombine` — Not supported
@@ -1000,11 +755,8 @@ Combines multivalue field entries into a single multivalue field. NRQL does not 
 ```
 ✅ Confirmed by human
 SPL:  * | mvcombine delim="," values
-NRQL: 
+🔴 SPL command 'mvcombine' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'mvcombine' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `mvexpand` — Partial support
@@ -1112,72 +864,42 @@ Sometimes `mvexpand` is applied to a field that is already single-value (defensi
 
 <!-- spl-cases: unsupported-mvexpand -->
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | spath path=cloudformation{}.stack_prefix output=stack_prefix | mvexpand stack_prefix | search stack_prefix="fff000-gitlabrole"
-NRQL: FROM Log WITH jparse(message, 'cloudformation[*].stack_prefix') AS stack_prefix SELECT * WHERE stack_prefix = 'fff000-gitlabrole'
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
->
-> `mvexpand` stack_prefix skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | mvexpand list(orderNumber)
-NRQL: FROM Log SELECT *
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
-
-> [!WARNING]
-> `mvexpand` list(orderNumber) skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | stats values(title) as title | mvexpand title
-NRQL: FROM Log SELECT uniques(title) AS 'title'
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
-
-> [!WARNING]
-> `mvexpand` title skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms
-NRQL: FROM Log WITH split(permissions, ',') AS perms SELECT count(*) FACET perms
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
-
-> [!WARNING]
-> `mvexpand` perms skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset
-NRQL: FROM Log WITH mvappend(notable_src, notable_dest) AS notable_asset SELECT count(*) FACET notable_asset
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
-
-> [!WARNING]
-> `mvexpand` notable_asset skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
-
----
 
 ```
 ❓ Not confirmed
 SPL:  index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber
-NRQL: FROM Log SELECT uniques(orderNumber) AS 'orderNumber' WHERE index = 'k8s_main' AND message LIKE '%bopus%' AND orderType = 'BOPUS' AND storeNumber LIKE '%' AND orderNumber LIKE '%' FACET orderStatus, storeNumber ORDER BY orderNumber DESC
+🟡 SPL list() mapped to NRQL uniques(); duplicates will be removed
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
-
-> [!WARNING]
-> SPL list() mapped to NRQL uniques(); duplicates will be removed
->
-> `mvexpand` orderNumber skipped; NRQL does not expand multivalue fields into rows, but filtering and selection on the field still work
 <!-- /spl-cases -->
 
 #### `rename` — Supported
@@ -1189,12 +911,8 @@ Renames fields. Translates to NRQL `AS` aliases.
 ✅ Confirmed by human
 SPL:  * | rename src_ip AS source_address
 NRQL: FROM Log SELECT src_ip AS 'source_address', *
+🟡 NRQL rename keeps original field names alongside aliases
 ```
-
-> [!WARNING]
-> NRQL rename keeps original field names alongside aliases
-
----
 
 ```
 ✅ Confirmed by human
@@ -1202,49 +920,31 @@ SPL:  * | stats avg(bytes) as avg_bytes by host | rename avg_bytes AS average_by
 NRQL: FROM Log SELECT average(bytes) AS 'average_bytes' FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | rename _time AS "Time"
 NRQL: FROM Log SELECT timestamp AS 'Time', *
+🟡 NRQL rename keeps original field names alongside aliases
 ```
-
-> [!WARNING]
-> NRQL rename keeps original field names alongside aliases
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | rename src_ip as src user_name as user
 NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *
+🟡 NRQL rename keeps original field names alongside aliases
 ```
-
-> [!WARNING]
-> NRQL rename keeps original field names alongside aliases
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | rename properties.* as *
-NRQL: 
+🔴 Wildcard rename (properties.* as *) not supported in NRQL; rename specific fields
 ```
-
-> [!CAUTION]
-> Wildcard rename (properties.* as *) not supported in NRQL; rename specific fields
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | rename "IsOutlier(count)" as isOutlier
-NRQL: 
+🔴 Cannot rename field with parentheses in name: "IsOutlier(count)"
 ```
-
-> [!CAUTION]
-> Cannot rename field with parentheses in name: "IsOutlier(count)"
 <!-- /spl-cases -->
 
 #### `replace` — Partial support
@@ -1290,15 +990,11 @@ SPL:  * | replace "error" WITH "warning" IN message
 NRQL: FROM Log SELECT replace(message, 'error', 'warning'), *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype
 NRQL: FROM Log SELECT count(*) FACET replace(sourcetype, 'kube:container:', '')
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1318,15 +1014,11 @@ SPL:  * | rex field=message "(?<ip>\d+\.\d+\.\d+\.\d+)"
 NRQL: FROM Log WITH capture(message, r'.*(?P<ip>\d+\.\d+\.\d+\.\d+).*') AS (ip) SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | rex "user=(?<username>\w+)"
 NRQL: FROM Log WITH capture(message, r'.*user=(?P<username>\w+).*') AS (username) SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1334,15 +1026,11 @@ SPL:  * | rex field=_raw "From: <(?<from>.*)> To: <(?<to>.*)>"
 NRQL: FROM Log WITH capture(message, r'.*From: <(?P<from>.*)> To: <(?P<to>.*)>.*') AS (from, to) SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | rex field=_raw ".*dlq\/(?P<dlq_key>\d+),"
 NRQL: FROM Log WITH capture(message, r'.*dlq\/(?P<dlq_key>\d+),.*') AS (dlq_key) SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1350,35 +1038,23 @@ SPL:  * | rex "status=(?<code>\d+)" | stats count by code
 NRQL: FROM Log WITH capture(message, r'.*status=(?P<code>\d+).*') AS (code) SELECT count(*) FACET code
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | rex field=message "\"orderId\":\"(?<orderId>[A-Z0-9-]+)\""
 NRQL: FROM Log WITH capture(message, r'.*\"orderId\":\"(?P<orderId>[A-Z0-9-]+)\".*') AS (orderId) SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | rex field=message "\d+"
-NRQL: 
+🔴 `rex` pattern has no named capture groups; nothing to extract
 ```
-
-> [!CAUTION]
-> `rex` pattern has no named capture groups; nothing to extract
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | rex field=message "(?<skus>\d{6,})" max_match=0
-NRQL: 
+🔴 `rex` max_match not supported; NRQL capture() returns first match only
 ```
-
-> [!CAUTION]
-> `rex` max_match not supported; NRQL capture() returns first match only
 <!-- /spl-cases -->
 
 #### `rex` (sed mode) — Not supported
@@ -1389,11 +1065,8 @@ Uses sed-like syntax for in-line string substitution. Limited NRQL support via s
 ```
 ✅ Confirmed by human
 SPL:  * | rex mode=sed field=message "s/old/new/g"
-NRQL: 
+🔴 `rex` mode=sed has no NRQL equivalent
 ```
-
-> [!CAUTION]
-> `rex` mode=sed has no NRQL equivalent
 <!-- /spl-cases -->
 
 #### `rex` (PCRE-only features) — Partial support
@@ -1404,11 +1077,8 @@ PCRE features like lookaheads/lookbehinds and backreferences. NRQL's RE2 regex e
 ```
 ✅ Confirmed by human
 SPL:  * | rex field=message "(?<=prefix)(?<val>\w+)"
-NRQL: 
+🔴 `rex` pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround
 ```
-
-> [!CAUTION]
-> `rex` pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround
 <!-- /spl-cases -->
 
 #### `search` (pipe) — Supported
@@ -1422,23 +1092,17 @@ SPL:  index=web | stats count by status | search status=200
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND status = '200' OR numeric(status) = 200 FACET status
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  status=500 | search error
 NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message LIKE '%error%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | search status=200 OR status=301
 NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 OR status = '301' OR numeric(status) = 301
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1456,122 +1120,78 @@ Extracts fields from structured data (JSON, XML). Translates to NRQL `jparse()` 
 ✅ Confirmed by human
 SPL:  * | spath input=payload path=user.name output=username
 NRQL: FROM Log WITH jparse(payload, 'user.name') AS username SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath path=response.status
 NRQL: FROM Log WITH jparse(message, 'response.status') AS status SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath input=_raw path=data.id output=id
 NRQL: FROM Log WITH jparse(message, 'data.id') AS id SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath path=response.code output=code | stats count by code
 NRQL: FROM Log WITH jparse(message, 'response.code') AS code SELECT count(*) FACET code
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath path=user.name output=name | spath path=user.email output=email
 NRQL: FROM Log WITH jparse(message, 'user.name') AS name, jparse(message, 'user.email') AS email SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath path=request.url output=url | rex field=url "(?<domain>[^/]+)"
 NRQL: FROM Log WITH jparse(message, 'request.url') AS url, capture(url, r'.*(?P<domain>[^/]+).*') AS (domain) SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath "AppID"
 NRQL: FROM Log WITH jparse(message, 'AppID') AS AppID SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath source_name
 NRQL: FROM Log WITH jparse(message, 'source_name') AS source_name SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath path=errors{}.code output=error_code | search error_code=404
 NRQL: FROM Log WITH jparse(message, 'errors[*].code') AS error_code SELECT * WHERE error_code = '404' OR numeric(error_code) = 404
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath path=items{}.status
 NRQL: FROM Log WITH jparse(message, 'items[*].status') AS status SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath input=request_body path=user.preferences{}.key output=pref_key
 NRQL: FROM Log WITH jparse(request_body, 'user.preferences[*].key') AS pref_key SELECT *
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 ```
-
-> [!WARNING]
-> `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
-
----
 
 ```
 ✅ Confirmed by human
@@ -1579,27 +1199,17 @@ SPL:  * | eval user_id = json_extract(payload, "$.user.id")
 NRQL: FROM Log WITH jparse(payload, 'user.id') AS user_id SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | spath
-NRQL: 
+🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 ```
-
-> [!CAUTION]
-> `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | spath input=payload
-NRQL: 
+🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 ```
-
-> [!CAUTION]
-> `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 <!-- /spl-cases -->
 
 #### `stats` — Supported
@@ -1613,15 +1223,11 @@ SPL:  index=web | stats count by status
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET status
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats avg(response_time) as avg_response_time by host
 NRQL: FROM Log SELECT average(response_time) AS 'avg_response_time' FACET host
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1629,15 +1235,11 @@ SPL:  index=web | stats count, dc(clientip) AS unique_clients BY status
 NRQL: FROM Log SELECT count(*), uniqueCount(clientip) AS 'unique_clients' WHERE index = 'web' FACET status
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count min(_time) as firstTime max(_time) as lastTime BY user dest
 NRQL: FROM Log SELECT count(*), min(timestamp) AS 'firstTime', max(timestamp) AS 'lastTime' FACET user, dest
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1645,15 +1247,11 @@ SPL:  * | stats count(status) by host
 NRQL: FROM Log SELECT count(status) FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count as "totalFailure"
 NRQL: FROM Log SELECT count(*) AS 'totalFailure'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1661,15 +1259,11 @@ SPL:  * | stats count as 'my count'
 NRQL: FROM Log SELECT count(*) AS 'my count'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count(eval(status>=400)) as errors
 NRQL: FROM Log SELECT filter(count(*), WHERE numeric(status) >= 400) AS 'errors'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1748,11 +1342,8 @@ Computes running statistics over events in stream order. Like `eventstats`, NRQL
 ```
 ✅ Confirmed by human
 SPL:  * | streamstats count by host
-NRQL: 
+🔴 SPL command 'streamstats' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'streamstats' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `strcat` — Supported
@@ -1766,23 +1357,17 @@ SPL:  * | strcat host ":" port address
 NRQL: FROM Log WITH concat(host, ':', port) AS address SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | strcat first_name last_name full_name
 NRQL: FROM Log WITH concat(first_name, last_name) AS full_name SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | strcat protocol "://" host ":" port url
 NRQL: FROM Log WITH concat(protocol, '://', host, ':', port) AS url SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1808,15 +1393,11 @@ SPL:  * | timechart count
 NRQL: FROM Log SELECT count(*) TIMESERIES AUTO
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  sourcetype=access_* | timechart span=1h count by status
 NRQL: FROM Log SELECT count(*) WHERE sourcetype LIKE 'access_%' FACET status TIMESERIES 1 hour
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1824,15 +1405,11 @@ SPL:  * | timechart span=5m count BY host
 NRQL: FROM Log SELECT count(*) FACET host TIMESERIES 5 minutes
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | timechart span=1d sum(price) by productName
 NRQL: FROM Log SELECT sum(price) FACET productName TIMESERIES 1 day
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1840,15 +1417,11 @@ SPL:  * | timechart count span=5m
 NRQL: FROM Log SELECT count(*) TIMESERIES 5 minutes
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | timechart count(POS) span=5m as "TPOS"
 NRQL: FROM Log SELECT count(POS) AS 'TPOS' TIMESERIES 5 minutes
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1856,34 +1429,24 @@ SPL:  * | timechart c span=1m
 NRQL: FROM Log SELECT count(*) TIMESERIES 1 minute
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | timechart span=30m count | predict count as predict_count
 NRQL: FROM Log SELECT count(*) TIMESERIES 30 minutes PREDICT
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count | predict count
 NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT
+🟡 PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically
 ```
-
-> [!WARNING]
-> PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | timechart span=1m count | stats count by _time
 NRQL: FROM (FROM Log SELECT count(*)) SELECT count(*) TIMESERIES 1 minute
 ```
-
----
 
 ```
 ❓ Not confirmed
@@ -1900,11 +1463,8 @@ Overlays time series data from different time periods. NRQL has no time-wrapping
 ```
 ✅ Confirmed by human
 SPL:  * | timechart count | timewrap 1d
-NRQL: 
+🔴 SPL command 'timewrap' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'timewrap' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `top` — Supported
@@ -1920,15 +1480,11 @@ SPL:  * | top categoryId
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | top 20 host
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1936,15 +1492,11 @@ SPL:  * | top limit=20 host
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | top limit=0 status
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -1952,26 +1504,18 @@ SPL:  * | top limit=5 countfield=total host
 NRQL: FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | top 10 showperc=false host
 NRQL: FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 10
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | top 5 useother=true status
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5
+🟡 `useother`: NRQL pie chart automatically shows an "Other" category for values outside LIMIT
 ```
-
-> [!WARNING]
-> `useother`: NRQL pie chart automatically shows an "Other" category for values outside LIMIT
-
----
 
 ```
 ✅ Confirmed by human
@@ -1979,15 +1523,11 @@ SPL:  * | top 5 percentfield=pct host
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | top delay limit=10
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2005,10 +1545,8 @@ Top values per group. SPL `top 5 status by host` returns the top 5 statuses **pe
 ✅ Confirmed by human
 SPL:  * | top 5 status by host
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5
+🟡 `top` with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value
 ```
-
-> [!WARNING]
-> `top` with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value
 <!-- /spl-cases -->
 
 #### `transaction` — Not supported
@@ -2052,11 +1590,8 @@ Splunk's `transaction` groups a sequence of events that share a field value (lik
 ```
 ✅ Confirmed by human
 SPL:  * | transaction clientip maxspan=10m
-NRQL: 
+🔴 SPL command 'transaction' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'transaction' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `where` — Supported
@@ -2070,15 +1605,11 @@ SPL:  * | where isint(orderId)
 NRQL: FROM Log SELECT * WHERE numeric(orderId) IS NOT NULL
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | where name like "test%"
 NRQL: FROM Log SELECT * WHERE name LIKE 'test%'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2086,15 +1617,11 @@ SPL:  index=web | stats count BY status | where count > 100
 NRQL: FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET status LIMIT MAX) SELECT * WHERE numeric(count) > 100
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  status=500 | where bytes > 1024
 NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND numeric(bytes) > 1024
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2102,15 +1629,11 @@ SPL:  * | where isnull(status)
 NRQL: FROM Log SELECT * WHERE status IS NULL
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | where isnotnull(status)
 NRQL: FROM Log SELECT * WHERE status IS NOT NULL
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2118,15 +1641,11 @@ SPL:  * | where host = "web01"
 NRQL: FROM Log SELECT * WHERE host = 'web01'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | where count > 100
 NRQL: FROM Log SELECT * WHERE numeric(count) > 100
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2134,15 +1653,11 @@ SPL:  * | where like(host, "web*")
 NRQL: FROM Log SELECT * WHERE host LIKE 'web%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | where name like "%test%"
 NRQL: FROM Log SELECT * WHERE name LIKE '%test%'
 ```
-
----
 
 ```
 ❓ Not confirmed
@@ -2150,15 +1665,11 @@ SPL:  * | where like(message, "%error%")
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```
 
----
-
 ```
 ❓ Not confirmed
 SPL:  * | where NOT like(message, "%debug%")
 NRQL: FROM Log SELECT * WHERE message NOT LIKE '%debug%'
 ```
-
----
 
 ```
 ❓ Not confirmed
@@ -2166,15 +1677,11 @@ SPL:  * | where like(message, "%timeout%") AND status=500
 NRQL: FROM Log SELECT * WHERE message LIKE '%timeout%' AND status = '500' OR numeric(status) = 500
 ```
 
----
-
 ```
 ❓ Not confirmed
 SPL:  * | where NOT like(message, "%debug%") AND status=200
 NRQL: FROM Log SELECT * WHERE message NOT LIKE '%debug%' AND status = '200' OR numeric(status) = 200
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2182,23 +1689,17 @@ SPL:  * | where match(host, "^web[0-9]+$")
 NRQL: FROM Log SELECT * WHERE host RLIKE r'^web[0-9]+$'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | where cidrmatch("10.0.0.0/8", src_ip)
 NRQL: FROM Log SELECT * WHERE cidrAddress(src_ip, 8) = '10.0.0.0/8'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | where status >= 400 AND status < 500
 NRQL: FROM Log SELECT * WHERE numeric(status) >= 400 AND numeric(status) < 500
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2218,15 +1719,11 @@ SPL:  * | stats count by host | where NOT count = 0
 NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE NOT (count = '0' OR numeric(count) = 0)
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count by host | where count > 100 AND count < 1000
 NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeric(count) > 100 AND numeric(count) < 1000
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2243,11 +1740,8 @@ Extracts key-value pairs from XML data. NRQL has no XML parser; consider using `
 ```
 ✅ Confirmed by human
 SPL:  * | xmlkv
-NRQL: 
+🔴 SPL command 'xmlkv' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'xmlkv' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 ### Eval Functions
@@ -2267,15 +1761,11 @@ SPL:  * | eval x = if(status=200, "ok", "err")
 NRQL: FROM Log WITH if(status = '200' OR numeric(status) = 200, 'ok', 'err') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x = if(a>1, "y", "n")
 NRQL: FROM Log WITH if(numeric(a) > 1, 'y', 'n') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2283,15 +1773,11 @@ SPL:  * | eval FLSQuantity=if(channelName=="FLS", availableQuantityInChannel, 0)
 NRQL: FROM Log WITH if(channelName = 'FLS', availableQuantityInChannel, 0) AS FLSQuantity SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=if(a > 0 and b > 0, "both", "nope")
 NRQL: FROM Log WITH if(numeric(a) > 0 AND numeric(b) > 0, 'both', 'nope') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2299,15 +1785,11 @@ SPL:  * | eval level = case(status<300, "ok", status<500, "warn", 1=1, "err")
 NRQL: FROM Log WITH if(numeric(status) < 300, 'ok', if(numeric(status) < 500, 'warn', 'err')) AS level SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=case(a=1, "one", b=2, "two", 1=1, "other")
 NRQL: FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', 'other')) AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2315,15 +1797,11 @@ SPL:  * | eval x=case(a=1, "one", b=2, "two")
 NRQL: FROM Log WITH if(a = '1' OR numeric(a) = 1, 'one', if(b = '2' OR numeric(b) = 2, 'two', NULL)) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=if(a > 0 or b > 0, "yes", "no")
 NRQL: FROM Log WITH if(numeric(a) > 0 OR numeric(b) > 0, 'yes', 'no') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2331,15 +1809,11 @@ SPL:  * | eval x=if((a > 0) or (b > 0), "yes", "no")
 NRQL: FROM Log WITH if(numeric(a) > 0 OR numeric(b) > 0, 'yes', 'no') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=if(count > (a + b), "over", "under")
 NRQL: FROM Log WITH if(numeric(count) > numeric(a) + numeric(b), 'over', 'under') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2347,15 +1821,11 @@ SPL:  * | eval x=if(skuCount > FCQuantity, "yes", "no")
 NRQL: FROM Log WITH if(numeric(skuCount) > numeric(FCQuantity), 'yes', 'no') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=if(isnull(field), "missing", field)
 NRQL: FROM Log WITH if(field IS NULL, 'missing', field) AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2363,15 +1833,11 @@ SPL:  * | eval x=if(isnotnull(field), field, "default")
 NRQL: FROM Log WITH if(field IS NOT NULL, field, 'default') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=if(like(name, "test%"), "match", "no")
 NRQL: FROM Log WITH if(name LIKE 'test%', 'match', 'no') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2379,15 +1845,11 @@ SPL:  * | eval match=if(a==b, "same", "diff")
 NRQL: FROM Log WITH if(a = b, 'same', 'diff') AS match SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=if(a > 0, "yes")
 NRQL: FROM Log WITH if(numeric(a) > 0, 'yes') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2409,15 +1871,11 @@ SPL:  * | eval name = lower(username)
 NRQL: FROM Log WITH lower(username) AS name SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval full = first . " " . last
 NRQL: FROM Log WITH concat(first, ' ', last) AS full SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2425,15 +1883,11 @@ SPL:  * | eval x=upper(name)
 NRQL: FROM Log WITH upper(name) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=substr(name, 1, 3)
 NRQL: FROM Log WITH substring(name, 0, 3) AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2441,15 +1895,11 @@ SPL:  * | eval x=substr(name, -3)
 NRQL: FROM Log WITH substring(name, -3) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=trim(name)
 NRQL: FROM Log WITH capture(name, r'^\s*(?P<x>.*\S)\s*$') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2457,15 +1907,11 @@ SPL:  * | eval x=ltrim(name)
 NRQL: FROM Log WITH capture(name, r'^\s*(?P<x>.*)$') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "a", "b")
 NRQL: FROM Log WITH replace(name, 'a', 'b') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2473,15 +1919,11 @@ SPL:  * | eval x=replace(name, "SKU:", "")
 NRQL: FROM Log WITH replace(name, 'SKU:', '') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "]", "")
 NRQL: FROM Log WITH replace(name, ']', '') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2489,15 +1931,11 @@ SPL:  * | eval x=replace(name, "old.host.com", "new.host.com")
 NRQL: FROM Log WITH replace(name, 'old.host.com', 'new.host.com') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "foo-bar", "baz")
 NRQL: FROM Log WITH replace(name, 'foo-bar', 'baz') AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2505,123 +1943,71 @@ SPL:  * | eval x=replace(uri, "https://old.com/api?key=val", "https://new.com/ap
 NRQL: FROM Log WITH replace(uri, 'https://old.com/api?key=val', 'https://new.com/api') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(uri, "/path/to+file", "/path/to_file")
 NRQL: FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "\\d+", "")
-NRQL: 
+🔴 `replace()` with regex pattern '\d+' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern '\d+' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "[abc]", "")
-NRQL: 
+🔴 `replace()` with regex pattern '[abc]' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern '[abc]' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "test.*end", "")
-NRQL: 
+🔴 `replace()` with regex pattern 'test.*end' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern 'test.*end' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "\d+", "")
-NRQL: 
+🔴 `replace()` with regex pattern 'd+' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern 'd+' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "foo+", "")
-NRQL: 
+🔴 `replace()` with regex pattern 'foo+' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern 'foo+' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "x?y", "")
-NRQL: 
+🔴 `replace()` with regex pattern 'x?y' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern 'x?y' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "foo|bar", "")
-NRQL: 
+🔴 `replace()` with regex pattern 'foo|bar' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern 'foo|bar' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "\s+", " ")
-NRQL: 
+🔴 `replace()` with regex pattern 's+' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern 's+' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(uri, "https://example.com/.*", "")
-NRQL: 
+🔴 `replace()` with regex pattern 'https://example.com/.*' not supported — NRQL replace() is literal-only
 ```
-
-> [!CAUTION]
-> `replace()` with regex pattern 'https://example.com/.*' not supported — NRQL replace() is literal-only
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval json_content=replace(json_content, "'", "\"") | spath input=json_content
-NRQL: 
+🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 ```
-
-> [!CAUTION]
-> `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 <!-- /spl-cases -->
 
 ### Math Functions
@@ -2637,15 +2023,11 @@ SPL:  * | eval x=abs(val)
 NRQL: FROM Log WITH abs(val) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=ceil(val)
 NRQL: FROM Log WITH ceil(val) AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2653,15 +2035,11 @@ SPL:  * | eval x=floor(val)
 NRQL: FROM Log WITH floor(val) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=sqrt(val)
 NRQL: FROM Log WITH sqrt(val) AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2669,23 +2047,17 @@ SPL:  * | eval x=round(val, 2)
 NRQL: FROM Log WITH round(val, 0.01) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=pow(base, exp)
 NRQL: FROM Log WITH pow(base, exp) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=ceiling(val)
 NRQL: FROM Log WITH ceiling(val) AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2707,15 +2079,11 @@ SPL:  * | eval val = coalesce(field1, field2, "default")
 NRQL: FROM Log WITH (field1 OR field2 OR 'default') AS val SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=tonumber(val)
 NRQL: FROM Log WITH numeric(val) AS x SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2723,38 +2091,23 @@ SPL:  * | eval x=tostring(val)
 NRQL: FROM Log WITH string(val) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=typeof(val)
-NRQL: 
+🔴 `eval` function typeof() has no NRQL equivalent
 ```
-
-> [!CAUTION]
-> `eval` function typeof() has no NRQL equivalent
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=isbool(val)
-NRQL: 
+🔴 `eval` function isbool() has no NRQL equivalent
 ```
-
-> [!CAUTION]
-> `eval` function isbool() has no NRQL equivalent
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=isstr(val)
-NRQL: 
+🔴 `eval` function isstr() has no NRQL equivalent
 ```
-
-> [!CAUTION]
-> `eval` function isstr() has no NRQL equivalent
 <!-- /spl-cases -->
 
 ### Multivalue Functions
@@ -2812,29 +2165,19 @@ SPL:  * | eval first = mvindex(values, 0)
 NRQL: FROM Log WITH getField(values, 0) AS first SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval x = mvcount(lines)
 NRQL: FROM Log WITH length(lines) AS x SELECT *
+🟡 `length()` returns string length in NRQL, not multivalue count; results may differ for non-array fields
 ```
-
-> [!WARNING]
-> `length()` returns string length in NRQL, not multivalue count; results may differ for non-array fields
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=mvindex(values)
 NRQL: FROM Log WITH values AS x SELECT *
+🟡 `mvindex()` requires at least 2 arguments (field, index)
 ```
-
-> [!WARNING]
-> `mvindex()` requires at least 2 arguments (field, index)
-
----
 
 ```
 ✅ Confirmed by human
@@ -2842,16 +2185,11 @@ SPL:  * | eval x=mvindex(split(data, ","), 0)
 NRQL: FROM Log WITH getField(split(data, ','), 0) AS x SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | eval joined = mvjoin(tags, ", ")
-NRQL: 
+🔴 `mvjoin()` has no NRQL equivalent — NRQL cannot join array elements into a delimited string
 ```
-
-> [!CAUTION]
-> `mvjoin()` has no NRQL equivalent — NRQL cannot join array elements into a delimited string
 <!-- /spl-cases -->
 
 ### Date/Time Functions — Not supported
@@ -2883,15 +2221,11 @@ SPL:  * | regex message="error\\d+"
 NRQL: FROM Log SELECT * WHERE message RLIKE r'error\\d+'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | regex status!="^2\\d{2}$"
 NRQL: FROM Log SELECT * WHERE status NOT RLIKE r'^2\\d{2}$'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2899,15 +2233,11 @@ SPL:  * | regex "fatal|critical"
 NRQL: FROM Log SELECT * WHERE message RLIKE r'fatal|critical'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  status=500 | regex message="timeout"
 NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'timeout'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2927,15 +2257,11 @@ SPL:  * | sort - count
 NRQL: FROM Log SELECT * ORDER BY count DESC
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | sort + name
 NRQL: FROM Log SELECT * ORDER BY name ASC
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2943,23 +2269,17 @@ SPL:  * | sort name
 NRQL: FROM Log SELECT * ORDER BY name ASC
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | sort 0 host
 NRQL: FROM Log SELECT * ORDER BY host ASC
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | sort count desc
 NRQL: FROM Log SELECT * ORDER BY count DESC
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -2984,11 +2304,8 @@ Computes running totals over events. NRQL has no running/cumulative aggregation.
 ```
 ✅ Confirmed by human
 SPL:  * | accum bytes as running_total
-NRQL: 
+🔴 SPL command 'accum' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'accum' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `addtotals` — Not supported
@@ -3015,11 +2332,8 @@ Highlights search terms in results. This is a Splunk UI display feature with no 
 ```
 ✅ Confirmed by human
 SPL:  * | highlight error warning
-NRQL: 
+🔴 SPL command 'highlight' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'highlight' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `inputlookup` — Supported
@@ -3031,59 +2345,37 @@ Loads events from a lookup table. Translates to NRQL `FROM lookup(tablename)`.
 ✅ Confirmed by human
 SPL:  * | inputlookup geo_ips
 NRQL: FROM lookup(geo_ips) SELECT *
+🟡 Ensure lookup table 'geo_ips' is uploaded via the Lookups UI
 ```
-
-> [!WARNING]
-> Ensure lookup table 'geo_ips' is uploaded via the Lookups UI
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | inputlookup append=true geo_ips
 NRQL: FROM lookup(geo_ips) SELECT *
+🟡 Ensure lookup table 'geo_ips' is uploaded via the Lookups UI
 ```
-
-> [!WARNING]
-> Ensure lookup table 'geo_ips' is uploaded via the Lookups UI
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | inputlookup my_table
 NRQL: FROM lookup(my_table) SELECT *
+🟡 Ensure lookup table 'my_table' is uploaded via the Lookups UI
 ```
-
-> [!WARNING]
-> Ensure lookup table 'my_table' is uploaded via the Lookups UI
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  | inputlookup users.csv where role="admin"
 NRQL: FROM lookup(users.csv) SELECT * WHERE role = 'admin'
+🟡 Ensure lookup table 'users.csv' is uploaded via the Lookups UI
+🟡 `inputlookup` WHERE condition translated as-is; verify field names match the lookup table schema
 ```
-
-> [!WARNING]
-> Ensure lookup table 'users.csv' is uploaded via the Lookups UI
->
-> `inputlookup` WHERE condition translated as-is; verify field names match the lookup table schema
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | join host [inputlookup servers.csv]
-NRQL: 
+🟡 `join` subsearch: Ensure lookup table 'servers.csv' is uploaded via the Lookups UI
+🔴 Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over
 ```
-
-> [!WARNING]
-> `join` subsearch: Ensure lookup table 'servers.csv' is uploaded via the Lookups UI
-
-> [!CAUTION]
-> Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over
 <!-- /spl-cases -->
 
 #### `makemv` — Not supported
@@ -3106,11 +2398,8 @@ Performs statistical queries against the Splunk metrics store. For New Relic met
 ```
 ✅ Confirmed by human
 SPL:  | mstats avg(cpu.percent) by host
-NRQL: 
+🔴 SPL command 'mstats' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'mstats' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `multikv` — Not supported
@@ -3125,11 +2414,8 @@ Converts a multivalue field to a single value. NRQL does not have multivalue fie
 ```
 ✅ Confirmed by human
 SPL:  * | nomv values
-NRQL: 
+🔴 SPL command 'nomv' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'nomv' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `outlier` — Not supported
@@ -3151,15 +2437,11 @@ SPL:  * | rare status
 NRQL: FROM Log SELECT count(*) FACET status ORDER BY count ASC LIMIT 10
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | rare 5 uri_path
 NRQL: FROM Log SELECT count(*) FACET uri_path ORDER BY count ASC LIMIT 5
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -3167,23 +2449,17 @@ SPL:  * | rare status by host
 NRQL: FROM Log SELECT count(*) FACET status, host ORDER BY count ASC LIMIT 10
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  status>=400 | rare 20 uri_path
 NRQL: FROM Log SELECT count(*) WHERE numeric(status) >= 400 FACET uri_path ORDER BY count ASC LIMIT 20
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | rare app limit=20
 NRQL: FROM Log SELECT count(*) FACET app ORDER BY count ASC LIMIT 20
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -3207,24 +2483,18 @@ SPL:  * | reverse
 NRQL: FROM Log SELECT * ORDER BY timestamp ASC
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  error | table message | reverse
 NRQL: FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp ASC
 ```
 
----
-
 ```
 ❓ Not confirmed
 SPL:  * | stats count by host | reverse
 NRQL: FROM Log SELECT count(*) FACET host ORDER BY timestamp ASC
+🟡 `reverse` after aggregation may not produce correct results; NRQL ORDER BY timestamp ASC does not match SPL row-order reversal
 ```
-
-> [!WARNING]
-> `reverse` after aggregation may not produce correct results; NRQL ORDER BY timestamp ASC does not match SPL row-order reversal
 <!-- /spl-cases -->
 
 #### `selfjoin` — Not supported
@@ -3235,11 +2505,8 @@ Joins results with themselves on a shared field. NRQL JOIN requires two differen
 ```
 ✅ Confirmed by human
 SPL:  * | selfjoin host
-NRQL: 
+🔴 SPL command 'selfjoin' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'selfjoin' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `set` — Not supported
@@ -3250,11 +2517,8 @@ Performs set operations (union, diff, intersect) on subsearch results. NRQL has 
 ```
 ✅ Confirmed by human
 SPL:  * | set union
-NRQL: 
+🔴 SPL command 'set' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'set' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `tail` — Not supported
@@ -3265,22 +2529,8 @@ Returns the last N results. NRQL has no reverse-order limit — results are alwa
 ```
 ❓ Not confirmed
 SPL:  * | tail 10
-NRQL: 
+NRQL: FROM Log SELECT * ORDER BY timestamp ASC LIMIT 10
 ```
-
-> [!CAUTION]
-> SPL command 'tail' has no known NRQL equivalent
-
----
-
-```
-❓ Not confirmed
-SPL:  * | tail 20
-NRQL: 
-```
-
-> [!CAUTION]
-> SPL command 'tail' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `transpose` — Not supported
@@ -3291,11 +2541,8 @@ Transposes rows and columns in results. NRQL has no pivot/transpose operation. R
 ```
 ✅ Confirmed by human
 SPL:  * | stats count by host | transpose
-NRQL: 
+🔴 SPL command 'transpose' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'transpose' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `uniq` — Not supported
@@ -3306,11 +2553,8 @@ Removes consecutive duplicate events. Translates similarly to `dedup`.
 ```
 ✅ Confirmed by human
 SPL:  * | sort host | uniq
-NRQL: 
+🔴 `uniq` has no direct NRQL equivalent
 ```
-
-> [!CAUTION]
-> `uniq` has no direct NRQL equivalent
 <!-- /spl-cases -->
 
 #### `xyseries` — Not supported
@@ -3351,22 +2595,14 @@ Identifies anomalous events using statistical analysis. NRQL has no built-in ano
 ```
 ✅ Confirmed by human
 SPL:  * | anomalies field=count
-NRQL: 
+🔴 SPL command 'anomalies' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'anomalies' has no known NRQL equivalent
-
----
 
 ```
 ❓ Not confirmed
 SPL:  * | timechart span=5m avg(duration) | anomalydetection
-NRQL: 
+🔴 SPL command 'anomalydetection' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'anomalydetection' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `anomalydetection` — Not supported
@@ -3401,11 +2637,8 @@ Clusters similar events together based on field values. NRQL has no clustering a
 ```
 ✅ Confirmed by human
 SPL:  * | cluster showcount=true
-NRQL: 
+🔴 SPL command 'cluster' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'cluster' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `cofilter` — Not supported
@@ -3444,11 +2677,8 @@ Simplified access to data model objects. Same Splunk-specific limitation as `dat
 ```
 ✅ Confirmed by human
 SPL:  | datamodel Authentication
-NRQL: 
+🔴 SPL command 'datamodel' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'datamodel' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `dbinspect` — Not supported
@@ -3579,11 +2809,8 @@ Writes results to the Splunk metrics store. No NRQL equivalent.
 ```
 ✅ Confirmed by human
 SPL:  * | mcollect index=metrics_idx
-NRQL: 
+🔴 SPL command 'mcollect' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'mcollect' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `metadata` — Not supported
@@ -3598,11 +2825,8 @@ Searches index metadata rather than events. NRQL queries events directly; index 
 ```
 ✅ Confirmed by human
 SPL:  | metadata type=sources
-NRQL: 
+🔴 SPL command 'metadata' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'metadata' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `mpreview` — Not supported
@@ -3621,11 +2845,8 @@ Writes results to a CSV file on the Splunk server. No NRQL equivalent. Use New R
 ```
 ✅ Confirmed by human
 SPL:  * | outputcsv results.csv
-NRQL: 
+🔴 SPL command 'outputcsv' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'outputcsv' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `outputtext` — Not supported
@@ -3644,11 +2865,8 @@ References a data model dataset and creates a pivot table. Pivot is built on Spl
 ```
 ✅ Confirmed by human
 SPL:  | pivot Web_Traffic count
-NRQL: 
+🔴 SPL command 'pivot' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'pivot' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `predict` — Not supported
@@ -3660,10 +2878,8 @@ Forecasts future values using time series algorithms. NRQL has no built-in forec
 ✅ Confirmed by human
 SPL:  * | predict count
 NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT
+🟡 PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically
 ```
-
-> [!WARNING]
-> PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically
 <!-- /spl-cases -->
 
 #### `rangemap` — Not supported
@@ -3686,11 +2902,8 @@ Accesses Splunk's internal REST API from within a search. NRQL queries run again
 ```
 ✅ Confirmed by human
 SPL:  | rest /services/server/info
-NRQL: 
+🔴 SPL command 'rest' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'rest' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `rtorder` — Not supported
@@ -3721,11 +2934,8 @@ Sends results via email. No NRQL equivalent. Use New Relic alert notifications o
 ```
 ✅ Confirmed by human
 SPL:  * | sendemail to="admin@example.com"
-NRQL: 
+🔴 SPL command 'sendemail' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'sendemail' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `setfields` — Not supported
@@ -3740,11 +2950,8 @@ Summary indexing commands that write precomputed aggregations back to Splunk ind
 ```
 ✅ Confirmed by human
 SPL:  * | sichart count by host
-NRQL: 
+🔴 SPL command 'sichart' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'sichart' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `sirare` — Not supported
@@ -3779,11 +2986,8 @@ Computes moving averages over time series data. NRQL has no moving average funct
 ```
 ✅ Confirmed by human
 SPL:  * | trendline sma5(count) as trend
-NRQL: 
+🔴 SPL command 'trendline' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'trendline' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 #### `tscollect` — Not supported
@@ -3798,11 +3002,8 @@ Performs statistical queries on indexed fields or data model datasets. This is S
 ```
 ✅ Confirmed by human
 SPL:  | tstats count FROM datamodel=Endpoint.Processes
-NRQL: 
+🔴 `tstats` queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.
 ```
-
-> [!CAUTION]
-> `tstats` queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.
 <!-- /spl-cases -->
 
 #### `union` — Not supported
@@ -3931,11 +3132,8 @@ Commands not recognized by the translator produce a generic unsupported message.
 ```
 ✅ Confirmed by human
 SPL:  * | xyzcommand foo bar
-NRQL: 
+🔴 SPL command 'xyzcommand' has no known NRQL equivalent
 ```
-
-> [!CAUTION]
-> SPL command 'xyzcommand' has no known NRQL equivalent
 <!-- /spl-cases -->
 
 ---
@@ -3977,26 +3175,18 @@ SPL:  * | stats dc(clientip), avg(bytes), sum(bytes), median(latency), mean(late
 NRQL: FROM Log SELECT uniqueCount(clientip), average(bytes), sum(bytes), median(latency), average(latency), uniqueCount(user), uniques(status), percentile(latency, 95), percentile(latency, 99), stddev(latency) FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats min(duration), max(duration) by host
 NRQL: FROM Log SELECT min(duration), max(duration) FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats stdevp(latency) by host
 NRQL: FROM Log SELECT stddev(latency) FACET host
+🟡 SPL stdevp() is population stddev; mapped to NRQL stddev() which is sample stddev. Results may differ.
 ```
-
-> [!WARNING]
-> SPL stdevp() is population stddev; mapped to NRQL stddev() which is sample stddev. Results may differ.
-
----
 
 ```
 ✅ Confirmed by human
@@ -4004,15 +3194,11 @@ SPL:  * | stats earliest(timestamp), latest(timestamp) by host
 NRQL: FROM Log SELECT earliest(timestamp), latest(timestamp) FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats first(status) by host
 NRQL: FROM Log SELECT latest(status) FACET host
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4020,37 +3206,25 @@ SPL:  * | stats last(status) by host
 NRQL: FROM Log SELECT earliest(status) FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats rate(bytes) by host
 NRQL: FROM Log SELECT rate(sum(bytes), 1 second) FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats list(user) by host
 NRQL: FROM Log SELECT uniques(user) FACET host
+🟡 SPL list() mapped to NRQL uniques(); duplicates will be removed
 ```
-
-> [!WARNING]
-> SPL list() mapped to NRQL uniques(); duplicates will be removed
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats xyzfunc(field) by host
 NRQL: FROM Log SELECT * FACET host
+🟡 SPL function xyzfunc() has no known NRQL equivalent
 ```
-
-> [!WARNING]
-> SPL function xyzfunc() has no known NRQL equivalent
-
----
 
 ```
 ✅ Confirmed by human
@@ -4058,29 +3232,19 @@ SPL:  * | stats estdc(clientip) as approx_unique by host
 NRQL: FROM Log SELECT uniqueCount(clientip) AS 'approx_unique' FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats exactperc95(latency) as exact_p95 by service
 NRQL: FROM Log SELECT percentile(latency, 95) AS 'exact_p95' FACET service
+🟡 SPL exactperc95() mapped to NRQL percentile(); precision may differ
 ```
-
-> [!WARNING]
-> SPL exactperc95() mapped to NRQL percentile(); precision may differ
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats upperperc99(response_time) by endpoint
 NRQL: FROM Log SELECT percentile(response_time, 99) FACET endpoint
+🟡 SPL upperperc99() mapped to NRQL percentile(); precision may differ
 ```
-
-> [!WARNING]
-> SPL upperperc99() mapped to NRQL percentile(); precision may differ
-
----
 
 ```
 ✅ Confirmed by human
@@ -4088,15 +3252,11 @@ SPL:  * | stats per_second(bytes) as bps by host
 NRQL: FROM Log SELECT rate(sum(bytes), 1 second) AS 'bps' FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats per_minute(requests) as rpm by service
 NRQL: FROM Log SELECT rate(sum(requests), 1 minute) AS 'rpm' FACET service
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4104,15 +3264,11 @@ SPL:  * | stats per_hour(errors) as errors_per_hour by host
 NRQL: FROM Log SELECT rate(sum(errors), 1 hour) AS 'errors_per_hour' FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats per_day(signups) as daily_signups
 NRQL: FROM Log SELECT rate(sum(signups), 1 day) AS 'daily_signups'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4120,15 +3276,11 @@ SPL:  * | stats max(a / 1000) as div, min(b * 8) as mul, sum(c + d) as add, avg(
 NRQL: FROM Log SELECT max(numeric(a) / 1000) AS 'div', min(numeric(b) * 8) AS 'mul', sum(numeric(c) + numeric(d)) AS 'add', average(numeric(e) - numeric(f)) AS 'sub', count(mod(numeric(g), 3)) AS 'mod', max((numeric(h) + numeric(i)) * numeric(j)) AS 'parens', average(numeric(`response.time`) / 1000) AS 'dotfield', sum(numeric(a) + numeric(b) + numeric(c)) AS 'chained' FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | timechart span=1h avg(bytes * 8 / 1024)
 NRQL: FROM Log SELECT average(numeric(bytes) * 8 / 1024) TIMESERIES 1 hour
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4152,32 +3304,22 @@ NRQL: FROM Log SELECT percentile(numeric(duration) / 1000, 95) AS 'p95_sec'
 ✅ Confirmed by human
 SPL:  * | stats mode(status) by host
 NRQL: FROM Log SELECT * FACET host
+🟡 SPL mode() has no direct NRQL equivalent; consider FACET field LIMIT 1 to find most common value
 ```
-
-> [!WARNING]
-> SPL mode() has no direct NRQL equivalent; consider FACET field LIMIT 1 to find most common value
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats earliest_time(message) as first_seen by host
 NRQL: FROM Log SELECT * FACET host
+🟡 SPL earliest_time() has no NRQL equivalent; earliest() returns the value, not the timestamp
 ```
-
-> [!WARNING]
-> SPL earliest_time() has no NRQL equivalent; earliest() returns the value, not the timestamp
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | stats rate_avg(cpu) by host
 NRQL: FROM Log SELECT * FACET host
+🟡 SPL rate_avg() is Splunk metrics-specific; no NRQL equivalent
 ```
-
-> [!WARNING]
-> SPL rate_avg() is Splunk metrics-specific; no NRQL equivalent
 <!-- /spl-cases -->
 
 ---
@@ -4195,18 +3337,12 @@ SPL:  earliest=-24h
 NRQL: FROM Log SELECT * SINCE 24 hours ago
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  latest=-1h
 NRQL: FROM Log SELECT * SINCE 24 hours ago UNTIL 1 hour ago
+🟡 SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match
 ```
-
-> [!WARNING]
-> SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match
-
----
 
 ```
 ✅ Confirmed by human
@@ -4214,15 +3350,11 @@ SPL:  latest=now
 NRQL: FROM Log SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  earliest=@d
 NRQL: FROM Log SELECT * SINCE today
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4230,34 +3362,24 @@ SPL:  error earliest=-24h latest=now
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%' SINCE 24 hours ago
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  earliest=-2h latest=-1h status=200
 NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 SINCE 2 hours ago UNTIL 1 hour ago
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  earliest=-24h@h latest=now
 NRQL: FROM Log SELECT * SINCE 24 hours ago
+🟡 SPL snap-to time '@h' ignored; NRQL SINCE/UNTIL does not support rounding to unit boundaries. Use 'today', 'this week', etc. for snap-only expressions.
 ```
-
-> [!WARNING]
-> SPL snap-to time '@h' ignored; NRQL SINCE/UNTIL does not support rounding to unit boundaries. Use 'today', 'this week', etc. for snap-only expressions.
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  status=500 earliest=-24h host=web
 NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND host = 'web' SINCE 24 hours ago
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4275,54 +3397,36 @@ SPL time macros and shorthand.
 ✅ Confirmed by human
 SPL:  `sysmon` EventCode=10
 NRQL: FROM Log SELECT * WHERE $sysmon AND EventCode = '10' OR numeric(EventCode) = 10
+🟡 SPL macro `sysmon` translated to NRQL macro $sysmon; ensure a matching NRQL macro exists
 ```
-
-> [!WARNING]
-> SPL macro `sysmon` translated to NRQL macro $sysmon; ensure a matching NRQL macro exists
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  `my_macro(arg1, arg2)` status=200
 NRQL: FROM Log SELECT * WHERE $my_macro(arg1, arg2) AND status = '200' OR numeric(status) = 200
+🟡 SPL macro `my_macro` translated to NRQL macro $my_macro(arg1, arg2); ensure a matching NRQL macro exists
 ```
-
-> [!WARNING]
-> SPL macro `my_macro` translated to NRQL macro $my_macro(arg1, arg2); ensure a matching NRQL macro exists
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | `my_macro`
 NRQL: FROM Log SELECT * WHERE $my_macro
+🟡 SPL macro `my_macro` translated to NRQL macro $my_macro; ensure a matching NRQL macro exists
 ```
-
-> [!WARNING]
-> SPL macro `my_macro` translated to NRQL macro $my_macro; ensure a matching NRQL macro exists
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  * | `my_macro(field1, field2)`
 NRQL: FROM Log SELECT * WHERE $my_macro(field1, field2)
+🟡 SPL macro `my_macro` translated to NRQL macro $my_macro(field1, field2); ensure a matching NRQL macro exists
 ```
-
-> [!WARNING]
-> SPL macro `my_macro` translated to NRQL macro $my_macro(field1, field2); ensure a matching NRQL macro exists
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  `my_base_macro` | stats count
 NRQL: FROM Log SELECT count(*) WHERE $my_base_macro
+🟡 SPL macro `my_base_macro` translated to NRQL macro $my_base_macro; ensure a matching NRQL macro exists
 ```
-
-> [!WARNING]
-> SPL macro `my_base_macro` translated to NRQL macro $my_base_macro; ensure a matching NRQL macro exists
 <!-- /spl-cases -->
 
 ---
@@ -4340,15 +3444,11 @@ SPL:  status>=400 status!=500 action=purchase
 NRQL: FROM Log SELECT * WHERE numeric(status) >= 400 AND status != '500' AND numeric(status) != 500 AND action = 'purchase'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  status=200 offset=-10 score=3.14
 NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND `offset` = '-10' OR numeric(`offset`) = -10 AND score = '3.14' OR numeric(score) = 3.14
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4356,18 +3456,12 @@ SPL:  status=OK code=4xx zip=00123
 NRQL: FROM Log SELECT * WHERE status = 'OK' AND code = '4xx' AND zip = '00123'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  _raw=*error*
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
+🟡 `_raw` is not a valid NRQL field; mapped to message
 ```
-
-> [!WARNING]
-> `_raw` is not a valid NRQL field; mapped to message
-
----
 
 ```
 ✅ Confirmed by human
@@ -4375,15 +3469,11 @@ SPL:  action=OR action=AND action=NOT action=by action=search action=stats group
 NRQL: FROM Log SELECT * WHERE action = 'OR' AND action = 'AND' AND action = 'NOT' AND action = 'by' AND action = 'search' AND action = 'stats' AND group = 'by'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  "log.annotations.node"=NOSTORE
 NRQL: FROM Log SELECT * WHERE `log.annotations.node` = 'NOSTORE'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4391,15 +3481,11 @@ SPL:  "details.error"="*"
 NRQL: FROM Log SELECT * WHERE `details.error` LIKE '%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  status = 500
 NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4419,15 +3505,11 @@ SPL:  lineItemList{}.status=active
 NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'lineItemList[*].status'), 'active')
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  items{}.status != pending
 NRQL: FROM Log SELECT * WHERE NOT contains(jparse(message, 'items[*].status'), 'pending')
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4435,23 +3517,17 @@ SPL:  orders{}.shipping.carrier=fedex
 NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'orders[*].shipping.carrier'), 'fedex')
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  containers{}.image=nginx*
 NRQL: FROM Log SELECT * WHERE jparse(message, 'containers[*].image') LIKE 'nginx%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  items{}.category IN (electronics, clothing)
 NRQL: FROM Log SELECT * WHERE contains(jparse(message, 'items[*].category'), 'electronics') OR contains(jparse(message, 'items[*].category'), 'clothing')
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4471,15 +3547,11 @@ SPL:  EventCode=4720 OR EventCode=4732
 NRQL: FROM Log SELECT * WHERE EventCode = '4720' OR numeric(EventCode) = 4720 OR EventCode = '4732' OR numeric(EventCode) = 4732
 ```
 
----
-
 ```
 ❓ Not confirmed
 SPL:  NOT debug
 NRQL: FROM Log SELECT * WHERE message NOT LIKE '%debug%'
 ```
-
----
 
 ```
 ❓ Not confirmed
@@ -4487,31 +3559,20 @@ SPL:  (error OR warning) NOT debug
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND message NOT LIKE '%debug%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  `macro_a` AND `macro_b`
 NRQL: FROM Log SELECT * WHERE $macro_a AND $macro_b
+🟡 SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists
+🟡 SPL macro `macro_b` translated to NRQL macro $macro_b; ensure a matching NRQL macro exists
 ```
-
-> [!WARNING]
-> SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists
->
-> SPL macro `macro_b` translated to NRQL macro $macro_b; ensure a matching NRQL macro exists
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  `macro_a` AND status=200
 NRQL: FROM Log SELECT * WHERE $macro_a AND status = '200' OR numeric(status) = 200
+🟡 SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists
 ```
-
-> [!WARNING]
-> SPL macro `macro_a` translated to NRQL macro $macro_a; ensure a matching NRQL macro exists
-
----
 
 ```
 ✅ Confirmed by human
@@ -4519,15 +3580,11 @@ SPL:  a=1 OR b=2 c=3
 NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3)
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  (a=1 OR b=2) AND c=3
 NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4535,15 +3592,11 @@ SPL:  a=1 b=2 OR c=3 d=4
 NRQL: FROM Log SELECT * WHERE (a = '1' OR numeric(a) = 1 AND b = '2' OR numeric(b) = 2) OR (c = '3' OR numeric(c) = 3 AND d = '4' OR numeric(d) = 4)
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  NOT status=500 host=web
 NRQL: FROM Log SELECT * WHERE NOT (status = '500' OR numeric(status) = 500) AND host = 'web'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4551,15 +3604,11 @@ SPL:  NOT (status=500 host=web)
 NRQL: FROM Log SELECT * WHERE NOT (status = '500' OR numeric(status) = 500 AND host = 'web')
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  error NOT(level=debug OR level=trace)
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%' AND NOT (level = 'debug' OR level = 'trace')
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4579,26 +3628,18 @@ SPL:  code IN (200, error, 404)
 NRQL: FROM Log SELECT * WHERE code IN (200, 'error', 404)
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  ScriptBlockText IN (*mimikatz*, *dumpcr*)
 NRQL: FROM Log SELECT * WHERE ScriptBlockText LIKE '%mimikatz%' OR ScriptBlockText LIKE '%dumpcr%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * NOT [|inputlookup exclude.csv] | stats count
 NRQL: FROM Log SELECT count(*) WHERE {{column}} NOT IN (FROM lookup(exclude) SELECT {{column}} LIMIT MAX)
+🟡 NOT [|inputlookup exclude.csv] translated to NOT IN lookup subquery. Replace {{column}} with the exclusion field name from exclude.csv. Upload the CSV to New Relic Lookup tables as 'exclude'.
 ```
-
-> [!WARNING]
-> NOT [|inputlookup exclude.csv] translated to NOT IN lookup subquery. Replace {{column}} with the exclusion field name from exclude.csv. Upload the CSV to New Relic Lookup tables as 'exclude'.
-
----
 
 ```
 ✅ Confirmed by human
@@ -4618,15 +3659,11 @@ SPL:  host=*server host=web* message=*error* path=/api/*/users
 NRQL: FROM Log SELECT * WHERE host LIKE '%server' AND host LIKE 'web%' AND message LIKE '%error%' AND path LIKE '/api/%/users'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  host=*
 NRQL: FROM Log SELECT * WHERE host LIKE '%'
 ```
-
----
 
 ```
 ❓ Not confirmed
@@ -4646,15 +3683,11 @@ SPL:  message="it's"
 NRQL: FROM Log SELECT * WHERE message = 'it\'s'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  path="C:\\Windows\\System32"
 NRQL: FROM Log SELECT * WHERE path = 'C:\\Windows\\System32'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4662,23 +3695,17 @@ SPL:  msg="line1\nline2"
 NRQL: FROM Log SELECT * WHERE msg = 'line1\nline2'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  a="error in module" b="error | fatal" c="key=value" d="" e="日本語エラー" f="error, fatal"
 NRQL: FROM Log SELECT * WHERE a = 'error in module' AND b = 'error | fatal' AND c = 'key=value' AND d = '' AND e = '日本語エラー' AND f = 'error, fatal'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  message="error in module"
 NRQL: FROM Log SELECT * WHERE message = 'error in module'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4698,15 +3725,11 @@ SPL:  my-field=value
 NRQL: FROM Log SELECT * WHERE `my-field` = 'value'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  app:version=1.2.3
 NRQL: FROM Log SELECT * WHERE `app:version` = '1.2.3'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4714,15 +3737,11 @@ SPL:  kubernetes.labels.app:name=myapp
 NRQL: FROM Log SELECT * WHERE `kubernetes.labels.app:name` = 'myapp'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count by container-name
 NRQL: FROM Log SELECT count(*) FACET `container-name`
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4730,15 +3749,11 @@ SPL:  * | stats values(user.groups{}) as user_groups by host
 NRQL: FROM Log SELECT uniques(jparse(message, 'user.groups[*]')) AS 'user_groups' FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | table k8s:namespace, k8s:pod
 NRQL: FROM Log SELECT `k8s:namespace`, `k8s:pod`
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4746,15 +3761,11 @@ SPL:  log-level IN (error, warn, info)
 NRQL: FROM Log SELECT * WHERE `log-level` IN ('error', 'warn', 'info')
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  x-forwarded-for=10.0.0.1
 NRQL: FROM Log SELECT * WHERE `x-forwarded-for` = '10.0.0.1'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4762,15 +3773,11 @@ SPL:  SELECT=200
 NRQL: FROM Log SELECT * WHERE `SELECT` = '200' OR numeric(`SELECT`) = 200
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  search_term=hello NOT_FOUND=true top_secret=classified earliest_time=noon where=production table=users stats=enabled
 NRQL: FROM Log SELECT * WHERE search_term = 'hello' AND NOT_FOUND = 'true' AND top_secret = 'classified' AND earliest_time = 'noon' AND `where` = 'production' AND table = 'users' AND stats = 'enabled'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4789,8 +3796,6 @@ SPL metadata fields that have no direct NRQL equivalent are translated as attrib
 SPL:  index=web
 NRQL: FROM Log SELECT * WHERE index = 'web'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4814,15 +3819,11 @@ SPL:  (empty)
 NRQL: FROM Log SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  (empty)
 NRQL: FROM Log SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4830,15 +3831,10 @@ SPL:  |||
 NRQL: FROM Log SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  back`tick=value
-NRQL: 
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4846,44 +3842,29 @@ SPL:
 NRQL: FROM Log SELECT *
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  message=
-NRQL: 
 ```
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  message=fn(x)
-NRQL: 
 ```
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  status IN ()
-NRQL: 
 ```
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  https://example.com/path?q=1
-NRQL: 
 ```
-
----
 
 ```
 ✅ Confirmed by human
 SPL:  `mymacro`status=200
-NRQL: 
 ```
 <!-- /spl-cases -->
 
@@ -4898,15 +3879,11 @@ SPL:  error
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  "connection timeout"
 NRQL: FROM Log SELECT * WHERE message LIKE '%connection timeout%'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4914,15 +3891,11 @@ SPL:  error warning
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%' AND message LIKE '%warning%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  *
 NRQL: FROM Log SELECT *
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4930,15 +3903,11 @@ SPL:  100%cpu
 NRQL: FROM Log SELECT * WHERE message LIKE '%100\%cpu%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * Operation=\"Add member\"
 NRQL: FROM Log SELECT * WHERE Operation = 'Add member'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4946,15 +3915,11 @@ SPL:  * $global_time.earliest$ $global_time.latest$
 NRQL: FROM Log SELECT * SINCE {{global_time.earliest}} UNTIL {{global_time.latest}}
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  TERM("control-connection-state-change") | stats count
 NRQL: FROM Log SELECT count(*) WHERE message LIKE '%control-connection-state-change%'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4978,15 +3943,11 @@ SPL:  * || stats count
 NRQL: FROM Log SELECT count(*)
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count |
 NRQL: FROM Log SELECT count(*)
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -4994,15 +3955,11 @@ SPL:  [search index=web | fields host]
 NRQL: FROM Log SELECT * WHERE index = 'web'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  search error
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5010,15 +3967,11 @@ SPL:  | stats count
 NRQL: FROM Log SELECT count(*)
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count by host | sort - count | head 5
 NRQL: FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5026,15 +3979,11 @@ SPL:  OR status=200
 NRQL: FROM Log SELECT * WHERE message LIKE '%OR%' AND status = '200' OR numeric(status) = 200
 ```
 
----
-
 ```
 ❓ Not confirmed
 SPL:  NOT NOT error
-NRQL: FROM Log SELECT * WHERE message NOT LIKE '%NOT%' AND message LIKE '%error%'
+NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5042,15 +3991,11 @@ SPL:  -500
 NRQL: FROM Log SELECT * WHERE message LIKE '%-500%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  cpu_usage=95%
 NRQL: FROM Log SELECT * WHERE cpu_usage = '95%'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5058,15 +4003,11 @@ SPL:  host=web,01
 NRQL: FROM Log SELECT * WHERE host = 'web,01'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  path=C:\
 NRQL: FROM Log SELECT * WHERE path = 'C:\\'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5074,15 +4015,11 @@ SPL:  field=***
 NRQL: FROM Log SELECT * WHERE field LIKE '%%%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  host=*web*server*prod*
 NRQL: FROM Log SELECT * WHERE host LIKE '%web%server%prod%'
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5090,15 +4027,11 @@ SPL:  error|stats count
 NRQL: FROM Log SELECT count(*) WHERE message LIKE '%error%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  status=200	status=300
 NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND status = '300' OR numeric(status) = 300
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5107,15 +4040,11 @@ SPL:  index=web
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  (a=1 OR (b=2 AND (c=3 OR d=4)))
 NRQL: FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3 OR d = '4' OR numeric(d) = 4)
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5123,15 +4052,11 @@ SPL:  status IN (200)
 NRQL: FROM Log SELECT * WHERE status IN (200)
 ```
 
----
-
 ```
 ❓ Not confirmed
 SPL:  * | head 0
 NRQL: FROM Log SELECT * LIMIT 0
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5139,15 +4064,11 @@ SPL:  * error
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | where a>1 | where b<2
 NRQL: FROM Log SELECT * WHERE numeric(a) > 1 AND numeric(b) < 2
 ```
-
----
 
 ```
 ✅ Confirmed by human
@@ -5155,18 +4076,12 @@ SPL:  * | where (status >= 400 AND status < 500)
 NRQL: FROM Log SELECT * WHERE numeric(status) >= 400 AND numeric(status) < 500
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | sort -count, +name, host
 NRQL: FROM Log SELECT * ORDER BY count DESC
+🟡 NRQL ORDER BY supports only one field; additional sort fields ignored
 ```
-
-> [!WARNING]
-> NRQL ORDER BY supports only one field; additional sort fields ignored
-
----
 
 ```
 ✅ Confirmed by human
@@ -5174,23 +4089,17 @@ SPL:  * | STATS COUNT BY host
 NRQL: FROM Log SELECT count(*) FACET host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | Stats Count By Host
 NRQL: FROM Log SELECT count(*) FACET Host
 ```
 
----
-
 ```
 ✅ Confirmed by human
 SPL:  * | stats count() by host
 NRQL: FROM Log SELECT count(*) FACET host
 ```
-
----
 
 ```
 ✅ Confirmed by human

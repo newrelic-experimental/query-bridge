@@ -55,6 +55,7 @@ command
   / fields_command
   / sort_command
   / head_command
+  / tail_command
   / top_command
   / rename_command
   / dedup_command
@@ -369,6 +370,18 @@ head_command
     {
       return {
         type: 'HeadCommand',
+        count: count !== null ? count : 10
+      };
+    }
+
+/* ============================================================
+   Tail command: | tail [N]
+   ============================================================ */
+tail_command
+  = 'tail'i count:(_+ n:[0-9]+ { return parseInt(n.join(''), 10); })?
+    {
+      return {
+        type: 'TailCommand',
         count: count !== null ? count : 10
       };
     }
@@ -1103,7 +1116,7 @@ not_expr
   = 'NOT'i _* '(' _* ')' { return null; }
   / 'NOT'i _* '(' _* expr:or_expr _* ')' { return { type: 'Not', operand: expr }; }
   / 'NOT'i _+ '[' _* subsearch:[^\]]+ ']' { return { type: 'NotSubsearch', rawText: subsearch.join('') }; }
-  / 'NOT'i _+ expr:primary_expr { return { type: 'Not', operand: expr }; }
+  / 'NOT'i _+ expr:not_expr { return { type: 'Not', operand: expr }; }
   / primary_expr
 
 primary_expr

@@ -30,6 +30,7 @@ import {
   handleFields,
   handleSort,
   handleHead,
+  handleTail,
   handleRename,
   handleDedup,
   handleBin,
@@ -358,10 +359,7 @@ const handlers = {
   FieldsCommand: handleFields,
   SortCommand: handleSort,
   HeadCommand: handleHead,
-  // TODO: add TailCommand handler — grammar doesn't parse `tail` yet either.
-  //   Would need: grammar rule, handler (ORDER BY timestamp ASC + LIMIT?).
-  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
-  //   Feasibility unclear — NRQL has no native "last N rows" without ORDER BY flip.
+  TailCommand: handleTail,
   RenameCommand: handleRename,
   DedupCommand: handleDedup,
   BinCommand: handleBin,
