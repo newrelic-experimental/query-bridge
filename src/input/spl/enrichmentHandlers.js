@@ -121,7 +121,7 @@ export function handleAppendpipe(cmd, ir) {
 
   if (isEmptyGuard) {
     ir.warnings.push(
-      'appendpipe empty-result guard ignored; NRQL handles empty results natively',
+      'appendpipe empty-result guard removed; NRQL returns empty results natively',
     );
     return;
   }
@@ -163,8 +163,10 @@ export function handleAppend(cmd, ir, label) {
   const subFacetStr = subIR.facet.map((f) => f.name || '').join(',');
 
   if (mainFacetStr !== subFacetStr) {
+    const mainDesc = mainFacetStr || '(none)';
+    const subDesc = subFacetStr || '(none)';
     ir.unsupported.push(
-      `${label} with subsearch cannot be automatically translated; the main query and subsearch group by different fields`,
+      `${label} with subsearch has mismatched FACET: main groups by ${mainDesc}, subsearch groups by ${subDesc}`,
     );
     return;
   }
