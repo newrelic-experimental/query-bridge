@@ -20,9 +20,11 @@ import path from 'path';
 
 import { translateSplToNrql } from '../../src/translate.js';
 import { parseSplTime } from '../../src/input/spl/splTime.js';
+import { messages } from '../../src/messages.js';
 
-// AI-DEV: To add test cases, append to the `cases` array. Do NOT modify the test runner.
-
+// AI-DEV: To add test cases, append to the `cases` array.
+// Use `warningFunc`/`unsupportedFunc` (message key from messages.js) for new tests.
+// Legacy `warningIncludes`/`unsupportedIncludes` (substring match) still work but are being migrated.
 const cases = [
   //
   // ── Empty / invalid input ───────────────────────────────────────
@@ -2908,30 +2910,34 @@ const cases = [
   // Gap #2 — dedup + stats: warn about 5K LIMIT MAX sampling
   {
     spl: '* | dedup userId | stats count by routeName',
+    nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) FACET routeName LIMIT MAX',
     warningIncludes: '5,000 facets',
     doc: 'dedup',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
   {
     spl: '* | dedup userId | timechart count span=1m',
+    nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) LIMIT MAX TIMESERIES 1 minute',
     warningIncludes: 'first time bucket',
     doc: 'timechart',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #7 — >5 rex commands: warn about capture() limit
   {
     spl: '* | rex field=f1 "(?<a>\\w+)" | rex field=f2 "(?<b>\\w+)" | rex field=f3 "(?<c>\\w+)" | rex field=f4 "(?<d>\\w+)" | rex field=f5 "(?<e>\\w+)" | rex field=f6 "(?<f>\\w+)"',
+    nrql: "FROM Log WITH capture(f1, r'.*(?P<a>\\w+).*') AS (a), capture(f2, r'.*(?P<b>\\w+).*') AS (b), capture(f3, r'.*(?P<c>\\w+).*') AS (c), capture(f4, r'.*(?P<d>\\w+).*') AS (d), capture(f5, r'.*(?P<e>\\w+).*') AS (e), capture(f6, r'.*(?P<f>\\w+).*') AS (f) SELECT *",
     warningIncludes: 'capture() is limited to 5',
     doc: 'rex',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #13 — split() multi-char delimiter
   {
     spl: '* | eval parts = split(field, "},{")',
+    nrql: "FROM Log WITH split(field, '},{') AS parts SELECT *",
     warningIncludes: 'multi-character delimiter',
     doc: 'eval',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #3 — cascading mvexpand
   {
@@ -2964,9 +2970,10 @@ const cases = [
   // Gap #15 — list() order not preserved
   {
     spl: '* | stats list(eventType) by orderId',
+    nrql: 'FROM Log SELECT uniques(eventType) FACET orderId',
     warningIncludes: 'insertion order is not preserved',
     doc: 'stats',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #4 — cross-expand field matching (two mvexpands on different fields)
   {
@@ -2978,9 +2985,10 @@ const cases = [
   // Gap #12 — FACET default 10 warning
   {
     spl: '* | stats count by host',
+    nrql: 'FROM Log SELECT count(*) FACET host',
     warningIncludes: 'FACET defaults to 10 groups',
     doc: 'stats',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #16 — append workaround hint
   {
@@ -2999,9 +3007,10 @@ const cases = [
   // Gap #18 — multi-column ORDER BY (already covered by sort_single_field)
   {
     spl: '* | sort host, -duration',
+    nrql: 'FROM Log SELECT * ORDER BY host ASC',
     warningIncludes: 'ORDER BY supports only one field',
     doc: 'sort',
-    verified: 'llm',
+    verified: false,
   },
 
   //
@@ -3079,6 +3088,18 @@ const cases = [
 ];
 
 describe('translateSplToNrql', () => {
+  const spies = {};
+
+  beforeEach(() => {
+    for (const key of Object.keys(messages)) {
+      spies[key] = vi.spyOn(messages, key);
+    }
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   cases.forEach((c, i) => {
     const label = c.spl === null ? 'null' : c.spl || '(empty)';
     const testFn = c.skip ? it.skip : it;
@@ -3089,6 +3110,12 @@ describe('translateSplToNrql', () => {
       if ('errorIncludes' in c) {
         const joined = r.errors.join(' ');
         expect(joined).toContain(c.errorIncludes);
+      }
+      if ('warningFunc' in c) {
+        expect(spies[c.warningFunc]).toHaveBeenCalled();
+      }
+      if ('unsupportedFunc' in c) {
+        expect(spies[c.unsupportedFunc]).toHaveBeenCalled();
       }
       if ('warningIncludes' in c) {
         const joined = r.warnings.join(' ');
