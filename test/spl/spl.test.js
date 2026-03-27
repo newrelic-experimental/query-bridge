@@ -2911,7 +2911,7 @@ const cases = [
   {
     spl: '* | dedup userId | stats count by routeName',
     nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) FACET routeName LIMIT MAX',
-    warningIncludes: '5,000 facets',
+    warningFunc: 'dedup_limit_max_cap',
     doc: 'dedup',
     verified: false,
   },
@@ -2919,7 +2919,7 @@ const cases = [
   {
     spl: '* | dedup userId | timechart count span=1m',
     nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) LIMIT MAX TIMESERIES 1 minute',
-    warningIncludes: 'first time bucket',
+    warningFunc: 'dedup_timeseries_warning',
     doc: 'timechart',
     verified: false,
   },
@@ -2927,7 +2927,7 @@ const cases = [
   {
     spl: '* | rex field=f1 "(?<a>\\w+)" | rex field=f2 "(?<b>\\w+)" | rex field=f3 "(?<c>\\w+)" | rex field=f4 "(?<d>\\w+)" | rex field=f5 "(?<e>\\w+)" | rex field=f6 "(?<f>\\w+)"',
     nrql: "FROM Log WITH capture(f1, r'.*(?P<a>\\w+).*') AS (a), capture(f2, r'.*(?P<b>\\w+).*') AS (b), capture(f3, r'.*(?P<c>\\w+).*') AS (c), capture(f4, r'.*(?P<d>\\w+).*') AS (d), capture(f5, r'.*(?P<e>\\w+).*') AS (e), capture(f6, r'.*(?P<f>\\w+).*') AS (f) SELECT *",
-    warningIncludes: 'capture() is limited to 5',
+    warningFunc: 'rex_capture_limit',
     doc: 'rex',
     verified: false,
   },
@@ -2935,80 +2935,80 @@ const cases = [
   {
     spl: '* | eval parts = split(field, "},{")',
     nrql: "FROM Log WITH split(field, '},{') AS parts SELECT *",
-    warningIncludes: 'multi-character delimiter',
+    warningFunc: 'split_multi_char_delimiter',
     doc: 'eval',
     verified: false,
   },
   // Gap #3 — cascading mvexpand
   {
     spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels',
-    unsupportedIncludes: 'cascading mvexpand',
+    unsupportedFunc: 'mvexpand_cascading',
     doc: 'mvexpand',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #5 — mvzip unsupported
   {
     spl: '* | eval paired = mvzip(nodes, skus)',
-    unsupportedIncludes: 'zip two arrays element-wise',
+    unsupportedFunc: 'mvzip_unsupported',
     doc: 'eval',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #22 — streamstats
   {
     spl: '* | streamstats count as row_num',
-    unsupportedIncludes: 'streamstats has no NRQL equivalent',
+    unsupportedFunc: 'streamstats_unsupported',
     doc: 'streamstats',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #10 — kvparse / extract
   {
     spl: '* | extract',
-    unsupportedIncludes: 'key=value extraction',
+    unsupportedFunc: 'kvparse_unsupported',
     doc: 'extract',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #15 — list() order not preserved
   {
     spl: '* | stats list(eventType) by orderId',
     nrql: 'FROM Log SELECT uniques(eventType) FACET orderId',
-    warningIncludes: 'insertion order is not preserved',
+    warningFunc: 'list_order_warning',
     doc: 'stats',
     verified: false,
   },
   // Gap #4 — cross-expand field matching (two mvexpands on different fields)
   {
     spl: '* | spath input=_raw output=validation path=validations{} | mvexpand validation | spath input=_raw output=sku_data path=items{} | mvexpand sku_data',
-    unsupportedIncludes: 'cascading mvexpand',
+    unsupportedFunc: 'mvexpand_cascading',
     doc: 'mvexpand',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #12 — FACET default 10 warning
   {
     spl: '* | stats count by host',
     nrql: 'FROM Log SELECT count(*) FACET host',
-    warningIncludes: 'FACET defaults to 10 groups',
+    warningFunc: 'facet_default_limit',
     doc: 'stats',
     verified: false,
   },
   // Gap #16 — append workaround hint
   {
     spl: '* | append [search * | table host]',
-    unsupportedIncludes: 'consider using filter()',
+    unsupportedFunc: 'append_no_agg',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #17 — coalesce translates to OR chain (already implemented)
   {
     spl: '* | eval combined = coalesce(msg, message)',
     nrql: 'FROM Log WITH (msg OR message) AS combined SELECT *',
     doc: 'eval',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #18 — multi-column ORDER BY (already covered by sort_single_field)
   {
     spl: '* | sort host, -duration',
     nrql: 'FROM Log SELECT * ORDER BY host ASC',
-    warningIncludes: 'ORDER BY supports only one field',
+    warningFunc: 'sort_single_field',
     doc: 'sort',
     verified: false,
   },

@@ -71,7 +71,9 @@ const SPL_TO_NRQL_FUNCS = {
   values: { nrql: 'uniques' },
   list: {
     nrql: 'uniques',
-    warning: messages.list_order_warning(),
+    get warning() {
+      return messages.list_order_warning();
+    },
   },
   earliest: { nrql: 'earliest' },
   latest: { nrql: 'latest' },
