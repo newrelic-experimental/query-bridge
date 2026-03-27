@@ -60,6 +60,8 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 - **Smart backticking**: Only backtick identifiers with dots/dashes/spaces/colons/curlies. Simple names bare. Macros (`$name`) pass through.
 - **DualCheck IR node**: `SPL: status=500` → `DualCheck` node → expanded by optimizer to `status = '500' OR numeric(status) = 500`. Consolidates dual-check logic from 2 call sites into 1 expansion pass.
 - **Subquery wrapping**: Stats-after-stats wraps as `SubquerySource`, not string hack.
+- **WHERE as condition list**: `ir.where` is `IRNode[]`, not a single tree. Handlers `push()` conditions; emitter joins with AND. No null checks needed.
+- **Message catalog**: All user-facing messages in `src/messages.js`. Handlers call `messages.key()` — no inline template literals.
 
 ## Important Paths
 
@@ -70,6 +72,7 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 - `src/input/spl/*Handlers.js` — Command handlers split by theme: aggregation, enrichment, extraction, eval, row
 - `src/input/spl/splExprUtils.js` — Shared utilities: field/function mapping, comparison builders, arithmetic parsing
 - `src/output/nrql/` — IR→NRQL emitter and encoding utilities
+- `src/messages.js` — Centralized catalog of all user-facing warning/unsupported/error messages
 
 ### Tests
 - `test/spl/spl.test.js` — Unit tests + real-world regression suite
@@ -94,7 +97,7 @@ ESLint (flat config), Prettier, TypeScript checkJs. Husky pre-commit runs lint-s
 - `errorIncludes` — substring expected in errors
 - `warningIncludes` — substring expected in warnings
 - `unsupportedIncludes` — substring expected in unsupported messages
-- `doc` — tag linking to SPL_TO_NRQL.md section (required)
+- `doc` — tag linking to SPL_TO_NRQL.md sentinel section (optional for table-ified commands)
 - `verified` — verification level (see below)
 - `skip` — skip this test case
 
