@@ -17,6 +17,7 @@ import {
 } from '../../ir/nodes.js';
 import { mapFunction, formatSpan, wrapAsSubquery } from './splExprUtils.js';
 import { walkEvalExpr } from './evalHandlers.js';
+import { messages } from '../../messages.js';
 
 export function handleStats(cmd, ir) {
   // If already aggregated, wrap current IR as a subquery source
@@ -95,9 +96,7 @@ export function handleTop(cmd, ir) {
   ir.facet = [Identifier(cmd.field)];
   if (cmd.groupBy && cmd.groupBy.length > 0) {
     ir.facet.push(...cmd.groupBy.map(Identifier));
-    ir.warnings.push(
-      'top with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value',
-    );
+    ir.warnings.push(messages.top_groupby_warning());
   }
   ir.orderBy = OrderBy(Identifier('count'), true);
 
@@ -105,9 +104,7 @@ export function handleTop(cmd, ir) {
   ir.limit = cmd.count === 0 ? 'MAX' : cmd.count || 10;
 
   if (cmd.useother) {
-    ir.warnings.push(
-      'useother: NRQL pie chart automatically shows an "Other" category for values outside LIMIT',
-    );
+    ir.warnings.push(messages.top_useother());
   }
 
   ir._hasAggregation = true;
@@ -165,17 +162,12 @@ export function handleEventstats(cmd, ir) {
     for (const s of subSelect) {
       ir.select.push(Alias({ type: 'SubqueryExpr', query: subquery }, s.name));
     }
-    ir.warnings.push(
-      'eventstats without BY translated as scalar subquery in SELECT; ' +
-        'for percentage calculations, use the subquery result in downstream eval',
-    );
+    ir.warnings.push(messages.eventstats_scalar_subquery());
     return;
   }
 
   if (cmd.groupBy.length > 1) {
-    ir.unsupported.push(
-      `eventstats with multiple BY fields (${cmd.groupBy.join(', ')}) cannot be translated; NRQL subquery JOIN only supports a single ON key`,
-    );
+    ir.unsupported.push(messages.eventstats_multi_by(cmd.groupBy.join(', ')));
     return;
   }
 
@@ -189,7 +181,5 @@ export function handleEventstats(cmd, ir) {
   });
 
   ir.join = JoinClause(subquery, onKey);
-  ir.warnings.push(
-    'NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit',
-  );
+  ir.warnings.push(messages.join_cardinality_limit());
 }

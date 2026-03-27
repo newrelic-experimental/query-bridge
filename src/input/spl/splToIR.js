@@ -24,6 +24,7 @@ import {
   normalizeSubsearch,
 } from './splExprUtils.js';
 import * as parser from './splParser.js';
+import { messages } from '../../messages.js';
 import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
 import {
   handleTable,
@@ -81,9 +82,7 @@ export function translateAstToIR(ast) {
     // NRQL requires SINCE < UNTIL; default SINCE is 1h which may overlap UNTIL
     if (until && !since) {
       ir.since = '24 hours ago';
-      ir.warnings.push(
-        'SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match',
-      );
+      ir.warnings.push(messages.latest_without_earliest());
     }
     ir.warnings.push(...warnings);
     ir.unsupported.push(...unsupported);
@@ -141,7 +140,7 @@ export function translateSearchExpr(node, ir) {
         // SPL metadata field _raw → NRQL message
         if (field === '_raw') {
           field = 'message';
-          warnings.push('_raw is not a valid NRQL field; mapped to message');
+          warnings.push(messages.raw_mapped_to_message());
         }
 
         // JSON array field: field{}.sub or field{N}.sub → jparse translation
@@ -246,9 +245,7 @@ export function translateSearchExpr(node, ir) {
       case 'Macro': {
         const argsStr = node.args.length > 0 ? `(${node.args.join(', ')})` : '';
         const nrqlMacro = `$${node.name}${argsStr}`;
-        warnings.push(
-          `SPL macro \`${node.name}\` translated to NRQL macro ${nrqlMacro}; ensure a matching NRQL macro exists`,
-        );
+        warnings.push(messages.macro_translated(node.name, nrqlMacro));
         // Emit macro reference as a raw identifier (NRQL gateway expands it)
         return Identifier(nrqlMacro);
       }
@@ -271,17 +268,13 @@ export function translateSearchExpr(node, ir) {
             .replace(/\.csv$/, '')
             .replace(/[.-]/g, '_');
           warnings.push(
-            `NOT [|inputlookup ${lookupMatch[1]}] translated to NOT IN lookup subquery. ` +
-              `Replace {{column}} with the exclusion field name from ${lookupMatch[1]}. ` +
-              `Upload the CSV to New Relic Lookup tables as '${tableName}'.`,
+            messages.not_inputlookup_translated(lookupMatch[1], tableName),
           );
           return RawNrql(
             `{{column}} NOT IN (FROM lookup(${tableName}) SELECT {{column}} LIMIT MAX)`,
           );
         }
-        unsupported.push(
-          'NOT [subsearch] exclusion pattern; manually convert to NOT IN or WHERE NOT conditions in NRQL',
-        );
+        unsupported.push(messages.not_subsearch_unsupported());
         return null;
       }
 
@@ -292,14 +285,15 @@ export function translateSearchExpr(node, ir) {
         try {
           const subAst = parser.parse(normalizeSubsearch(node.rawText));
           const subIR = translateAstToIR(subAst);
-          for (const w of subIR.warnings) warnings.push(`subsearch: ${w}`);
+          for (const w of subIR.warnings)
+            warnings.push(messages.subsearch_warning(w));
           for (const u of subIR.unsupported)
-            unsupported.push(`subsearch: ${u}`);
+            unsupported.push(messages.subsearch_unsupported(u));
           // Fold subsearch WHERE conditions into a single tree for the outer walk()
           if (subIR.where.length === 0) return null;
           return subIR.where.reduce((acc, w) => BinOp('AND', acc, w));
         } catch (e) {
-          unsupported.push(`[subsearch] could not be parsed: ${e.message}`);
+          unsupported.push(messages.subsearch_parse_failed(e.message));
           return null;
         }
       }
@@ -309,16 +303,14 @@ export function translateSearchExpr(node, ir) {
       case 'FunctionCall': {
         const ret = walkEvalExpr(node, ir);
         if (ret === null) {
-          unsupported.push(
-            `SPL function '${node.name}()' in search expression could not be translated`,
-          );
+          unsupported.push(messages.search_func_unsupported(node.name));
           return null;
         }
         return ret;
       }
 
       default:
-        warnings.push(`Unknown search node type: ${node.type}`);
+        warnings.push(messages.search_unknown_node(node.type));
         return null;
     }
   }
@@ -393,25 +385,19 @@ function applyCommand(cmd, ir) {
       ir.predict = true;
       if (!ir.timeseries) {
         ir.timeseries = 'AUTO';
-        ir.warnings.push(
-          'PREDICT requires TIMESERIES; added TIMESERIES AUTO automatically',
-        );
+        ir.warnings.push(messages.predict_needs_timeseries());
       }
       if (ir.select.length === 0) {
         ir.select.push(Func('count', []));
       }
       return;
     case 'TstatsCommand':
-      ir.unsupported.push(
-        'tstats queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.',
-      );
+      ir.unsupported.push(messages.tstats_unsupported());
       return;
     case 'MacroCommand': {
       const argsStr = cmd.args.length > 0 ? `(${cmd.args.join(', ')})` : '';
       const nrqlMacro = `$${cmd.name}${argsStr}`;
-      ir.warnings.push(
-        `SPL macro \`${cmd.name}\` translated to NRQL macro ${nrqlMacro}; ensure a matching NRQL macro exists`,
-      );
+      ir.warnings.push(messages.macro_translated(cmd.name, nrqlMacro));
       const macroExpr = Identifier(nrqlMacro);
       ir.where.push(macroExpr);
       return;
@@ -421,12 +407,10 @@ function applyCommand(cmd, ir) {
       //   NRQL's COMPARE WITH clause as the closest equivalent.
       //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
       //   Feasibility: easy — just a special-case message, no translation needed.
-      ir.unsupported.push(
-        `SPL command '${cmd.name}' has no known NRQL equivalent`,
-      );
+      ir.unsupported.push(messages.unsupported_command(cmd.name));
       return;
     default:
-      ir.unsupported.push(`command '${cmd.type}' not yet implemented`);
+      ir.unsupported.push(messages.command_not_implemented(cmd.type));
       return;
   }
 }

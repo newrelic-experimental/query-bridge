@@ -14,16 +14,17 @@ import {
   Rlike,
   Binding,
 } from '../../ir/nodes.js';
+import { messages } from '../../messages.js';
 // Circular import — safe because translateSearchExpr is only called at runtime
 import { translateSearchExpr } from './splToIR.js';
 
 export function handleRex(cmd, ir) {
   if (cmd.mode === 'sed') {
-    ir.unsupported.push('rex mode=sed has no NRQL equivalent');
+    ir.unsupported.push(messages.rex_sed_unsupported());
     return;
   }
   if (cmd.mode !== 'extract' || !cmd.pattern) {
-    ir.unsupported.push('rex command could not be parsed');
+    ir.unsupported.push(messages.rex_parse_failed());
     return;
   }
 
@@ -36,23 +37,17 @@ export function handleRex(cmd, ir) {
   }
 
   if (names.length === 0) {
-    ir.unsupported.push(
-      'rex pattern has no named capture groups; nothing to extract',
-    );
+    ir.unsupported.push(messages.rex_no_groups());
     return;
   }
 
   if (cmd.maxMatch) {
-    ir.unsupported.push(
-      'rex max_match not supported; NRQL capture() returns first match only',
-    );
+    ir.unsupported.push(messages.rex_max_match());
   }
 
   // Detect PCRE lookbehind/lookahead — NRQL capture() rejects these
   if (/\(\?<=|\(\?<!|\(\?=|\(\?!/.test(cmd.pattern)) {
-    ir.unsupported.push(
-      'rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround',
-    );
+    ir.unsupported.push(messages.rex_lookaround());
     return;
   }
 
@@ -78,9 +73,7 @@ export function handleRex(cmd, ir) {
 
 export function handleSpath(cmd, ir) {
   if (!cmd.path) {
-    ir.unsupported.push(
-      'spath without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field',
-    );
+    ir.unsupported.push(messages.spath_no_path());
     return;
   }
   const rawInput = cmd.input || 'message';
@@ -99,9 +92,7 @@ export function handleSpath(cmd, ir) {
       Func('jparse', [Identifier(input), Literal(jsonPath, 'string')]),
     ),
   );
-  ir.warnings.push(
-    'jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead',
-  );
+  ir.warnings.push(messages.spath_json_only());
 }
 
 export function handleRegex(cmd, ir) {

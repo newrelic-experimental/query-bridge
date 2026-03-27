@@ -17,14 +17,13 @@ import { walkEvalExpr } from './evalHandlers.js';
 // Circular import — safe because translateAstToIR is only called at runtime
 import { translateAstToIR } from './splToIR.js';
 import * as parser from './splParser.js';
+import { messages } from '../../messages.js';
 
 import { normalizeSubsearch } from './splExprUtils.js';
 
 export function handleJoin(cmd, ir) {
   if (cmd.joinType === 'outer') {
-    ir.unsupported.push(
-      'NRQL does not support full outer join; only INNER and LEFT joins are available',
-    );
+    ir.unsupported.push(messages.join_outer_unsupported());
     return;
   }
 
@@ -33,13 +32,14 @@ export function handleJoin(cmd, ir) {
     const subAst = parser.parse(normalizeSubsearch(cmd.subsearch));
     subIR = translateAstToIR(subAst);
   } catch (e) {
-    ir.unsupported.push(`join subsearch could not be parsed: ${e.message}`);
+    ir.unsupported.push(messages.join_parse_failed(e.message));
     return;
   }
 
-  for (const w of subIR.warnings) ir.warnings.push(`join subsearch: ${w}`);
+  for (const w of subIR.warnings)
+    ir.warnings.push(messages.join_subsearch_warning(w));
   for (const u of subIR.unsupported)
-    ir.unsupported.push(`join subsearch: ${u}`);
+    ir.unsupported.push(messages.join_subsearch_unsupported(u));
 
   const key = Identifier(cmd.field);
   const joinType = (cmd.joinType || 'inner').toUpperCase();
@@ -53,9 +53,7 @@ export function handleJoin(cmd, ir) {
     // Reject wildcard-only or empty SELECT — need explicit fields
     const hasWildcard = subSelect.some((s) => s.type === 'Wildcard');
     if (subSelect.length === 0 || hasWildcard) {
-      ir.unsupported.push(
-        'Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over',
-      );
+      ir.unsupported.push(messages.join_needs_fields());
       return;
     }
 
@@ -87,9 +85,7 @@ export function handleJoin(cmd, ir) {
     key,
     joinType,
   );
-  ir.warnings.push(
-    'NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit',
-  );
+  ir.warnings.push(messages.join_cardinality_limit());
 }
 
 export function handleAppendpipe(cmd, ir) {
@@ -106,9 +102,7 @@ export function handleAppendpipe(cmd, ir) {
     const subAst = parser.parse(normalizeSubsearch(cmd.subsearch));
     subIR = translateAstToIR(subAst);
   } catch (e) {
-    ir.unsupported.push(
-      `appendpipe subsearch could not be parsed: ${e.message}`,
-    );
+    ir.unsupported.push(messages.appendpipe_parse_failed(e.message));
     return;
   }
 
@@ -120,18 +114,13 @@ export function handleAppendpipe(cmd, ir) {
     ) && subIR.where.length > 0;
 
   if (isEmptyGuard) {
-    ir.warnings.push(
-      'appendpipe empty-result guard removed; NRQL returns empty results natively',
-    );
+    ir.warnings.push(messages.appendpipe_empty_guard());
     return;
   }
 
   // Pattern 2: totals/summary row — the sub-pipeline aggregates current results
   // We can't append a row, but we note the aggregation intent
-  ir.warnings.push(
-    'appendpipe adds summary rows to results; NRQL cannot append rows to a query. ' +
-      'The sub-pipeline aggregation is available as a nested query, but the "append as new row" behavior must be handled by the UI.',
-  );
+  ir.warnings.push(messages.appendpipe_row_append());
 }
 
 export function handleAppend(cmd, ir, label) {
@@ -141,20 +130,19 @@ export function handleAppend(cmd, ir, label) {
     const subAst = parser.parse(normalizeSubsearch(cmd.subsearch));
     subIR = translateAstToIR(subAst);
   } catch (e) {
-    ir.unsupported.push(`${label} subsearch could not be parsed: ${e.message}`);
+    ir.unsupported.push(messages.append_parse_failed(label, e.message));
     return;
   }
 
   // Forward subsearch warnings/unsupported
-  for (const w of subIR.warnings) ir.warnings.push(`${label} subsearch: ${w}`);
+  for (const w of subIR.warnings)
+    ir.warnings.push(messages.append_subsearch_warning(label, w));
   for (const u of subIR.unsupported)
-    ir.unsupported.push(`${label} subsearch: ${u}`);
+    ir.unsupported.push(messages.append_subsearch_unsupported(label, u));
 
   // Both sides must have aggregations to merge
   if (ir.select.length === 0 || subIR.select.length === 0) {
-    ir.unsupported.push(
-      `${label} with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query`,
-    );
+    ir.unsupported.push(messages.append_no_agg(label));
     return;
   }
 
@@ -166,7 +154,7 @@ export function handleAppend(cmd, ir, label) {
     const mainDesc = mainFacetStr || '(none)';
     const subDesc = subFacetStr || '(none)';
     ir.unsupported.push(
-      `${label} with subsearch has mismatched FACET: main groups by ${mainDesc}, subsearch groups by ${subDesc}`,
+      messages.append_facet_mismatch(label, mainDesc, subDesc),
     );
     return;
   }
@@ -178,9 +166,7 @@ export function handleAppend(cmd, ir, label) {
 
   if (exprsEqual(mainWhere, subWhere)) {
     for (const s of subIR.select) ir.select.push(s);
-    ir.warnings.push(
-      `${label} merged into a single query; SPL append runs the subsearch independently, but here both sides query the same events`,
-    );
+    ir.warnings.push(messages.append_merged(label));
   } else {
     // Wrap each SELECT expression in filter(expr, WHERE condition)
     ir.select = ir.select.map((s) => wrapInFilter(s, mainWhere));
@@ -188,9 +174,7 @@ export function handleAppend(cmd, ir, label) {
       ir.select.push(wrapInFilter(s, subWhere));
     }
     ir.where = [];
-    ir.warnings.push(
-      `${label} translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log`,
-    );
+    ir.warnings.push(messages.append_filter_warning(label));
   }
 }
 
@@ -213,17 +197,13 @@ function exprsEqual(a, b) {
 
 export function handleInputlookup(cmd, ir) {
   ir.dataSource = { type: 'Lookup', name: cmd.table };
-  ir.warnings.push(
-    `Ensure lookup table '${cmd.table}' is uploaded via the Lookups UI`,
-  );
+  ir.warnings.push(messages.lookup_upload_reminder(cmd.table));
   if (cmd.where) {
     const whereExpr = walkEvalExpr(cmd.where, ir);
     if (whereExpr) {
       ir.where.push(whereExpr);
     }
-    ir.warnings.push(
-      'inputlookup WHERE condition translated as-is; verify field names match the lookup table schema',
-    );
+    ir.warnings.push(messages.inputlookup_where_warning());
   }
 }
 
@@ -252,7 +232,5 @@ export function handleLookup(cmd, ir) {
     join.onLookupKey = Identifier(lookupKey);
   }
   ir.join = join;
-  ir.warnings.push(
-    `Ensure lookup table '${cmd.table}' is uploaded via the Lookups UI`,
-  );
+  ir.warnings.push(messages.lookup_upload_reminder(cmd.table));
 }
