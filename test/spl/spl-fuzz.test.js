@@ -98,7 +98,6 @@ const evalExprs = [
   'x = nullif(status, "200")',
 ];
 
-// Where expressions safe for compound combinations (no function calls)
 const whereExprs = [
   'status > 200',
   'status >= 400 AND status < 500',
@@ -113,11 +112,7 @@ const whereExprs = [
   'message like "%error%"',
   'NOT message like "%debug%"',
   'uri like "/api/%"',
-];
-
-// FIXME: ALL function-call-form where expressions break in compound contexts
-// (AND/OR/NOT). Move back to whereExprs once the where handler is fixed.
-const buggyWhereExprs = [
+  // Function-call forms — these must work in compound expressions too
   'isnotnull(user)',
   'isnull(error)',
   'like(host, "web%")',
@@ -297,8 +292,9 @@ const pipeCommands = [
   (_f) => `where status > 400`,
   (_f) => `where duration < 1000 AND status != 200`,
   (_f) => `where bytes > 0`,
-  // FIXME: re-enable once where handler's like() function call bug is fixed:
-  // (_f) => `where like(message, "%error%")`,
+  (_f) => `where like(message, "%error%")`,
+  (_f) => `where NOT like(message, "%test%")`,
+  (_f) => `where like(host, "%web%") AND status=500`,
   (_f) => `strcat host ":" status endpoint`,
   (_f) => `convert num(bytes)`,
   (_f) => `convert auto(duration)`,
@@ -729,19 +725,19 @@ describe('SPL→NRQL property-based fuzz tests', () => {
     );
   });
 
-  // FIXME: known bug — NOT like() and compound like() AND expr produce [object Object].
-  // This test documents the failure. Remove skip and move expressions back to whereExprs
-  // once the where handler's expression walker is fixed.
-  it.skip('buggy where expressions should not produce [object Object]', () => {
-    const arbBuggyWhere = fc
-      .constantFrom(...buggyWhereExprs)
+  it('function-call where expressions never produce [object Object]', () => {
+    const funcCallWheres = whereExprs.filter(
+      (e) => /\w+\(/.test(e), // expressions containing function calls
+    );
+    const arbFuncWhere = fc
+      .constantFrom(...funcCallWheres)
       .map((expr) => `* | where ${expr}`);
     fc.assert(
-      fc.property(arbBuggyWhere, (spl) => {
+      fc.property(arbFuncWhere, (spl) => {
         const r = translateSplToNrql(spl);
         expect(r.nrql).not.toContain('[object Object]');
       }),
-      { numRuns: 50 },
+      { numRuns: 100 },
     );
   });
 
@@ -887,13 +883,7 @@ describe('SPL→NRQL property-based fuzz tests', () => {
 
 // ── Real-world corpus properties ──────────────────────────────────────
 
-// FIXME: queries triggering the known where-handler function-call bug.
-// Remove this filter once the where handler is fixed.
-const knownBuggySubstrings = ['cisco_sd_wan_syslog'];
-function isKnownBuggy(spl) {
-  return knownBuggySubstrings.some((s) => spl.includes(s));
-}
-const cleanCorpus = realWorldCorpus.filter((spl) => !isKnownBuggy(spl));
+// All corpus queries should pass — no known-buggy filter needed
 
 // ── Structural validation helpers ────────────────────────────────────
 
@@ -1044,20 +1034,14 @@ function assertInvariants(spl) {
 }
 
 describe('real-world corpus invariants', () => {
-  it('no query in the corpus crashes or produces [object Object] (excluding known bugs)', () => {
+  it('no query in the corpus crashes or produces [object Object]', () => {
     const failures = [];
-    const knownCount = realWorldCorpus.length - cleanCorpus.length;
-    for (const spl of cleanCorpus) {
+    for (const spl of realWorldCorpus) {
       try {
         assertInvariants(spl);
       } catch (e) {
         failures.push({ spl: spl.slice(0, 120), error: e.message });
       }
-    }
-    if (knownCount > 0) {
-      console.log(
-        `  Known buggy: ${knownCount} corpus queries skipped (where handler function-call bug)`,
-      );
     }
     if (failures.length > 0) {
       const summary = failures
@@ -1065,7 +1049,7 @@ describe('real-world corpus invariants', () => {
         .map((f) => `  SPL: ${f.spl}\n  ERR: ${f.error}`)
         .join('\n\n');
       throw new Error(
-        `${failures.length} of ${cleanCorpus.length} queries failed invariants:\n\n${summary}`,
+        `${failures.length} of ${realWorldCorpus.length} queries failed invariants:\n\n${summary}`,
       );
     }
   });
@@ -1175,13 +1159,16 @@ describe('mutation-based fuzzing', () => {
 
   it('mutated real-world queries never crash or produce [object Object]', () => {
     // Use fast-check to pick a corpus query + mutation + seed for rng
-    const arbCorpusIdx = fc.integer({ min: 0, max: cleanCorpus.length - 1 });
+    const arbCorpusIdx = fc.integer({
+      min: 0,
+      max: realWorldCorpus.length - 1,
+    });
     const arbMutation = fc.constantFrom(...mutationNames);
     const arbSeed = fc.integer({ min: 0, max: 2 ** 31 - 1 });
 
     fc.assert(
       fc.property(arbCorpusIdx, arbMutation, arbSeed, (idx, mutName, seed) => {
-        const original = cleanCorpus[idx];
+        const original = realWorldCorpus[idx];
         const parts = splitPipes(original);
 
         // Simple seeded rng (mulberry32)
@@ -1214,7 +1201,10 @@ describe('mutation-based fuzzing', () => {
   });
 
   it('double-mutation of corpus queries never crashes', () => {
-    const arbCorpusIdx = fc.integer({ min: 0, max: cleanCorpus.length - 1 });
+    const arbCorpusIdx = fc.integer({
+      min: 0,
+      max: realWorldCorpus.length - 1,
+    });
     const arbMut1 = fc.constantFrom(...mutationNames);
     const arbMut2 = fc.constantFrom(...mutationNames);
     const arbSeed = fc.integer({ min: 0, max: 2 ** 31 - 1 });
@@ -1226,7 +1216,7 @@ describe('mutation-based fuzzing', () => {
         arbMut2,
         arbSeed,
         (idx, m1, m2, seed) => {
-          const original = cleanCorpus[idx];
+          const original = realWorldCorpus[idx];
           let parts = splitPipes(original);
 
           let s = seed | 0;

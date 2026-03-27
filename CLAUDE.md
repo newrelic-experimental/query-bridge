@@ -11,6 +11,7 @@ Multi-language query translator. SPL/Lucene/PromQL/PPL → NRQL/Trino. Pure ESM 
 * Commit messages: lowercase subject, max 72 chars.
 * Conventional commits required (`feat:`, `fix:`, `chore:`).
 * Commit with `ASDF_NODEJS_VERSION=24.14.0 git commit` (hooks need Node 24).
+* **Loud failure over silent wrong results.** If a command can't be translated correctly, emit `unsupported`, not a warning-and-skip. A user getting an error is better than a user getting wrong data.
 
 ## Build & Test
 

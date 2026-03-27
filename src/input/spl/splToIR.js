@@ -24,7 +24,7 @@ import {
   normalizeSubsearch,
 } from './splExprUtils.js';
 import * as parser from './splParser.js';
-import { handleEval, handleWhere } from './evalHandlers.js';
+import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
 import {
   handleTable,
   handleFields,
@@ -72,6 +72,7 @@ export function translateAstToIR(ast) {
   if (ast.search) {
     const { expr, warnings, unsupported, since, until } = translateSearchExpr(
       ast.search,
+      ir,
     );
     if (expr) ir.where = expr;
     if (since) ir.since = since;
@@ -108,7 +109,7 @@ export function translateAstToIR(ast) {
 
 // ── Search expression → IR expression tree ───────────────────
 
-export function translateSearchExpr(node) {
+export function translateSearchExpr(node, ir) {
   const warnings = [];
   const unsupported = [];
   let since = null;
@@ -298,6 +299,19 @@ export function translateSearchExpr(node) {
           unsupported.push(`[subsearch] could not be parsed: ${e.message}`);
           return null;
         }
+      }
+
+      // FunctionCall nodes from the where expression grammar (like(), match(),
+      // isnotnull(), cidrmatch(), etc.) — delegate to walkEvalExpr
+      case 'FunctionCall': {
+        const ret = walkEvalExpr(node, ir);
+        if (ret === null) {
+          unsupported.push(
+            `SPL function '${node.name}()' in search expression could not be translated`,
+          );
+          return null;
+        }
+        return ret;
       }
 
       default:

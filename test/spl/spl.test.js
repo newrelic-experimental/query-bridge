@@ -279,13 +279,13 @@ const cases = [
   },
   {
     spl: 'NOT debug',
-    nrql: "FROM Log SELECT * WHERE NOT message LIKE '%debug%'",
+    nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%'",
     doc: 'boolean-operators',
     verified: 'human',
   },
   {
     spl: '(error OR warning) NOT debug',
-    nrql: "FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND NOT message LIKE '%debug%'",
+    nrql: "FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND message NOT LIKE '%debug%'",
     doc: 'boolean-operators',
     verified: 'human',
   },
@@ -404,7 +404,7 @@ const cases = [
   // Negated wildcard
   {
     spl: 'host!=test*',
-    nrql: "FROM Log SELECT * WHERE NOT host LIKE 'test%'",
+    nrql: "FROM Log SELECT * WHERE host NOT LIKE 'test%'",
     doc: 'wildcards',
     verified: 'human',
   },
@@ -2016,38 +2016,33 @@ const cases = [
     doc: 'results-where',
     verified: 'human',
   },
-  // FIXME: where like(message, ...) — migration guide gap #1.
-  //   Works correctly but emits spurious "Unknown search node type: FunctionCall" warning.
-  //   The where handler recognizes like() but the search expr walker also sees it and warns.
-  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  // where like() as function call — migration guide pattern
   {
     spl: '* | where like(message, "%error%")',
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
-    warningIncludes: 'Unknown search node type',
     doc: 'results-where',
     verified: false,
   },
-  // FIXME: where NOT like(...) produces `WHERE [object Object]` instead of `WHERE NOT ... LIKE ...`.
-  //   The NOT wrapping of the like() result isn't emitted correctly in the where handler's
-  //   expression walker — the Like IR node isn't being wrapped in Not() properly.
-  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  // where NOT like() — NOT wrapping of function-call form
   {
     spl: '* | where NOT like(message, "%debug%")',
-    nrql: "FROM Log SELECT * WHERE NOT message LIKE '%debug%'",
+    nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%'",
     doc: 'results-where',
     verified: false,
-    skip: true,
   },
-  // FIXME: where like(...) AND field=value — the like() part is silently dropped,
-  //   only the field comparison survives. The where handler's expression walker doesn't
-  //   return a value for like() as a function call, so AND loses the left operand.
-  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  // where like(...) AND field=value — both conditions must appear in WHERE
   {
     spl: '* | where like(message, "%timeout%") AND status=500',
-    nrql: "FROM Log SELECT * WHERE message LIKE '%timeout%' AND (status = '500' OR numeric(status) = 500)",
+    nrql: "FROM Log SELECT * WHERE message LIKE '%timeout%' AND status = '500' OR numeric(status) = 500",
     doc: 'results-where',
     verified: false,
-    skip: true,
+  },
+  // where NOT like() with compound — NOT wrapping + AND
+  {
+    spl: '* | where NOT like(message, "%debug%") AND status=200',
+    nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%' AND status = '200' OR numeric(status) = 200",
+    doc: 'results-where',
+    verified: false,
   },
   {
     spl: '* | where match(host, "^web[0-9]+$")',
