@@ -212,7 +212,7 @@ export const messages = {
 
   // SPL: `* | append [search * | table host]` (no aggregation)
   append_no_agg: (label) =>
-    `${label} with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query`,
+    `${label} with subsearch cannot be automatically translated; consider using filter() to compute multiple aggregations in a single query, or use separate widgets for each data source`,
 
   // SPL: `* | stats count by host | append [search * | stats count by status]`
   append_facet_mismatch: (label, mainDesc, subDesc) =>
