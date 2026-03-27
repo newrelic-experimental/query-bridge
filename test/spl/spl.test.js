@@ -2968,6 +2968,41 @@ const cases = [
     doc: 'stats',
     verified: false,
   },
+  // Gap #4 — cross-expand field matching (two mvexpands on different fields)
+  {
+    spl: '* | spath input=_raw output=validation path=validations{} | mvexpand validation | spath input=_raw output=sku_data path=items{} | mvexpand sku_data',
+    unsupportedIncludes: 'cascading mvexpand',
+    doc: 'mvexpand',
+    verified: false,
+  },
+  // Gap #12 — FACET default 10 warning
+  {
+    spl: '* | stats count by host',
+    warningIncludes: 'FACET defaults to 10 groups',
+    doc: 'stats',
+    verified: false,
+  },
+  // Gap #16 — append workaround hint
+  {
+    spl: '* | append [search * | table host]',
+    unsupportedIncludes: 'consider using filter()',
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Gap #17 — coalesce translates to OR chain (already implemented)
+  {
+    spl: '* | eval combined = coalesce(msg, message)',
+    nrql: 'FROM Log WITH (msg OR message) AS combined SELECT *',
+    doc: 'eval',
+    verified: false,
+  },
+  // Gap #18 — multi-column ORDER BY (already covered by sort_single_field)
+  {
+    spl: '* | sort host, -duration',
+    warningIncludes: 'ORDER BY supports only one field',
+    doc: 'sort',
+    verified: false,
+  },
 
   //
   // ── NRQL Feature Gaps — B-tier FIXME tests (skip: true) ──────────
