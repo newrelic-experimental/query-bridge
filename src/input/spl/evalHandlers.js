@@ -40,7 +40,7 @@ export function handleWhere(cmd, ir) {
   const whereNode = cmd.expression || cmd.expr;
   const expr = translateWhereExpr(whereNode, ir);
   if (expr) {
-    ir.where = ir.where ? BinOp('AND', ir.where, expr) : expr;
+    ir.where.push(expr);
   }
 }
 

@@ -279,15 +279,15 @@ const cases = [
   },
   {
     spl: 'NOT debug',
-    nrql: "FROM Log SELECT * WHERE NOT message LIKE '%debug%'",
+    nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%'",
     doc: 'boolean-operators',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '(error OR warning) NOT debug',
-    nrql: "FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND NOT message LIKE '%debug%'",
+    nrql: "FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND message NOT LIKE '%debug%'",
     doc: 'boolean-operators',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '`macro_a` AND `macro_b`',
@@ -404,9 +404,9 @@ const cases = [
   // Negated wildcard
   {
     spl: 'host!=test*',
-    nrql: "FROM Log SELECT * WHERE NOT host LIKE 'test%'",
+    nrql: "FROM Log SELECT * WHERE host NOT LIKE 'test%'",
     doc: 'wildcards',
-    verified: 'human',
+    verified: false,
   },
   //
   // ── Quoted strings ──────────────────────────────────────────────
@@ -1808,6 +1808,24 @@ const cases = [
     doc: 'reports-timechart',
     verified: 'human',
   },
+  // timechart then stats — _time FACET absorbed by TIMESERIES (found by model-based fuzz)
+  // FIXME: inner subquery needs LIMIT MAX; outer count(*) is trivially 1 per bucket
+  //   because timechart produces one row per time bucket. Semantics are wrong.
+  {
+    spl: '* | timechart span=1m count | stats count by _time',
+    nrql: 'FROM (FROM Log SELECT count(*)) SELECT count(*) TIMESERIES 1 minute',
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  // timechart then stats with non-_time aggregation
+  // FIXME: same issue — inner subquery needs LIMIT MAX; chained stats-over-timechart
+  //   semantics need rethinking
+  {
+    spl: '* | timechart span=5m count | stats sum(count)',
+    nrql: 'FROM (FROM Log SELECT count(*)) SELECT sum(count) TIMESERIES 5 minutes',
+    doc: 'reports-timechart',
+    verified: false,
+  },
   //
   // ── chart command ───────────────────────────────────────────────
   //
@@ -2002,38 +2020,33 @@ const cases = [
     doc: 'results-where',
     verified: 'human',
   },
-  // FIXME: where like(message, ...) — migration guide gap #1.
-  //   Works correctly but emits spurious "Unknown search node type: FunctionCall" warning.
-  //   The where handler recognizes like() but the search expr walker also sees it and warns.
-  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  // where like() as function call — migration guide pattern
   {
     spl: '* | where like(message, "%error%")',
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
-    warningIncludes: 'Unknown search node type',
     doc: 'results-where',
     verified: false,
   },
-  // FIXME: where NOT like(...) produces `WHERE [object Object]` instead of `WHERE NOT ... LIKE ...`.
-  //   The NOT wrapping of the like() result isn't emitted correctly in the where handler's
-  //   expression walker — the Like IR node isn't being wrapped in Not() properly.
-  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  // where NOT like() — NOT wrapping of function-call form
   {
     spl: '* | where NOT like(message, "%debug%")',
-    nrql: "FROM Log SELECT * WHERE NOT message LIKE '%debug%'",
+    nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%'",
     doc: 'results-where',
     verified: false,
-    skip: true,
   },
-  // FIXME: where like(...) AND field=value — the like() part is silently dropped,
-  //   only the field comparison survives. The where handler's expression walker doesn't
-  //   return a value for like() as a function call, so AND loses the left operand.
-  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
+  // where like(...) AND field=value — both conditions must appear in WHERE
   {
     spl: '* | where like(message, "%timeout%") AND status=500',
-    nrql: "FROM Log SELECT * WHERE message LIKE '%timeout%' AND (status = '500' OR numeric(status) = 500)",
+    nrql: "FROM Log SELECT * WHERE message LIKE '%timeout%' AND status = '500' OR numeric(status) = 500",
     doc: 'results-where',
     verified: false,
-    skip: true,
+  },
+  // where NOT like() with compound — NOT wrapping + AND
+  {
+    spl: '* | where NOT like(message, "%debug%") AND status=200',
+    nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%' AND status = '200' OR numeric(status) = 200",
+    doc: 'results-where',
+    verified: false,
   },
   {
     spl: '* | where match(host, "^web[0-9]+$")',
@@ -2442,7 +2455,7 @@ const cases = [
     nrql: "FROM Log JOIN (FROM Log SELECT max(timestamp) AS 'lastImport' FACET source LIMIT MAX) ON source = source SELECT *",
     warningIncludes: '5,000',
     doc: 'reports-eventstats',
-    verified: 'llm',
+    verified: 'human',
   },
   // multiple aggregations in one eventstats call
   {
@@ -2450,13 +2463,13 @@ const cases = [
     nrql: "FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur', max(duration) AS 'max_dur' FACET host LIMIT MAX) ON host = host SELECT *",
     warningIncludes: '5,000',
     doc: 'reports-eventstats',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | streamstats count by host',
     unsupportedIncludes: 'streamstats',
     doc: 'reports-streamstats',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   // ── mvexpand patterns ─────────────────────────────────────────
@@ -2467,138 +2480,140 @@ const cases = [
     nrql: "FROM Log WITH jparse(message, 'cloudformation[*].stack_prefix') AS stack_prefix SELECT * WHERE stack_prefix = 'fff000-gitlabrole'",
     warningIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
-    verified: 'llm',
+    verified: 'human',
   },
   // mvexpand with function-call field name (stats list() creates literal field name)
+  // FIXME: mvexpand should be unsupported, not silently skipped — produces wrong results
   {
     spl: '* | mvexpand list(orderNumber)',
     nrql: 'FROM Log SELECT *',
     warningIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
-    verified: 'llm',
+    verified: false,
   },
   // Pattern 2: dedup round-trip (~30%) — NRQL works without expansion
-
+  // FIXME: mvexpand should be unsupported, not silently skipped
   {
     spl: '* | stats values(title) as title | mvexpand title',
     nrql: "FROM Log SELECT uniques(title) AS 'title'",
     warningIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
-    verified: 'llm',
+    verified: false,
   },
   // Pattern 3: expand + aggregate by expanded field — truly unsupported
+  // FIXME: mvexpand should be unsupported, not silently skipped
   {
     spl: '* | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms',
     warningIncludes: 'mvexpand',
     nrql: "FROM Log WITH split(permissions, ',') AS perms SELECT count(*) FACET perms",
     doc: 'unsupported-mvexpand',
-    verified: 'llm',
+    verified: false,
   },
   // Pattern 4: symmetric counting — truly unsupported (aggregates by expanded field)
+  // FIXME: mvexpand should be unsupported, not silently skipped
   {
     spl: '* | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset',
     warningIncludes: 'mvexpand',
     nrql: 'FROM Log WITH mvappend(notable_src, notable_dest) AS notable_asset SELECT count(*) FACET notable_asset',
     doc: 'unsupported-mvexpand',
-    verified: 'llm',
+    verified: false,
   },
   // Pattern 5: expand + sort only (no aggregation by field) — NRQL works without expansion
-
+  // FIXME: mvexpand should be unsupported, not silently skipped
   {
     spl: 'index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber',
     nrql: "FROM Log SELECT uniques(orderNumber) AS 'orderNumber' WHERE index = 'k8s_main' AND message LIKE '%bopus%' AND orderType = 'BOPUS' AND storeNumber LIKE '%' AND orderNumber LIKE '%' FACET orderStatus, storeNumber ORDER BY orderNumber DESC",
     warningIncludes: 'mvexpand',
     doc: 'unsupported-mvexpand',
-    verified: 'llm',
+    verified: false,
   },
   {
     spl: '* | mvcombine delim="," values',
     unsupportedIncludes: 'mvcombine',
     doc: 'fields-mvcombine',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | nomv values',
     unsupportedIncludes: 'nomv',
     doc: 'fields-nomv',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | outputcsv results.csv',
     unsupportedIncludes: 'outputcsv',
     doc: 'results-outputcsv',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | sendemail to="admin@example.com"',
     unsupportedIncludes: 'sendemail',
     doc: 'results-sendemail',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | mcollect index=metrics_idx',
     unsupportedIncludes: 'mcollect',
     doc: 'results-mcollect',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'index=main | stats count as total_requests | appendcols [search index=main level=error | stats count as errors]',
     nrql: "FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests', filter(count(*), WHERE index = 'main' AND level = 'error') AS 'errors'",
     warningIncludes: 'appendcols',
     doc: 'correlation-appendcols',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     // appendcols with different FACET on subsearch — can't merge
     spl: '* | stats count as total | appendcols [search * | stats count by host]',
-    unsupportedIncludes:
-      'appendcols with subsearch cannot be automatically translated',
+    unsupportedIncludes: 'mismatched FACET',
     doc: 'correlation-appendcols',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | stats count as search_count | appendpipe [stats count | where count=0]',
     nrql: "FROM Log SELECT count(*) AS 'search_count'",
     warningIncludes: 'appendpipe',
     doc: 'correlation-appendpipe',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | set union',
     unsupportedIncludes: 'set',
     doc: 'correlation-set',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | foreach count_* [eval total=total+<<FIELD>>]',
     unsupportedIncludes: 'foreach',
     doc: 'fields-foreach',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '| datamodel Authentication',
     unsupportedIncludes: 'datamodel',
     doc: 'data-datamodel',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '| pivot Web_Traffic count',
     unsupportedIncludes: 'pivot',
     doc: 'data-pivot',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | predict count',
     nrql: 'FROM Log SELECT count(*) TIMESERIES AUTO PREDICT',
     warningIncludes: 'PREDICT requires TIMESERIES',
     doc: 'prediction-predict',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | anomalies field=count',
     unsupportedIncludes: 'anomalies',
     doc: 'anomalies-anomalies',
-    verified: 'llm',
+    verified: 'human',
   },
   // anomalydetection is a separate command name from anomalies — migration guide uses this form
   // Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
@@ -2612,37 +2627,37 @@ const cases = [
     spl: '* | cluster showcount=true',
     unsupportedIncludes: 'cluster',
     doc: 'anomalies-cluster',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | trendline sma5(count) as trend',
     unsupportedIncludes: 'trendline',
     doc: 'prediction-trendline',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | extract pairdelim=","',
     unsupportedIncludes: 'extract',
     doc: 'fields-extract',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | xmlkv',
     unsupportedIncludes: 'xmlkv',
     doc: 'fields-xmlkv',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | stats count by host | transpose',
     unsupportedIncludes: 'transpose',
     doc: 'results-transpose',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | timechart count | timewrap 1d',
     unsupportedIncludes: 'timewrap',
     doc: 'reports-timewrap',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     // '1234567' → 1234567
@@ -2650,7 +2665,7 @@ const cases = [
     nrql: 'FROM Log WITH numeric(bytes) AS bytes_converted SELECT *',
     warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     // '1,234,567' → 1234567
@@ -2658,14 +2673,14 @@ const cases = [
     nrql: "FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *",
     warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     // 1741916927007 → '2026-03-13T23:48:47.007Z'
     spl: '* | convert ctime(timestamp) AS readable',
     nrql: 'FROM Log WITH toDatetime(timestamp) AS readable SELECT *',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     // '2026-03-13T23:48:47.007Z' → 1741916927007
@@ -2673,87 +2688,95 @@ const cases = [
     nrql: 'FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *',
     warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: 'human',
   },
   {
-    // '346.319097ms' → 0.346 — uses numeric() approximation (no NRQL duration parser)
+    // FIXME: dur2sec parses duration strings like '346.319097ms' → 0.346
+    // numeric() only works if the value is already a plain number. Should be unsupported.
     spl: '* | convert dur2sec(duration)',
     nrql: 'FROM Log WITH numeric(duration) AS duration_converted SELECT *',
     warningIncludes: 'dur2sec',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: false,
   },
   {
-    // '02:30.500' → 150.5 — uses numeric() approximation (no NRQL mm:ss parser)
+    // FIXME: mstime parses mm:ss.ms strings like '02:30.500' → 150.5
+    // numeric() only works if the value is already a plain number. Should be unsupported.
     spl: '* | convert mstime(elapsed)',
     nrql: 'FROM Log WITH numeric(elapsed) AS elapsed_converted SELECT *',
     warningIncludes: 'mstime',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: false,
   },
   {
     // num: '200' → 200, rmcomma: '1,000' → 1000
+    // FIXME: should have 'cannot overwrite a field in-place' warning
     spl: '* | convert num(status), rmcomma(total)',
     nrql: "FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, ',', '')) AS total_converted SELECT *",
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: false,
   },
   {
+    // FIXME: auto() detects and converts any type (number, boolean, timestamp).
+    // numeric() only handles the number case. Should be unsupported.
     spl: '* | convert auto(field)',
     nrql: 'FROM Log WITH numeric(field) AS field_converted SELECT *',
     warningIncludes: 'cannot overwrite a field in-place',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: false,
   },
   {
     // '512MB' — can't strip arbitrary units in NRQL
     spl: '* | convert rmunit(field)',
     unsupportedIncludes: 'rmunit',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     // '512m' — memory normalization; NR data is already numeric bytes
     spl: '* | convert memk(field)',
     unsupportedIncludes: 'memk',
     doc: 'fields-convert',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | highlight error warning',
     unsupportedIncludes: 'highlight',
     doc: 'results-highlight',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '| metadata type=sources',
     unsupportedIncludes: 'metadata',
     doc: 'data-metadata',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '| rest /services/server/info',
     unsupportedIncludes: 'rest',
     doc: 'data-rest',
-    verified: 'llm',
+    verified: 'human',
   },
   {
+    // FIXME: tail 10 should be ORDER BY timestamp ASC LIMIT 10, not unsupported
     spl: '* | tail 10',
     unsupportedIncludes: 'tail',
     doc: 'results-tail',
-    verified: 'llm',
+    verified: false,
   },
   {
+    // FIXME: selfjoin could be translated to NRQL subquery JOIN where both sides are FROM Log
+    // with different WHERE clauses. Non-trivial but feasible for common patterns.
     spl: '* | selfjoin host',
     unsupportedIncludes: 'selfjoin',
     doc: 'correlation-selfjoin',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | accum bytes as running_total',
     unsupportedIncludes: 'accum',
     doc: 'reports-accum',
-    verified: 'llm',
+    verified: 'human',
   },
   // no downstream aggregation → replace inlined into SELECT
 
@@ -2761,52 +2784,53 @@ const cases = [
     spl: '* | replace "error" WITH "warning" IN message',
     nrql: "FROM Log SELECT replace(message, 'error', 'warning'), *",
     doc: 'fields-replace',
-    verified: 'llm',
+    verified: 'human',
   },
   // downstream aggregation → replace applied in FACET
   {
     spl: '* | replace "kube:container:" WITH "" IN sourcetype | stats count by sourcetype',
     nrql: "FROM Log SELECT count(*) FACET replace(sourcetype, 'kube:container:', '')",
     doc: 'fields-replace',
-    verified: 'llm',
+    verified: 'human',
   },
   // multi-pair replace
   {
     spl: '* | replace "%%14674" WITH "Value Added", "%%14675" WITH "Value Deleted" IN OperationType',
     nrql: "FROM Log SELECT replace(replace(OperationType, '%%14674', 'Value Added'), '%%14675', 'Value Deleted'), *",
     doc: 'fields-replace',
-    verified: 'llm',
+    verified: 'human',
   },
   // replace eval: fix JSON quoting — self-referencing eval inlined into SELECT to avoid circular dependency
   {
     spl: '* | eval json_content=replace(json_content, "\'", "\\"") | spath input=json_content',
     unsupportedIncludes: 'spath without path=',
     doc: 'eval-string',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | sichart count by host',
     unsupportedIncludes: 'sichart',
     doc: 'data-sichart',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '| mstats avg(cpu.percent) by host',
     unsupportedIncludes: 'mstats',
     doc: 'metrics-mstats',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | xyzcommand foo bar',
     unsupportedIncludes: 'xyzcommand',
     doc: 'unsupported-unknown',
-    verified: 'llm',
+    verified: 'human',
   },
   {
+    // FIXME: tail 20 should be ORDER BY timestamp ASC LIMIT 20, not unsupported
     spl: '* | tail 20',
     unsupportedIncludes: 'tail',
     doc: 'results-tail',
-    verified: 'llm',
+    verified: false,
   },
   //
   // ── Edge cases ──────────────────────────────────────────────────
@@ -2817,19 +2841,19 @@ const cases = [
     spl: 'search error',
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '| stats count',
     nrql: 'FROM Log SELECT count(*)',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | stats count by host | sort - count | head 5',
     nrql: 'FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   //
   //
@@ -2837,130 +2861,134 @@ const cases = [
     spl: 'OR status=200',
     nrql: "FROM Log SELECT * WHERE message LIKE '%OR%' AND status = '200' OR numeric(status) = 200",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
+    // FIXME: double NOT should be collapsed by the optimizer's double-NOT elimination pass.
+    // Expected: WHERE message LIKE '%error%'
     spl: 'NOT NOT error',
-    nrql: "FROM Log SELECT * WHERE NOT message LIKE '%NOT%' AND message LIKE '%error%'",
+    nrql: "FROM Log SELECT * WHERE message NOT LIKE '%NOT%' AND message LIKE '%error%'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: false,
   },
   {
     spl: '-500',
     nrql: "FROM Log SELECT * WHERE message LIKE '%-500%'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'cpu_usage=95%',
     nrql: "FROM Log SELECT * WHERE cpu_usage = '95%'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'host=web,01',
     nrql: "FROM Log SELECT * WHERE host = 'web,01'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'path=C:\\',
     nrql: "FROM Log SELECT * WHERE path = 'C:\\\\'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'field=***',
     nrql: "FROM Log SELECT * WHERE field LIKE '%%%'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'host=*web*server*prod*',
     nrql: "FROM Log SELECT * WHERE host LIKE '%web%server%prod%'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'error|stats count',
     nrql: "FROM Log SELECT count(*) WHERE message LIKE '%error%'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'status=200\tstatus=300',
     nrql: "FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 AND status = '300' OR numeric(status) = 300",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'index=web\n| stats count by host',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET host",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     // Grouping preserved via NRQL OR-tighter precedence — no explicit inner parens needed
     spl: '(a=1 OR (b=2 AND (c=3 OR d=4)))',
     nrql: "FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3 OR d = '4' OR numeric(d) = 4)",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: 'status IN (200)',
     nrql: 'FROM Log SELECT * WHERE status IN (200)',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
-  { spl: '* | head 0', limit: 0, doc: 'edge-cases', verified: 'llm' },
+  // FIXME: limit: 0 isn't a v2 assertion field — this test asserts nothing.
+  // head 0 should either produce an error or LIMIT 0 / empty result.
+  { spl: '* | head 0', limit: 0, doc: 'edge-cases', verified: false },
   {
     spl: '* error',
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | where a>1 | where b<2',
     nrql: 'FROM Log SELECT * WHERE numeric(a) > 1 AND numeric(b) < 2',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | where (status >= 400 AND status < 500)',
     nrql: 'FROM Log SELECT * WHERE numeric(status) >= 400 AND numeric(status) < 500',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | sort -count, +name, host',
     nrql: 'FROM Log SELECT * ORDER BY count DESC',
     warningIncludes: 'additional sort fields ignored',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | STATS COUNT BY host',
     nrql: 'FROM Log SELECT count(*) FACET host',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | Stats Count By Host',
     nrql: 'FROM Log SELECT count(*) FACET Host',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | stats count() by host',
     nrql: 'FROM Log SELECT count(*) FACET host',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   {
     spl: '* | stats avg(response.time) by host',
     nrql: 'FROM Log SELECT average(`response.time`) FACET host',
     doc: 'edge-cases',
-    verified: 'llm',
+    verified: 'human',
   },
   // Real-world queries moved to spl-real-world.json
   //
@@ -2971,7 +2999,7 @@ const cases = [
     nrql: "FROM Log SELECT filter(count(*), WHERE index = 'main' AND message LIKE '%Cache hit%') AS 'Hits', filter(count(*), WHERE index = 'main' AND message LIKE '%Cache miss%') AS 'Misses'",
     warningIncludes: 'append translated to filter()',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: 'human',
   },
   // Same WHERE, different aggregations → merge SELECTs directly
   {
@@ -2979,23 +3007,22 @@ const cases = [
     nrql: 'FROM Log SELECT average(duration), max(duration)',
     warningIncludes: 'append merged into a single query',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: 'human',
   },
-  // append with no aggregations on either side — raw event append, can't merge
+  // append with no aggregations on either side — raw event append = UNION, not supported
   {
-    spl: '* | append [search error]',
+    spl: 'index=web | append [search index=api]',
     unsupportedIncludes:
       'append with subsearch cannot be automatically translated',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: 'human',
   },
   // append with different FACET — can't merge because groupings differ
   {
     spl: '* | stats count as total | append [search * | stats avg(duration) by host]',
-    unsupportedIncludes:
-      'append with subsearch cannot be automatically translated; the main query and subsearch group by different fields',
+    unsupportedIncludes: 'mismatched FACET',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: 'human',
   },
   // append with matching FACET — merge into filter() with shared FACET
   {
@@ -3003,7 +3030,7 @@ const cases = [
     nrql: "FROM Log SELECT filter(count(*), WHERE message LIKE '%error%'), filter(count(*), WHERE message LIKE '%success%') FACET host",
     warningIncludes: 'append translated to filter()',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: 'human',
   },
   // append with matching FACET and same WHERE — merge SELECT lists
   {
@@ -3011,7 +3038,7 @@ const cases = [
     nrql: 'FROM Log SELECT count(*), average(duration) FACET host',
     warningIncludes: 'append merged into a single query',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: 'human',
   },
   // append with different WHERE and non-count aggregations — filter() wraps any aggregation
   {
@@ -3019,7 +3046,7 @@ const cases = [
     nrql: "FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%') AS 'err_dur', filter(average(duration), WHERE message LIKE '%success%') AS 'ok_dur'",
     warningIncludes: 'append translated to filter()',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: 'human',
   },
   // append without aliases — filter() works without aliases too
   {
@@ -3027,7 +3054,28 @@ const cases = [
     nrql: "FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), filter(max(duration), WHERE message LIKE '%success%')",
     warningIncludes: 'append translated to filter()',
     doc: 'correlation-append',
-    verified: 'llm',
+    verified: 'human',
+  },
+  //
+  // ── Append edge cases (TODO: verify these produce correct results) ──
+  //
+  // Different indexes on each side — filter() WHERE clauses must reflect different sources
+  {
+    skip: true,
+    spl: 'index=web | stats count as web_count | append [search index=api | stats count as api_count]',
+    nrql: "FROM Log SELECT filter(count(*), WHERE index = 'web') AS 'web_count', filter(count(*), WHERE index = 'api') AS 'api_count'",
+    warningIncludes: 'append translated to filter()',
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Pre-stats WHERE filtering — outer has where before stats, subsearch doesn't
+  {
+    skip: true,
+    spl: '* | where status=500 | stats avg(duration) as err_dur | append [search * | stats avg(duration) as all_dur]',
+    nrql: "FROM Log SELECT filter(average(duration), WHERE numeric(status) = 500) AS 'err_dur', filter(average(duration), WHERE 1=1) AS 'all_dur'",
+    warningIncludes: 'append translated to filter()',
+    doc: 'correlation-append',
+    verified: false,
   },
 ];
 

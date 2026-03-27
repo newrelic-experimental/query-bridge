@@ -154,29 +154,29 @@ describe('transformTree', () => {
   });
 
   it('does NOT recurse into SubqueryExpr', () => {
-    const inner = SelectQuery({ where: Identifier('should_not_touch') });
+    const inner = SelectQuery({ where: [Identifier('should_not_touch')] });
     const tree = SubqueryExpr(inner);
     const result = transformTree(tree, (node) => {
       if (node.type === 'Identifier') return Identifier('TOUCHED');
       return node;
     });
-    expect(result.query.where.name).toBe('should_not_touch');
+    expect(result.query.where[0].name).toBe('should_not_touch');
   });
 
   it('does NOT recurse into SubquerySource', () => {
-    const inner = SelectQuery({ where: Identifier('should_not_touch') });
+    const inner = SelectQuery({ where: [Identifier('should_not_touch')] });
     const tree = SubquerySource(inner);
     const result = transformTree(tree, (node) => {
       if (node.type === 'Identifier') return Identifier('TOUCHED');
       return node;
     });
-    expect(result.query.where.name).toBe('should_not_touch');
+    expect(result.query.where[0].name).toBe('should_not_touch');
   });
 
   it('transforms SelectQuery fields', () => {
     const query = SelectQuery({
       select: [Identifier('a')],
-      where: Identifier('b'),
+      where: [Identifier('b')],
       facet: [Identifier('c')],
       bindings: [Binding('d', Identifier('d'))],
     });
@@ -186,7 +186,7 @@ describe('transformTree', () => {
       return node;
     });
     expect(result.select[0].name).toBe('A');
-    expect(result.where.name).toBe('B');
+    expect(result.where[0].name).toBe('B');
     expect(result.facet[0].name).toBe('C');
     expect(result.bindings[0].expr.name).toBe('D');
   });

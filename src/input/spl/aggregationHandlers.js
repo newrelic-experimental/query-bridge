@@ -78,7 +78,7 @@ export function handleTop(cmd, ir) {
   //   Feasibility unclear — percentage() only works for "percentage of total matching
   //   a condition", not for arbitrary ratio calculations like eventstats patterns.
   if (cmd.showperc !== false) {
-    const subqWhere = ir.where ? { ...ir.where } : null;
+    const subqWhere = [...ir.where];
     const subquery = SelectQuery({
       select: [Func('count', [])],
       where: subqWhere,
@@ -144,7 +144,7 @@ export function handleEventstats(cmd, ir) {
       const innerQuery = SelectQuery({
         dataSource: { ...ir.dataSource },
         select: [...ir.select],
-        where: ir.where ? { ...ir.where } : null,
+        where: [...ir.where],
         facet: [...ir.facet],
         limit: 'MAX',
       });
@@ -156,7 +156,7 @@ export function handleEventstats(cmd, ir) {
       subquery = SelectQuery({
         dataSource: { ...ir.dataSource },
         select: subSelect.map((s) => s.expr),
-        where: ir.where ? { ...ir.where } : null,
+        where: [...ir.where],
       });
     }
     if (ir.select.length === 0) {

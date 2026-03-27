@@ -75,7 +75,7 @@ export const SelectQuery = (overrides = {}) => ({
   dataSource: EventType(['Log']),
   bindings: [],
   select: [],
-  where: null,
+  where: [],
   facet: [],
   join: null,
   orderBy: null,

@@ -334,7 +334,7 @@ export function wrapAsSubquery(ir) {
     dataSource: ir.dataSource,
     bindings: [...ir.bindings],
     select: [...ir.select],
-    where: ir.where,
+    where: [...ir.where],
     facet: [...ir.facet],
     limit: ir.facet.length > 0 ? 'MAX' : ir.limit,
   });
@@ -343,7 +343,7 @@ export function wrapAsSubquery(ir) {
   ir.select = [];
   ir.facet = [];
   ir.bindings = [];
-  ir.where = null;
+  ir.where = [];
 }
 
 // ── Subsearch normalization ─────────────────────────────────

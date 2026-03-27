@@ -32,6 +32,10 @@ export function emitExpr(node) {
       if (node.child.type === 'IsNull') {
         return `${emitExpr(node.child.child)} IS NOT NULL`;
       }
+      // NOT(Like) → field NOT LIKE 'pattern' (idiomatic NRQL)
+      if (node.child.type === 'Like') {
+        return `${emitExpr(node.child.field)} NOT LIKE '${node.child.pattern}'`;
+      }
       // NOT(Rlike) → field NOT RLIKE r'pattern'
       if (node.child.type === 'Rlike') {
         return `${emitExpr(node.child.field)} NOT RLIKE r'${node.child.pattern}'`;
@@ -252,8 +256,9 @@ function emitSelectQuery(q) {
   parts.push(`SELECT ${select}`);
 
   // WHERE
-  if (q.where) {
-    parts.push(`WHERE ${emitExpr(q.where)}`);
+  if (q.where.length > 0) {
+    const conditions = q.where.map(emitExpr);
+    parts.push(`WHERE ${conditions.join(' AND ')}`);
   }
 
   // FACET

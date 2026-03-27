@@ -24,7 +24,7 @@ import {
   normalizeSubsearch,
 } from './splExprUtils.js';
 import * as parser from './splParser.js';
-import { handleEval, handleWhere } from './evalHandlers.js';
+import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
 import {
   handleTable,
   handleFields,
@@ -72,8 +72,9 @@ export function translateAstToIR(ast) {
   if (ast.search) {
     const { expr, warnings, unsupported, since, until } = translateSearchExpr(
       ast.search,
+      ir,
     );
-    if (expr) ir.where = expr;
+    if (expr) ir.where.push(expr);
     if (since) ir.since = since;
     if (until) ir.until = until;
     // NRQL requires SINCE < UNTIL; default SINCE is 1h which may overlap UNTIL
@@ -108,7 +109,7 @@ export function translateAstToIR(ast) {
 
 // ── Search expression → IR expression tree ───────────────────
 
-export function translateSearchExpr(node) {
+export function translateSearchExpr(node, ir) {
   const warnings = [];
   const unsupported = [];
   let since = null;
@@ -293,11 +294,26 @@ export function translateSearchExpr(node) {
           for (const w of subIR.warnings) warnings.push(`subsearch: ${w}`);
           for (const u of subIR.unsupported)
             unsupported.push(`subsearch: ${u}`);
-          return subIR.where;
+          // Fold subsearch WHERE conditions into a single tree for the outer walk()
+          if (subIR.where.length === 0) return null;
+          return subIR.where.reduce((acc, w) => BinOp('AND', acc, w));
         } catch (e) {
           unsupported.push(`[subsearch] could not be parsed: ${e.message}`);
           return null;
         }
+      }
+
+      // FunctionCall nodes from the where expression grammar (like(), match(),
+      // isnotnull(), cidrmatch(), etc.) — delegate to walkEvalExpr
+      case 'FunctionCall': {
+        const ret = walkEvalExpr(node, ir);
+        if (ret === null) {
+          unsupported.push(
+            `SPL function '${node.name}()' in search expression could not be translated`,
+          );
+          return null;
+        }
+        return ret;
       }
 
       default:
@@ -399,7 +415,7 @@ function applyCommand(cmd, ir) {
         `SPL macro \`${cmd.name}\` translated to NRQL macro ${nrqlMacro}; ensure a matching NRQL macro exists`,
       );
       const macroExpr = Identifier(nrqlMacro);
-      ir.where = ir.where ? BinOp('AND', ir.where, macroExpr) : macroExpr;
+      ir.where.push(macroExpr);
       return;
     }
     case 'UnsupportedCommand':

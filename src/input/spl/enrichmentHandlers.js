@@ -117,11 +117,11 @@ export function handleAppendpipe(cmd, ir) {
   const isEmptyGuard =
     subIR.select.some(
       (s) => s.type === 'Function' && s.name === 'count' && s.args.length === 0,
-    ) && subIR.where;
+    ) && subIR.where.length > 0;
 
   if (isEmptyGuard) {
     ir.warnings.push(
-      'appendpipe empty-result guard ignored; NRQL handles empty results natively',
+      'appendpipe empty-result guard removed; NRQL returns empty results natively',
     );
     return;
   }
@@ -163,8 +163,10 @@ export function handleAppend(cmd, ir, label) {
   const subFacetStr = subIR.facet.map((f) => f.name || '').join(',');
 
   if (mainFacetStr !== subFacetStr) {
+    const mainDesc = mainFacetStr || '(none)';
+    const subDesc = subFacetStr || '(none)';
     ir.unsupported.push(
-      `${label} with subsearch cannot be automatically translated; the main query and subsearch group by different fields`,
+      `${label} with subsearch has mismatched FACET: main groups by ${mainDesc}, subsearch groups by ${subDesc}`,
     );
     return;
   }
@@ -185,23 +187,22 @@ export function handleAppend(cmd, ir, label) {
     for (const s of subIR.select) {
       ir.select.push(wrapInFilter(s, subWhere));
     }
-    ir.where = null;
+    ir.where = [];
     ir.warnings.push(
       `${label} translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log`,
     );
   }
 }
 
-function wrapInFilter(selectExpr, whereCondition) {
-  if (!whereCondition) return selectExpr;
+function wrapInFilter(selectExpr, whereConditions) {
+  if (whereConditions.length === 0) return selectExpr;
+  // Join multiple conditions into a single AND tree for filter()
+  const condition = whereConditions.reduce((acc, w) => BinOp('AND', acc, w));
   // If the expression is aliased, wrap the inner part in filter
   if (selectExpr.type === 'Alias') {
-    return Alias(
-      Func('filter', [selectExpr.expr, whereCondition]),
-      selectExpr.name,
-    );
+    return Alias(Func('filter', [selectExpr.expr, condition]), selectExpr.name);
   }
-  return Func('filter', [selectExpr, whereCondition]);
+  return Func('filter', [selectExpr, condition]);
 }
 
 function exprsEqual(a, b) {
@@ -218,7 +219,7 @@ export function handleInputlookup(cmd, ir) {
   if (cmd.where) {
     const whereExpr = walkEvalExpr(cmd.where, ir);
     if (whereExpr) {
-      ir.where = ir.where ? BinOp('AND', ir.where, whereExpr) : whereExpr;
+      ir.where.push(whereExpr);
     }
     ir.warnings.push(
       'inputlookup WHERE condition translated as-is; verify field names match the lookup table schema',

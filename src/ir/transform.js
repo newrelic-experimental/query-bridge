@@ -82,7 +82,7 @@ function transformChildren(node, fn) {
       return {
         ...node,
         select: node.select.map((s) => transformTree(s, fn)),
-        where: node.where ? transformTree(node.where, fn) : null,
+        where: node.where.map((w) => transformTree(w, fn)),
         facet: node.facet.map((f) => transformTree(f, fn)),
         bindings: node.bindings.map((b) => ({
           ...b,

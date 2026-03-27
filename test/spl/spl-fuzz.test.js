@@ -98,7 +98,6 @@ const evalExprs = [
   'x = nullif(status, "200")',
 ];
 
-// Where expressions safe for compound combinations (no function calls)
 const whereExprs = [
   'status > 200',
   'status >= 400 AND status < 500',
@@ -113,11 +112,7 @@ const whereExprs = [
   'message like "%error%"',
   'NOT message like "%debug%"',
   'uri like "/api/%"',
-];
-
-// FIXME: ALL function-call-form where expressions break in compound contexts
-// (AND/OR/NOT). Move back to whereExprs once the where handler is fixed.
-const buggyWhereExprs = [
+  // Function-call forms — these must work in compound expressions too
   'isnotnull(user)',
   'isnull(error)',
   'like(host, "web%")',
@@ -297,8 +292,9 @@ const pipeCommands = [
   (_f) => `where status > 400`,
   (_f) => `where duration < 1000 AND status != 200`,
   (_f) => `where bytes > 0`,
-  // FIXME: re-enable once where handler's like() function call bug is fixed:
-  // (_f) => `where like(message, "%error%")`,
+  (_f) => `where like(message, "%error%")`,
+  (_f) => `where NOT like(message, "%test%")`,
+  (_f) => `where like(host, "%web%") AND status=500`,
   (_f) => `strcat host ":" status endpoint`,
   (_f) => `convert num(bytes)`,
   (_f) => `convert auto(duration)`,
@@ -729,19 +725,19 @@ describe('SPL→NRQL property-based fuzz tests', () => {
     );
   });
 
-  // FIXME: known bug — NOT like() and compound like() AND expr produce [object Object].
-  // This test documents the failure. Remove skip and move expressions back to whereExprs
-  // once the where handler's expression walker is fixed.
-  it.skip('buggy where expressions should not produce [object Object]', () => {
-    const arbBuggyWhere = fc
-      .constantFrom(...buggyWhereExprs)
+  it('function-call where expressions never produce [object Object]', () => {
+    const funcCallWheres = whereExprs.filter(
+      (e) => /\w+\(/.test(e), // expressions containing function calls
+    );
+    const arbFuncWhere = fc
+      .constantFrom(...funcCallWheres)
       .map((expr) => `* | where ${expr}`);
     fc.assert(
-      fc.property(arbBuggyWhere, (spl) => {
+      fc.property(arbFuncWhere, (spl) => {
         const r = translateSplToNrql(spl);
         expect(r.nrql).not.toContain('[object Object]');
       }),
-      { numRuns: 50 },
+      { numRuns: 100 },
     );
   });
 
@@ -887,13 +883,7 @@ describe('SPL→NRQL property-based fuzz tests', () => {
 
 // ── Real-world corpus properties ──────────────────────────────────────
 
-// FIXME: queries triggering the known where-handler function-call bug.
-// Remove this filter once the where handler is fixed.
-const knownBuggySubstrings = ['cisco_sd_wan_syslog'];
-function isKnownBuggy(spl) {
-  return knownBuggySubstrings.some((s) => spl.includes(s));
-}
-const cleanCorpus = realWorldCorpus.filter((spl) => !isKnownBuggy(spl));
+// All corpus queries should pass — no known-buggy filter needed
 
 // ── Structural validation helpers ────────────────────────────────────
 
@@ -1044,20 +1034,14 @@ function assertInvariants(spl) {
 }
 
 describe('real-world corpus invariants', () => {
-  it('no query in the corpus crashes or produces [object Object] (excluding known bugs)', () => {
+  it('no query in the corpus crashes or produces [object Object]', () => {
     const failures = [];
-    const knownCount = realWorldCorpus.length - cleanCorpus.length;
-    for (const spl of cleanCorpus) {
+    for (const spl of realWorldCorpus) {
       try {
         assertInvariants(spl);
       } catch (e) {
         failures.push({ spl: spl.slice(0, 120), error: e.message });
       }
-    }
-    if (knownCount > 0) {
-      console.log(
-        `  Known buggy: ${knownCount} corpus queries skipped (where handler function-call bug)`,
-      );
     }
     if (failures.length > 0) {
       const summary = failures
@@ -1065,7 +1049,7 @@ describe('real-world corpus invariants', () => {
         .map((f) => `  SPL: ${f.spl}\n  ERR: ${f.error}`)
         .join('\n\n');
       throw new Error(
-        `${failures.length} of ${cleanCorpus.length} queries failed invariants:\n\n${summary}`,
+        `${failures.length} of ${realWorldCorpus.length} queries failed invariants:\n\n${summary}`,
       );
     }
   });
@@ -1175,13 +1159,16 @@ describe('mutation-based fuzzing', () => {
 
   it('mutated real-world queries never crash or produce [object Object]', () => {
     // Use fast-check to pick a corpus query + mutation + seed for rng
-    const arbCorpusIdx = fc.integer({ min: 0, max: cleanCorpus.length - 1 });
+    const arbCorpusIdx = fc.integer({
+      min: 0,
+      max: realWorldCorpus.length - 1,
+    });
     const arbMutation = fc.constantFrom(...mutationNames);
     const arbSeed = fc.integer({ min: 0, max: 2 ** 31 - 1 });
 
     fc.assert(
       fc.property(arbCorpusIdx, arbMutation, arbSeed, (idx, mutName, seed) => {
-        const original = cleanCorpus[idx];
+        const original = realWorldCorpus[idx];
         const parts = splitPipes(original);
 
         // Simple seeded rng (mulberry32)
@@ -1214,7 +1201,10 @@ describe('mutation-based fuzzing', () => {
   });
 
   it('double-mutation of corpus queries never crashes', () => {
-    const arbCorpusIdx = fc.integer({ min: 0, max: cleanCorpus.length - 1 });
+    const arbCorpusIdx = fc.integer({
+      min: 0,
+      max: realWorldCorpus.length - 1,
+    });
     const arbMut1 = fc.constantFrom(...mutationNames);
     const arbMut2 = fc.constantFrom(...mutationNames);
     const arbSeed = fc.integer({ min: 0, max: 2 ** 31 - 1 });
@@ -1226,7 +1216,7 @@ describe('mutation-based fuzzing', () => {
         arbMut2,
         arbSeed,
         (idx, m1, m2, seed) => {
-          const original = cleanCorpus[idx];
+          const original = realWorldCorpus[idx];
           let parts = splitPipes(original);
 
           let s = seed | 0;
@@ -1247,6 +1237,512 @@ describe('mutation-based fuzzing', () => {
         },
       ),
       { numRuns: 200 },
+    );
+  });
+});
+
+// ── Metamorphic testing ───────────────────────────────────────────────
+// Test relationships between translated queries. We don't know the "right"
+// NRQL for a given SPL, but we know how pairs of related queries should
+// relate to each other.
+
+/** Helper: translate and return NRQL (empty string if errors/unsupported) */
+function nrql(spl) {
+  const r = translateSplToNrql(spl);
+  return r.nrql || '';
+}
+
+/** Helper: extract WHERE clause content from NRQL */
+function extractWhere(nrqlStr) {
+  const m = nrqlStr.match(
+    /WHERE\s+(.+?)(?:\s+(?:FACET|LIMIT|ORDER|SINCE|UNTIL|TIMESERIES)|\s*$)/s,
+  );
+  return m ? m[1].trim() : '';
+}
+
+// hasClause helper removed — unused after refactoring metamorphic tests
+
+describe('metamorphic property tests', () => {
+  const numRuns = 200;
+
+  it('adding | head N always introduces LIMIT', () => {
+    fc.assert(
+      fc.property(arbSearch, fc.integer({ min: 1, max: 1000 }), (search, n) => {
+        const base = nrql(search);
+        const withHead = nrql(`${search} | head ${n}`);
+        if (!base || !withHead) return; // skip parse errors
+        // The head version should have LIMIT
+        expect(withHead).toContain('LIMIT');
+      }),
+      { numRuns },
+    );
+  });
+
+  it('adding a WHERE filter should not shorten the WHERE clause', () => {
+    fc.assert(
+      fc.property(
+        arbSearch,
+        arbField,
+        arbValue.filter((v) => v && !v.includes('*') && v !== ''),
+        (search, field, value) => {
+          const base = nrql(search);
+          const filtered = nrql(`${search} | search ${field}=${value}`);
+          if (!base || !filtered) return;
+          // Adding a filter should make WHERE at least as long (more conditions)
+          // DualCheck expansion makes substring matching unreliable, so we check length
+          const baseWhere = extractWhere(base);
+          const filteredWhere = extractWhere(filtered);
+          if (baseWhere) {
+            expect(filteredWhere.length).toBeGreaterThanOrEqual(
+              baseWhere.length,
+            );
+          }
+        },
+      ),
+      { numRuns },
+    );
+  });
+
+  it('search field order should not change WHERE conditions (commutativity)', () => {
+    fc.assert(
+      fc.property(
+        arbField,
+        arbField.filter((f) => !f.includes('.')), // avoid dotted fields for simpler comparison
+        arbValue.filter((v) => v && v !== '*' && !v.includes('*')),
+        arbValue.filter((v) => v && v !== '*' && !v.includes('*')),
+        (f1, f2, v1, v2) => {
+          if (f1 === f2) return; // skip same-field
+          const forward = nrql(`${f1}=${v1} ${f2}=${v2}`);
+          const reversed = nrql(`${f2}=${v2} ${f1}=${v1}`);
+          if (!forward || !reversed) return;
+          // Both should produce WHERE clauses with the same conditions
+          // (possibly in different order)
+          const fwdWhere = extractWhere(forward);
+          const revWhere = extractWhere(reversed);
+          // Extract individual conditions and sort for comparison
+          const normalize = (w) =>
+            w
+              .split(/\s+AND\s+/)
+              .map((s) => s.trim())
+              .sort()
+              .join(' AND ');
+          expect(normalize(fwdWhere)).toBe(normalize(revWhere));
+        },
+      ),
+      { numRuns },
+    );
+  });
+
+  it('stats count by X should always produce FACET X', () => {
+    fc.assert(
+      fc.property(arbField, (field) => {
+        const result = nrql(`* | stats count by ${field}`);
+        if (!result) return;
+        // Should have FACET with the field name (possibly backticked)
+        expect(result).toMatch(/FACET/);
+        // The field should appear after FACET
+        const facetPart = result.split('FACET')[1] || '';
+        const fieldPattern = field.includes('.')
+          ? `\`${field}\``
+          : field.includes('-')
+            ? `\`${field}\``
+            : field;
+        expect(facetPart).toContain(fieldPattern);
+      }),
+      { numRuns },
+    );
+  });
+
+  it('adding | sort -X should introduce ORDER BY', () => {
+    fc.assert(
+      fc.property(arbField, (field) => {
+        const base = nrql(`* | stats count by ${field}`);
+        const sorted = nrql(`* | stats count by ${field} | sort -count`);
+        if (!base || !sorted) return;
+        expect(sorted).toContain('ORDER BY');
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it('eval assignment should introduce WITH clause', () => {
+    fc.assert(
+      fc.property(arbField, (field) => {
+        const result = nrql(`* | eval x = ${field}`);
+        if (!result) return;
+        expect(result).toContain('WITH');
+        expect(result).toContain('AS');
+      }),
+      { numRuns },
+    );
+  });
+
+  it('timechart should always introduce TIMESERIES', () => {
+    fc.assert(
+      fc.property(arbSearch, fc.constantFrom(...spans), (search, span) => {
+        const result = nrql(`${search} | timechart span=${span} count`);
+        if (!result) return;
+        expect(result).toContain('TIMESERIES');
+      }),
+      { numRuns },
+    );
+  });
+
+  it('rename should not change the number of FACET fields', () => {
+    fc.assert(
+      fc.property(arbField, arbField, (f1, f2) => {
+        if (f1 === f2) return;
+        const base = nrql(`* | stats count by ${f1}`);
+        const renamed = nrql(
+          `* | stats count by ${f1} | rename ${f1} AS ${f2}`,
+        );
+        if (!base || !renamed) return;
+        // Count commas in FACET clause (rough proxy for field count)
+        const facetFields = (s) => {
+          const facet =
+            s
+              .split('FACET')[1]
+              ?.split(/\s+(?:ORDER|LIMIT|SINCE|UNTIL|TIMESERIES)/)[0] || '';
+          return facet.split(',').length;
+        };
+        expect(facetFields(renamed)).toBe(facetFields(base));
+      }),
+      { numRuns },
+    );
+  });
+
+  it('earliest/latest should produce SINCE/UNTIL, not WHERE conditions', () => {
+    fc.assert(
+      fc.property(arbTime, (time) => {
+        const result = nrql(`* ${time}`);
+        if (!result) return;
+        // Time constraints should become SINCE/UNTIL, not WHERE _time > ...
+        const where = extractWhere(result);
+        expect(where).not.toContain('_time');
+        expect(where).not.toContain('timestamp >');
+        expect(where).not.toContain('timestamp <');
+        // Should have SINCE or UNTIL (or both)
+        expect(result).toMatch(/SINCE|UNTIL/);
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
+
+// ── Model-based testing ───────────────────────────────────────────────
+// Model the translator as a stateful system. Each SPL pipe command is a
+// "command" that transforms both a simplified model and the real translator.
+// The model tracks expected structural properties of the output.
+
+/**
+ * Model state — tracks what we expect the NRQL to look like after each command.
+ * This is intentionally simplified: we don't model exact NRQL, just structural
+ * properties that must hold.
+ */
+class TranslatorModel {
+  constructor() {
+    this.hasAggregation = false;
+    this.hasTimeseries = false;
+    this.hasLimit = false;
+    this.hasOrderBy = false;
+    this.hasWhere = false;
+    this.hasFacet = false;
+    this.hasJoin = false;
+    this.hasWith = false;
+    this.pipeCount = 0;
+    this.spl = '*';
+  }
+
+  translate() {
+    return translateSplToNrql(this.spl);
+  }
+
+  appendPipe(pipe) {
+    this.spl += ` | ${pipe}`;
+    this.pipeCount++;
+  }
+}
+
+// Define commands using fast-check's ICommand interface pattern
+class StatsCommand {
+  constructor(field) {
+    this.field = field;
+  }
+  check(_m) {
+    return true;
+  }
+  run(m, _r) {
+    m.appendPipe(`stats count by ${this.field}`);
+    m.hasAggregation = true;
+    // _time maps to timestamp and gets absorbed by TIMESERIES — no FACET
+    if (this.field !== '_time' || !m.hasTimeseries) {
+      m.hasFacet = true;
+    }
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    if (r.nrql) {
+      expect(r.nrql).toContain('count(');
+      // FACET may be absent if _time was absorbed into TIMESERIES
+      if (this.field !== '_time' || !m.hasTimeseries) {
+        expect(r.nrql).toContain('FACET');
+      }
+    }
+  }
+  toString() {
+    return `stats count by ${this.field}`;
+  }
+}
+
+class HeadCommand {
+  constructor(n) {
+    this.n = n;
+  }
+  check(m) {
+    return !m.hasAggregation;
+  } // head after stats is weird but valid
+  run(m, _r) {
+    m.appendPipe(`head ${this.n}`);
+    m.hasLimit = true;
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    if (r.nrql) {
+      expect(r.nrql).toContain('LIMIT');
+    }
+  }
+  toString() {
+    return `head ${this.n}`;
+  }
+}
+
+class EvalCommand {
+  constructor(field) {
+    this.field = field;
+  }
+  check(_m) {
+    return true;
+  }
+  run(m, _r) {
+    m.appendPipe(`eval x = ${this.field} / 1000`);
+    m.hasWith = true;
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    if (r.nrql) {
+      expect(r.nrql).toContain('WITH');
+    }
+  }
+  toString() {
+    return `eval x = ${this.field} / 1000`;
+  }
+}
+
+class WhereCommand {
+  constructor(field, value) {
+    this.field = field;
+    this.value = value;
+  }
+  check(_m) {
+    return true;
+  }
+  run(m, _r) {
+    m.appendPipe(`where ${this.field} > ${this.value}`);
+    m.hasWhere = true;
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    if (r.nrql) {
+      expect(r.nrql).toContain('WHERE');
+    }
+  }
+  toString() {
+    return `where ${this.field} > ${this.value}`;
+  }
+}
+
+class TimechartCommand {
+  constructor(span) {
+    this.span = span;
+  }
+  check(m) {
+    return !m.hasTimeseries;
+  } // only one timechart
+  run(m, _r) {
+    m.appendPipe(`timechart span=${this.span} count`);
+    m.hasAggregation = true;
+    m.hasTimeseries = true;
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    if (r.nrql) {
+      expect(r.nrql).toContain('TIMESERIES');
+    }
+  }
+  toString() {
+    return `timechart span=${this.span} count`;
+  }
+}
+
+class SortCommand {
+  constructor(field) {
+    this.field = field;
+  }
+  check(m) {
+    return m.hasAggregation;
+  } // sort after stats makes sense
+  run(m, _r) {
+    m.appendPipe(`sort -${this.field}`);
+    m.hasOrderBy = true;
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    if (r.nrql) {
+      expect(r.nrql).toContain('ORDER BY');
+    }
+  }
+  toString() {
+    return `sort -${this.field}`;
+  }
+}
+
+class DedupCommand {
+  constructor(field) {
+    this.field = field;
+  }
+  check(m) {
+    return !m.hasAggregation;
+  } // dedup before stats
+  run(m, _r) {
+    m.appendPipe(`dedup ${this.field}`);
+    m.hasAggregation = true; // dedup sets _hasAggregation
+    m.hasFacet = true;
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    if (r.nrql) {
+      expect(r.nrql).toContain('FACET');
+    }
+  }
+  toString() {
+    return `dedup ${this.field}`;
+  }
+}
+
+class FillnullCommand {
+  constructor(field) {
+    this.field = field;
+  }
+  check(m) {
+    return !m.hasAggregation;
+  } // fillnull before stats
+  run(m, _r) {
+    m.appendPipe(`fillnull value=0 ${this.field}`);
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    // fillnull doesn't add a visible clause — it modifies field references
+    // Just verify no crash
+  }
+  toString() {
+    return `fillnull value=0 ${this.field}`;
+  }
+}
+
+class RenameCommand {
+  constructor(field) {
+    this.field = field;
+  }
+  check(_m) {
+    return true;
+  }
+  run(m, _r) {
+    m.appendPipe(`rename ${this.field} AS renamed_field`);
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+  }
+  toString() {
+    return `rename ${this.field} AS renamed_field`;
+  }
+}
+
+class RexCommand {
+  check(_m) {
+    return true;
+  }
+  run(m, _r) {
+    m.appendPipe('rex field=message "user=(?<username>\\\\w+)"');
+    m.hasWith = true;
+    const r = m.translate();
+    expect(r.nrql).not.toContain('[object Object]');
+    if (r.nrql) {
+      expect(r.nrql).toContain('capture(');
+    }
+  }
+  toString() {
+    return 'rex field=message "user=(?<username>\\w+)"';
+  }
+}
+
+// Simple fields for command generation (avoid dotted/dashed to reduce parse noise)
+const simpleFields = fields.filter((f) => /^[a-zA-Z_]+$/.test(f));
+
+const allCommands = [
+  fc.constantFrom(...simpleFields).map((f) => new StatsCommand(f)),
+  fc.integer({ min: 1, max: 500 }).map((n) => new HeadCommand(n)),
+  fc.constantFrom(...simpleFields).map((f) => new EvalCommand(f)),
+  fc
+    .tuple(
+      fc.constantFrom(...simpleFields),
+      fc.constantFrom('100', '200', '500', '1000'),
+    )
+    .map(([f, v]) => new WhereCommand(f, v)),
+  fc.constantFrom(...spans).map((s) => new TimechartCommand(s)),
+  fc.constantFrom('count', 'duration', 'bytes').map((f) => new SortCommand(f)),
+  fc.constantFrom(...simpleFields).map((f) => new DedupCommand(f)),
+  fc.constantFrom(...simpleFields).map((f) => new FillnullCommand(f)),
+  fc.constantFrom(...simpleFields).map((f) => new RenameCommand(f)),
+  fc.constant(new RexCommand()),
+];
+
+describe('model-based testing', () => {
+  it('random command sequences never crash or produce [object Object]', () => {
+    fc.assert(
+      fc.property(
+        fc.commands(allCommands, { size: '+1', maxCommands: 6 }),
+        (cmds) => {
+          const setup = () => ({
+            model: new TranslatorModel(),
+            real: {}, // unused — model holds both state and real system
+          });
+          fc.modelRun(setup, cmds);
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it('all final translations satisfy structural invariants', () => {
+    fc.assert(
+      fc.property(
+        fc.commands(allCommands, { size: '+1', maxCommands: 5 }),
+        (cmds) => {
+          const model = new TranslatorModel();
+          const setup = () => ({ model, real: {} });
+          fc.modelRun(setup, cmds);
+
+          // After all commands, verify the final translation
+          const r = model.translate();
+          if (r.nrql && r.errors.length === 0 && r.unsupported.length === 0) {
+            assertInvariants(model.spl);
+
+            // Metamorphic checks based on model state
+            if (model.hasAggregation) {
+              // Dedup uses FACET + LIMIT MAX (may not have explicit agg function)
+              // Stats/timechart always have an agg function
+              expect(r.nrql).toMatch(
+                /count\(|average\(|sum\(|max\(|min\(|latest\(|FACET/,
+              );
+            }
+            if (model.hasTimeseries) {
+              expect(r.nrql).toContain('TIMESERIES');
+            }
+          }
+        },
+      ),
+      { numRuns: 300 },
     );
   });
 });
