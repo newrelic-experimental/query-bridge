@@ -28,7 +28,7 @@
   },
   "scripts": {
     "prepublishOnly": "npm test",
-    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --no-coverage --config jest.config.js",
+    "test": "vitest run",
     "build:parsers": "peggy -o src/input/spl/splParser.js --format es src/input/spl/spl.grammar",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -45,10 +45,10 @@
     "eslint-config-prettier": "*",
     "fast-check": "*",
     "husky": "*",
-    "jest": "*",
     "lint-staged": "*",
     "peggy": "*",
     "prettier": "*",
-    "typescript": "*"
+    "typescript": "*",
+    "vitest": "*"
   }
 }
