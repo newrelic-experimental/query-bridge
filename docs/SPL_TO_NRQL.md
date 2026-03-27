@@ -8,59 +8,7 @@ See [CLI.md](CLI.md) for the command-line tool documentation.
 
 <!-- toc -->
 - [Heavily Used Commands (50+ occurrences)](#heavily-used-commands-50-occurrences)
-  - [`append` — Supported](#append-supported)
-  - [`appendcols` — Supported](#appendcols-supported)
-  - [`appendpipe` — Supported](#appendpipe-supported)
-  - [`bin` / `bucket` — Supported](#bin-bucket-supported)
-  - [`chart` — Supported](#chart-supported)
-  - [`convert` — Partial support](#convert-partial-support)
-  - [`dedup` — Supported](#dedup-supported)
-  - [`eval` — Supported](#eval-supported)
-  - [`eventstats` — Supported](#eventstats-supported)
-  - [`extract` (`kv`) — Not supported](#extract-kv-not-supported)
-  - [`table` / `fields` — Partial support](#table-fields-partial-support)
-  - [`fillnull` — Supported](#fillnull-supported)
-  - [`foreach` — Not supported](#foreach-not-supported)
-  - [`head` — Supported](#head-supported)
-  - [`join` — Supported](#join-supported)
-  - [`lookup` — Supported](#lookup-supported)
-  - [`mvcombine` — Not supported](#mvcombine-not-supported)
-  - [`mvexpand` — Partial support](#mvexpand-partial-support)
-  - [Pattern 1: Expand-then-filter ("is this value in the array?") — ~40% of usage](#pattern-1-expand-then-filter-is-this-value-in-the-array-40-of-usage)
-  - [Pattern 2: Dedup round-trip (aggregate then re-expand) — ~30% of usage](#pattern-2-dedup-round-trip-aggregate-then-re-expand-30-of-usage)
-  - [Pattern 3: Symmetric counting (mvappend + mvexpand) — ~10% of usage](#pattern-3-symmetric-counting-mvappend-mvexpand-10-of-usage)
-  - [Pattern 4: Expand split results — ~15% of usage](#pattern-4-expand-split-results-15-of-usage)
-  - [Pattern 5: No-op on single-value field — ~5% of usage](#pattern-5-no-op-on-single-value-field-5-of-usage)
-  - [`rename` — Supported](#rename-supported)
-  - [`replace` — Partial support](#replace-partial-support)
-  - [`rex` — Supported](#rex-supported)
-  - [`rex` (sed mode) — Not supported](#rex-sed-mode-not-supported)
-  - [`rex` (PCRE-only features) — Partial support](#rex-pcre-only-features-partial-support)
-  - [`search` (pipe) — Supported](#search-pipe-supported)
-  - [`spath` — Partial support](#spath-partial-support)
-  - [`stats` — Supported](#stats-supported)
-  - [Multiple chained aggregations](#multiple-chained-aggregations)
-  - [`streamstats` — Not supported](#streamstats-not-supported)
-  - [`strcat` — Supported](#strcat-supported)
-  - [`table` — Supported](#table-supported)
-  - [`timechart` — Supported](#timechart-supported)
-  - [`timewrap` — Not supported](#timewrap-not-supported)
-  - [`top` — Supported](#top-supported)
-  - [`top` with `groupby` — Partial support](#top-with-groupby-partial-support)
-  - [`transaction` — Not supported](#transaction-not-supported)
-  - [`where` — Supported](#where-supported)
-  - [`where` on aggregation result — Supported](#where-on-aggregation-result-supported)
-  - [`xmlkv` — Not supported](#xmlkv-not-supported)
-  - [`case()`, `if()`, `validate()`, `null()`, `true()`, `false()`, `isnull()`, `isnotnull()`, `like()`, `match()`, `cidrmatch()`, `in()`, `searchmatch()` — Partial support](#case-if-validate-null-true-false-isnull-isnotnull-like-match-cidrmatch-in-searchmatch-partial-support)
-  - [`lower()`, `upper()`, `len()`, `substr()`, `trim()`, `ltrim()`, `rtrim()`, `replace()`, `split()`, `mvjoin()`, `urldecode()` — Partial support](#lower-upper-len-substr-trim-ltrim-rtrim-replace-split-mvjoin-urldecode-partial-support)
-  - [`abs()`, `ceil()`, `floor()`, `round()`, `log()`, `ln()`, `exp()`, `pow()`, `sqrt()`, `pi()` — Supported](#abs-ceil-floor-round-log-ln-exp-pow-sqrt-pi-supported)
-  - [`coalesce()`, `tonumber()`, `tostring()`, `typeof()`, `isbool()`, `isint()`, `isnum()`, `isstr()` — Partial support](#coalesce-tonumber-tostring-typeof-isbool-isint-isnum-isstr-partial-support)
-  - [`mvindex()`, `mvcount()`, `split()`, `mvjoin()`, `mvappend()`, `mvdedup()`, `mvfind()`, `mvsort()`, `mvzip()` — Partial support](#mvindex-mvcount-split-mvjoin-mvappend-mvdedup-mvfind-mvsort-mvzip-partial-support)
-  - [`now()`, `time()`, `strftime()`, `strptime()`, `relative_time()` — Not supported](#now-time-strftime-strptime-relative-time-not-supported)
 - [Moderate Use Commands (20–49 occurrences)](#moderate-use-commands-20-49-occurrences)
-  - [`iplocation` — Not supported](#iplocation-not-supported)
-  - [`regex` — Supported](#regex-supported)
-  - [`sort` — Supported](#sort-supported)
 - [Rare Use Commands (1–19 occurrences)](#rare-use-commands-1-19-occurrences)
 - [No Observed Usage](#no-observed-usage)
 - [Statistical and Charting Functions](#statistical-and-charting-functions)
@@ -1741,11 +1689,11 @@ SPL:  * | xmlkv
 ```
 <!-- /spl-cases -->
 
-##Eval Functions
+## Eval Functions
 
 Evaluation functions are used inside `eval`, `where`, and `case` expressions.
 
-##Comparison and Conditional
+## Comparison and Conditional
 
 ## `case()`, `if()`, `validate()`, `null()`, `true()`, `false()`, `isnull()`, `isnotnull()`, `like()`, `match()`, `cidrmatch()`, `in()`, `searchmatch()` — Partial support
 
@@ -1855,7 +1803,7 @@ NRQL: FROM Log WITH 'only' AS x SELECT *
 ```
 <!-- /spl-cases -->
 
-##String Functions
+## String Functions
 
 ## `lower()`, `upper()`, `len()`, `substr()`, `trim()`, `ltrim()`, `rtrim()`, `replace()`, `split()`, `mvjoin()`, `urldecode()` — Partial support
 
@@ -2007,7 +1955,7 @@ SPL:  * | eval json_content=replace(json_content, "'", "\"") | spath input=json_
 ```
 <!-- /spl-cases -->
 
-##Math Functions
+## Math Functions
 
 ## `abs()`, `ceil()`, `floor()`, `round()`, `log()`, `ln()`, `exp()`, `pow()`, `sqrt()`, `pi()` — Supported
 
@@ -2063,7 +2011,7 @@ NRQL: FROM Log WITH log10(val) AS x SELECT *
 ```
 <!-- /spl-cases -->
 
-##Type Conversion
+## Type Conversion
 
 ## `coalesce()`, `tonumber()`, `tostring()`, `typeof()`, `isbool()`, `isint()`, `isnum()`, `isstr()` — Partial support
 
@@ -2107,7 +2055,7 @@ SPL:  * | eval x=isstr(val)
 ```
 <!-- /spl-cases -->
 
-##Multivalue Functions
+## Multivalue Functions
 
 ## `mvindex()`, `mvcount()`, `split()`, `mvjoin()`, `mvappend()`, `mvdedup()`, `mvfind()`, `mvsort()`, `mvzip()` — Partial support
 
@@ -2189,7 +2137,7 @@ SPL:  * | eval joined = mvjoin(tags, ", ")
 ```
 <!-- /spl-cases -->
 
-##Date/Time Functions — Not supported
+## Date/Time Functions — Not supported
 
 ## `now()`, `time()`, `strftime()`, `strptime()`, `relative_time()` — Not supported
 
@@ -2288,48 +2236,31 @@ NRQL: FROM Log SELECT * ORDER BY firstTime DESC
 
 # Rare Use Commands (1–19 occurrences)
 
----
+### Unsupported
 
+| Command | Workaround |
+|---|---|
+| `accum` | None — NRQL has no running/cumulative aggregation |
+| `addtotals` | Subquery for column totals; `eval a+b+c` for row totals |
+| `delta` | None — no row-over-row difference; requires client-side processing |
+| `format` | None — NRQL subqueries don't need explicit formatting |
+| `from` | Use `FROM <EventType>` directly |
+| `highlight` | None — presentation-layer concern |
+| `makemv` | `capture()` for regex extraction or `aparse()` for delimiter splitting |
+| `map` | None — NRQL has no per-row dynamic subquery execution |
+| `mstats` | Query `FROM Metric` directly: `FROM Metric SELECT average(cpu.percent) FACET host` |
+| `multikv` | `capture()` or `aparse()` to extract key-value pairs from structured text |
+| `nomv` | N/A — NRQL doesn't have multivalue fields |
+| `outlier` | `WHERE x BETWEEN avg-N*stddev AND avg+N*stddev` via subquery for thresholds |
+| `outputlookup` | None — NRQL is read-only; use NerdGraph API |
+| `selfjoin` | `JOIN` subquery: `FROM Event JOIN (FROM Event SELECT ... FACET key LIMIT MAX) ON key` |
+| `set` | Union: multiple types in `FROM`; intersect/diff: `WHERE x IN (subquery)` |
+| `tail` | `ORDER BY timestamp ASC LIMIT N` |
+| `transpose` | None — restructure the query to FACET on the desired axis |
+| `uniq` | `FACET` with `latest()` on all fields |
+| `xyseries` | None — use `FACET` which produces separate series natively |
 
-## `accum` — Not supported
-
-Computes running totals over events. NRQL has no running/cumulative aggregation. Each row in NRQL results is independent — there's no concept of row-order-dependent calculations.
-
-<!-- spl-cases: reports-accum -->
-```
-✅ Confirmed by human
-SPL:  * | accum bytes as running_total
-🔴 SPL command 'accum' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `addtotals` — Not supported
-
-Adds row or column totals to results. NRQL has no built-in total rows. Use a separate query for totals.
-
-## `delta` — Not supported
-
-Computes the difference between consecutive field values. NRQL has no row-over-row computation; use `derivative()` for time-series rate of change.
-
-## `format` — Not supported
-
-Formats subsearch results into a search string. NRQL subqueries use a different syntax and don't require explicit formatting.
-
-## `from` — Not supported
-
-Retrieves data from a dataset, report, or data model. In NRQL, `FROM` is the standard clause to specify the event type. The SPL `from` command's dataset/report abstraction layer has no counterpart.
-
-## `highlight` — Not supported
-
-Highlights search terms in results. This is a Splunk UI display feature with no NRQL equivalent. New Relic's log viewer handles highlighting in the presentation layer.
-
-<!-- spl-cases: results-highlight -->
-```
-✅ Confirmed by human
-SPL:  * | highlight error warning
-🔴 SPL command 'highlight' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
+### Supported
 
 ## `inputlookup` — Supported
 
@@ -2372,54 +2303,6 @@ SPL:  * | join host [inputlookup servers.csv]
 🔴 Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over
 ```
 <!-- /spl-cases -->
-
-## `makemv` — Not supported
-
-Splits a single-value field into a multivalue field. NRQL does not have multivalue fields; consider sending separate events at ingest time.
-
-**Why this exists in Splunk:** Splunk stores everything as raw text strings. When a field contains comma-separated values like `"web,mobile,api"`, `makemv` splits it into an array so other commands (`mvexpand`, `mvcount`, `mvindex`) can iterate over the values. This is Splunk's way of handling structured data within its flat text model.
-
-**In New Relic:** If your data arrives as JSON, arrays are already arrays — no splitting needed. If data arrives as CSV-in-a-string, use the `capture()` function or restructure the data at ingest to send proper JSON arrays.
-
-## `map` — Not supported
-
-Runs a search for each result of a previous search (like a for-each loop). NRQL has no iterative execution — each query is a single pass over the data.
-
-## `mstats` — Not supported
-
-Performs statistical queries against the Splunk metrics store. For New Relic metrics, query the `Metric` event type directly: `FROM Metric SELECT average(cpu.percent) FACET host`.
-
-<!-- spl-cases: metrics-mstats -->
-```
-✅ Confirmed by human
-SPL:  | mstats avg(cpu.percent) by host
-🔴 SPL command 'mstats' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `multikv` — Not supported
-
-Extracts fields from table-formatted events (like command output with headers and columns). NRQL has no structured-text parsing; preprocess at ingest time.
-
-## `nomv` — Not supported
-
-Converts a multivalue field to a single value. NRQL does not have multivalue fields.
-
-<!-- spl-cases: fields-nomv -->
-```
-✅ Confirmed by human
-SPL:  * | nomv values
-🔴 SPL command 'nomv' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `outlier` — Not supported
-
-Removes outliers from results based on mean/standard deviation. NRQL can filter using `stddev()` in a subquery pattern, but has no single-command outlier removal.
-
-## `outputlookup` — Not supported
-
-Writes results to a lookup table. No NRQL equivalent. Lookup tables in New Relic are managed via NerdGraph API.
 
 ## `rare` — Supported
 
@@ -2492,380 +2375,96 @@ NRQL: FROM Log SELECT count(*) FACET host ORDER BY timestamp ASC
 ```
 <!-- /spl-cases -->
 
-## `selfjoin` — Not supported
-
-Joins results with themselves on a shared field. NRQL JOIN requires two different event types; self-joins are not supported.
-
-<!-- spl-cases: correlation-selfjoin -->
-```
-✅ Confirmed by human
-SPL:  * | selfjoin host
-🔴 SPL command 'selfjoin' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `set` — Not supported
-
-Performs set operations (union, diff, intersect) on subsearch results. NRQL has no set algebra operators.
-
-<!-- spl-cases: correlation-set -->
-```
-✅ Confirmed by human
-SPL:  * | set union
-🔴 SPL command 'set' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `tail` — Not supported
-
-Returns the last N results. NRQL has no reverse-order limit — results are always ordered newest-first by default, and `LIMIT` takes from the top.
-
-<!-- spl-cases: results-tail -->
-```
-❓ Not confirmed
-SPL:  * | tail 10
-NRQL: FROM Log SELECT * ORDER BY timestamp ASC LIMIT 10
-```
-<!-- /spl-cases -->
-
-## `transpose` — Not supported
-
-Transposes rows and columns in results. NRQL has no pivot/transpose operation. Result reshaping is handled by the visualization layer.
-
-<!-- spl-cases: results-transpose -->
-```
-✅ Confirmed by human
-SPL:  * | stats count by host | transpose
-🔴 SPL command 'transpose' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `uniq` — Not supported
-
-Removes consecutive duplicate events. Translates similarly to `dedup`.
-
-<!-- spl-cases: results-uniq -->
-```
-✅ Confirmed by human
-SPL:  * | sort host | uniq
-🔴 `uniq` has no direct NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `xyseries` — Not supported
-
-Converts results to a format suitable for graphing. No NRQL equivalent — chart formatting is handled by the visualization layer.
-
----
-
 # No Observed Usage
 
-Commands with zero occurrences in customer query data and security detection rules. Brief descriptions only.
-
----
-
-
-## `abstract` — Not supported
-
-Generates a summary of each event's text. Splunk-specific text summarization feature with no NRQL equivalent.
-
-## `addcoltotals` — Not supported
-
-Adds a summary row with column totals to the results. NRQL has no mechanism to add synthetic summary rows to query output.
-
-## `addinfo` — Not supported
-
-Adds search metadata fields (search time range, search ID) to each event. NRQL has no concept of adding query metadata to result rows.
-
-## `analyzefields` — Not supported
-
-Analyzes fields for their ability to predict another field. Splunk ML toolkit feature with no NRQL equivalent.
-
-## `anomalies` — Not supported
-
-Identifies anomalous events using statistical analysis. NRQL has no built-in anomaly detection at query time. New Relic provides anomaly detection through Applied Intelligence and alert conditions, not the query language.
-
-<!-- spl-cases: anomalies-anomalies -->
-```
-✅ Confirmed by human
-SPL:  * | anomalies field=count
-🔴 SPL command 'anomalies' has no known NRQL equivalent
-```
-
-```
-❓ Not confirmed
-SPL:  * | timechart span=5m avg(duration) | anomalydetection
-🔴 SPL command 'anomalydetection' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `anomalydetection` — Not supported
-
-Detects anomalies in time-series data using machine learning. NRQL has no built-in ML; New Relic provides anomaly detection through alert conditions with baseline thresholds.
-
-## `anomalousvalue` — Not supported
-
-Finds fields with unusual values. Splunk ML toolkit feature with no NRQL equivalent.
-
-## `arules` — Not supported
-
-Discovers association rules between field values (market basket analysis). Splunk ML toolkit feature.
-
-## `associate` — Not supported
-
-Identifies correlations between fields. Splunk ML toolkit feature.
-
-## `autoregress` — Not supported
-
-Computes moving averages and autoregressive values by referencing previous event values. NRQL has no row-ordering or lag/lead functions; use `TIMESERIES` with `slidingWindow()` for moving averages.
-
-## `bucketdir` — Not supported
-
-Replaces directory paths with higher-level groupings. Splunk-specific path manipulation.
-
-## `cluster` — Not supported
-
-Clusters similar events together based on field values. NRQL has no clustering algorithm. New Relic Logs provides pattern detection in the UI, but it's not accessible via NRQL.
-
-<!-- spl-cases: anomalies-cluster -->
-```
-✅ Confirmed by human
-SPL:  * | cluster showcount=true
-🔴 SPL command 'cluster' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `cofilter` — Not supported
-
-Finds associations between field values using co-occurrence analysis. Splunk ML toolkit feature with no NRQL equivalent.
-
-## `collect` — Not supported
-
-Writes results to a Splunk index. No NRQL equivalent.
-
-## `concurrency` — Not supported
-
-Computes the number of concurrent events over time. NRQL has no overlapping-interval analysis; use `TIMESERIES` with `count(*)` for approximate concurrency.
-
-## `contingency` — Not supported
-
-Builds a contingency table showing the frequency of field value pairs. NRQL can approximate this with `SELECT count(*) FACET field1, field2`, but has no formal contingency/chi-squared analysis.
-
-## `correlate` — Not supported
-
-Calculates correlations between fields. NRQL has no built-in correlation or statistical relationship functions.
-
-## `ctable` — Not supported
-
-Alias for `contingency`. See [Reports > contingency](#contingency--not-supported).
-
-## `datamodel` — Not supported
-
-Accesses Splunk's data model acceleration. Data models are a Splunk-specific abstraction layer; New Relic uses event types and attributes directly.
-
-## `datamodelsimple` — Not supported
-
-Simplified access to data model objects. Same Splunk-specific limitation as `datamodel`.
-
-<!-- spl-cases: data-datamodel -->
-```
-✅ Confirmed by human
-SPL:  | datamodel Authentication
-🔴 SPL command 'datamodel' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `dbinspect` — Not supported
-
-Returns information about Splunk indexes (bucket counts, sizes, time ranges). No NRQL equivalent — New Relic index metadata is accessed through the platform UI and NerdGraph API, not query language.
-
-## `dbxquery` — Not supported
-
-Runs SQL queries against external databases. NRQL only queries New Relic's telemetry database — external database access requires application-level integrations.
-
-## `delete` — Not supported
-
-Deletes events from a Splunk index. NRQL is read-only — data lifecycle is managed by retention policies and drop rules, not query commands.
-
-## `diff` — Not supported
-
-Compares two search results. NRQL has no result-set comparison operator.
-
-## `entitymerge` — Not supported
-
-Merges entities in IT Service Intelligence. Splunk ITSI-specific feature.
-
-## `erex` — Not supported
-
-Automatically generates extraction rules from example values. NRQL has no machine-learning-based field extraction; use `rex` (capture()) or `spath` (jparse()) instead.
-
-## `eventcount` — Not supported
-
-Returns the count of events in indexes. NRQL provides `SELECT count(*) FROM Log` for event counts, but `eventcount` is about Splunk index-level metadata, not query results.
-
-## `fieldformat` — Not supported
-
-Sets the display format for a field without changing its underlying value. NRQL has no display-formatting layer — formatting is handled by the visualization/UI.
-
-## `filldown` — Not supported
-
-Fills null values with the last non-null value from a previous event. NRQL processes each event independently — there's no row-ordering or carry-forward mechanism.
-
-## `findtypes` — Not supported
-
-Identifies field value types from event data. Splunk-specific type inference.
-
-## `folderize` — Not supported
-
-Creates a folder hierarchy from search results. Splunk UI-specific feature.
-
-## `fromjson` — Not supported
-
-Extracts fields from a JSON string field. Use `spath` / `jparse()` in NRQL for JSON field extraction.
-
-## `gauge` — Not supported
-
-Displays a single numeric value in a gauge visualization. This is a Splunk visualization command; NRQL visualization is handled by New Relic dashboards and chart types.
-
-## `geom` — Not supported
-
-Adds geographic polygons for choropleth map visualization. Splunk-specific visualization feature.
-
-## `geomfilter` — Not supported
-
-Filters geographic data to a bounding box for map visualizations. Splunk-specific visualization feature.
-
-## `geostats` — Not supported
-
-Generates statistics for geographic coordinates for map overlays. NRQL can FACET by geographic attributes but has no built-in geospatial aggregation functions.
-
-## `gentimes` — Not supported
-
-Generates time-range events. NRQL has no synthetic event generation; use `TIMESERIES` for time bucketing.
-
-## `history` — Not supported
-
-Returns the search history. NRQL has no query history command; use the New Relic UI or NerdGraph for query history.
-
-## `iconify` — Not supported
-
-Adds icons to field values in Splunk's UI. Presentation-layer feature.
-
-## `ingestpreview` — Not supported
-
-Previews data ingestion settings. Splunk admin feature.
-
-## `inputcsv` — Not supported
-
-Reads search results from a CSV file on the Splunk server. NRQL has no file system access; use lookup tables or NerdGraph for external data.
-
-## `inputintelligence` — Not supported
-
-Provides intelligence about data inputs. Splunk admin feature.
-
-## `kmeans` — Not supported
-
-Performs k-means clustering on search results. Splunk ML toolkit feature with no NRQL equivalent.
-
-## `kvform` — Not supported
-
-Extracts fields using predefined extraction templates. NRQL has no template-based extraction mechanism.
-
-## `loadjob` — Not supported
-
-Loads results from a previously completed search job. NRQL has no job persistence; re-run the query or use dashboards to save query configurations.
-
-## `localize` — Not supported
-
-Returns time ranges where events occur. NRQL can approximate with `TIMESERIES` and filtering.
-
-## `localop` — Not supported
-
-Forces a search to run on the local search head only. Internal to Splunk's distributed architecture.
-
-## `makecontinuous` — Not supported
-
-Makes a numeric field continuous by filling gaps with zero-count bins. NRQL `TIMESERIES` provides time-based continuity, but there's no general-purpose gap-filling for arbitrary numeric fields.
-
-## `makeresults` — Not supported
-
-Generates a specified number of empty result rows. NRQL has no synthetic row generation. Use hardcoded values in `SELECT` if you need constants.
-
-## `mcatalog` — Not supported
-
-Returns metadata about metrics in the Splunk metrics store. New Relic metric metadata is accessed via NerdGraph or the Metric Explorer UI.
-
-## `mcollect` — Not supported
-
-Writes results to the Splunk metrics store. No NRQL equivalent.
-
-<!-- spl-cases: results-mcollect -->
-```
-✅ Confirmed by human
-SPL:  * | mcollect index=metrics_idx
-🔴 SPL command 'mcollect' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `metadata` — Not supported
-
-Returns metadata about sources, sourcetypes, or hosts in an index. New Relic attribute cardinality and metadata are accessed via NerdGraph or the Data Explorer UI.
-
-## `metasearch` — Not supported
-
-Searches index metadata rather than events. NRQL queries events directly; index metadata is managed through the New Relic platform.
-
-<!-- spl-cases: data-metadata -->
-```
-✅ Confirmed by human
-SPL:  | metadata type=sources
-🔴 SPL command 'metadata' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `mpreview` — Not supported
-
-Previews data from a metrics index. No NRQL equivalent.
-
-## `multisearch` — Not supported
-
-Runs multiple searches simultaneously and combines the results. NRQL has no UNION operator to merge result sets from separate queries into a single output.
-
-## `outputcsv` — Not supported
-
-Writes results to a CSV file on the Splunk server. No NRQL equivalent. Use New Relic's export features (UI export, NerdGraph, or streaming).
-
-<!-- spl-cases: results-outputcsv -->
-```
-✅ Confirmed by human
-SPL:  * | outputcsv results.csv
-🔴 SPL command 'outputcsv' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `outputtext` — Not supported
-
-Converts results to plain text format. NRQL output formatting is handled by the platform (JSON, CSV export, etc.).
-
-## `overlap` — Not supported
-
-Finds events that overlap in time based on start/end fields. NRQL has no interval-overlap analysis.
-
-## `pivot` — Not supported
-
-References a data model dataset and creates a pivot table. Pivot is built on Splunk's data model layer which has no NRQL counterpart.
-
-<!-- spl-cases: data-pivot -->
-```
-✅ Confirmed by human
-SPL:  | pivot Web_Traffic count
-🔴 SPL command 'pivot' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `predict` — Not supported
-
-Forecasts future values using time series algorithms. NRQL has no built-in forecasting. New Relic provides baseline alerting through Applied Intelligence, but forecasting is not available in the query language.
+Commands with zero occurrences in customer query data and security detection rules.
+
+| Command | Workaround |
+|---|---|
+| `abstract` | None — Splunk-specific text summarization |
+| `addcoltotals` | Subquery: `FROM (inner FACET x) SELECT sum(col)` |
+| `addinfo` | None — query metadata not available in NRQL |
+| `analyzefields` | None — Splunk ML toolkit feature |
+| `anomalies` | Use NR Applied Intelligence alert conditions |
+| `anomalydetection` | Use NR alert conditions with baseline thresholds |
+| `anomalousvalue` | None — Splunk ML toolkit feature |
+| `arules` | None — Splunk ML toolkit feature |
+| `associate` | None — Splunk ML toolkit feature |
+| `autoregress` | `TIMESERIES` with `slidingWindow()` for moving averages |
+| `bucketdir` | None — Splunk-specific path manipulation |
+| `cluster` | NR Logs pattern detection in UI (not via NRQL) |
+| `cofilter` | None — Splunk ML toolkit feature |
+| `collect` | None — NRQL is read-only; use Events API for writes |
+| `concurrency` | `TIMESERIES` with `count(*)` for approximate concurrency |
+| `contingency` / `ctable` | `SELECT count(*) FACET field1, field2` |
+| `correlate` | None — no built-in correlation functions |
+| `datamodel` / `datamodelsimple` | Query event types directly with `FROM <EventType>` |
+| `dbinspect` | NerdGraph API or platform UI for index metadata |
+| `dbxquery` | None — NRQL only queries NR telemetry |
+| `delete` | Retention policies and drop rules at ingest |
+| `diff` | None — no result-set comparison |
+| `entitymerge` | None — Splunk ITSI-specific |
+| `erex` | Use `capture()` or `aparse()` with explicit patterns |
+| `eventcount` | `SELECT count(*) FROM Log` |
+| `fieldformat` | None — formatting handled by visualization layer |
+| `filldown` | None — no row-ordering carry-forward |
+| `findtypes` | None — Splunk-specific type inference |
+| `folderize` | None — Splunk UI-specific |
+| `fromjson` | `jparse()` for JSON field extraction |
+| `gauge` | NR dashboard chart types handle visualization |
+
+| `geom` / `geomfilter` / `geostats` | None — Splunk-specific geo visualization |
+| `gentimes` | `TIMESERIES` for time bucketing |
+| `history` | NerdGraph or NR UI for query history |
+| `iconify` | None — presentation-layer feature |
+| `ingestpreview` / `inputintelligence` | None — Splunk admin features |
+| `inputcsv` | Lookup tables or NerdGraph for external data |
+| `kmeans` | None — Splunk ML toolkit feature |
+| `kvform` | None — use `capture()` or `aparse()` |
+| `loadjob` | Re-run the query or use dashboards |
+| `localize` | `TIMESERIES` with filtering |
+| `localop` | None — Splunk distributed architecture internal |
+| `makecontinuous` | `TIMESERIES` for time-based continuity |
+| `makeresults` | Hardcoded values in `SELECT` |
+| `mcatalog` | NerdGraph or Metric Explorer UI |
+| `mcollect` | None — NRQL is read-only |
+| `metadata` / `metasearch` | NerdGraph or Data Explorer UI |
+| `mpreview` | None |
+| `multisearch` | Multiple types in `FROM` (no true UNION) |
+| `outputcsv` / `outputtext` | NR export features (UI, NerdGraph, streaming) |
+| `overlap` | None — no interval-overlap analysis |
+| `pivot` | None — Splunk data model feature |
+| `rangemap` | `cases(WHERE val < 10, 'low', WHERE val < 50, 'med', ...)` |
+| `reltime` | None — visualization layer handles time display |
+| `require` | `WHERE field IS NOT NULL` |
+| `rest` | None — use NerdGraph for platform API access |
+| `rtorder` | None — Splunk real-time search internal |
+| `run` / `script` | None — NRQL has no external execution |
+| `savedsearch` | Dashboard widget queries or NerdGraph |
+| `scrub` | Drop rules or obfuscation rules at ingest |
+| `searchtxn` | None — no transaction grouping |
+| `sendemail` | NR alert notifications or scheduled exports |
+
+
+| `setfields` | `WITH` clause to assign constants |
+| `sichart` / `sitimechart` / `sirare` / `sistats` / `sitop` | Events-to-metrics rules for precomputation |
+| `tags` | NR entity tags and attribute-based filtering |
+| `tojson` | None — no JSON serialization in NRQL |
+| `trendline` | `TIMESERIES` with `COMPARE WITH` for trend comparison |
+| `tscollect` | None — NR handles performance via storage engine |
+| `tstats` | Query event types directly; identify which sourcetypes populate the data model |
+| `union` | Multiple types in `FROM` (no true UNION) |
+| `untable` | None — visualization layer controls format |
+| `walklex` | None — Splunk index introspection |
+| `x11` | None — Splunk ML toolkit feature |
+| `xmlunescape` | Preprocess at ingest |
+| `xpath` | Convert to JSON at ingest, use `jparse()` |
+
+### Partially supported
+
+## `predict` — Partial support
+
+Forecasts future values. NRQL supports `PREDICT` but requires `TIMESERIES` — the translator adds it automatically if missing.
 
 <!-- spl-cases: prediction-predict -->
 ```
@@ -2876,259 +2475,26 @@ NRQL: FROM Log SELECT count(*) TIMESERIES AUTO PREDICT
 ```
 <!-- /spl-cases -->
 
-## `rangemap` — Not supported
+### Subsearch commands
 
-Maps numeric field values to named ranges (like "low", "medium", "high"). Use `cases()` in NRQL for equivalent range classification: `cases(WHERE value < 10, 'low', WHERE value < 50, 'medium', WHERE value >= 50, 'high')`.
+| Command | Workaround |
+|---|---|
+| `format` | NRQL subqueries don't need explicit formatting |
+| `return` | NRQL subqueries return scalar values directly |
+| `set` | See `set` in Rare Use table above |
 
-## `reltime` — Not supported
+### Internal / 3rd-Party
 
-Converts a timestamp field to a human-readable relative time string (e.g., "2 hours ago"). NRQL handles time display in the visualization layer.
+Splunk internal and 3rd-party commands. None have NRQL equivalents.
 
-## `require` — Not supported
+`collapse`, `dump`, `findkeywords`, `makejson`, `noop`, `prjob`, `redistribute`, `runshellscript` — Splunk search pipeline internals.
 
-Filters events to those containing specific fields. Use `WHERE field IS NOT NULL` in NRQL.
+`awssnsalert`, `sendalert` — Use NR alert notification channels. `snowincident`, `snowevent` — Use NR ServiceNow integration. `typeahead`, `typelearner`, `typer` — Splunk-specific.
 
-## `rest` — Not supported
-
-Accesses Splunk's internal REST API from within a search. NRQL queries run against telemetry data only — platform API access uses NerdGraph, not the query language.
-
-<!-- spl-cases: data-rest -->
-```
-✅ Confirmed by human
-SPL:  | rest /services/server/info
-🔴 SPL command 'rest' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `rtorder` — Not supported
-
-Buffers real-time search results to enforce time ordering. Internal to Splunk's real-time search.
-
-## `run` / `script` — Not supported
-
-Executes an external script or command. NRQL is a pure query language with no external execution.
-
-## `savedsearch` — Not supported
-
-Runs a saved search by name. NRQL queries are stored in dashboards and alerts, not as named saved searches. Use dashboard widget queries or NerdGraph to retrieve stored queries.
-
-## `scrub` — Not supported
-
-Anonymizes search results by replacing field values with hashed or randomized equivalents. NRQL has no data masking at query time; use drop rules or obfuscation rules at ingest.
-
-## `searchtxn` — Not supported
-
-Searches within transaction results. NRQL has no transaction grouping; see [Correlation > transaction](#transaction--not-supported).
-
-## `sendemail` — Not supported
-
-Sends results via email. No NRQL equivalent. Use New Relic alert notifications or scheduled query exports.
-
-<!-- spl-cases: results-sendemail -->
-```
-✅ Confirmed by human
-SPL:  * | sendemail to="admin@example.com"
-🔴 SPL command 'sendemail' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `setfields` — Not supported
-
-Sets field values to a literal value. Use `eval` / `WITH` in NRQL to assign constants to fields.
-
-## `sichart` / `sitimechart` — Not supported
-
-Summary indexing commands that write precomputed aggregations back to Splunk indexes. New Relic handles precomputation through events-to-metrics rules and Metric data types, not query-time commands.
-
-<!-- spl-cases: data-sichart -->
-```
-✅ Confirmed by human
-SPL:  * | sichart count by host
-🔴 SPL command 'sichart' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `sirare` — Not supported
-
-Summary indexing variant of `rare`. Writes precomputed rare-value results back to an index. See [Data and Indexes > sichart](#sichart--sitimechart--not-supported).
-
-## `sistats` — Not supported
-
-Summary indexing variant of `stats`. Writes precomputed statistics back to an index. See [Data and Indexes > sichart](#sichart--sitimechart--not-supported).
-
-## `sitimechart` — Not supported
-
-Summary indexing variant of `timechart`. See [Data and Indexes > sichart](#sichart--sitimechart--not-supported).
-
-## `sitop` — Not supported
-
-Summary indexing variant of `top`. See [Data and Indexes > sichart](#sichart--sitimechart--not-supported).
-
-## `tags` — Not supported
-
-Adds tags to events based on field values and tag definitions. New Relic uses entity tags and attribute-based filtering instead of a tag command.
-
-## `tojson` — Not supported
-
-Converts field values to JSON format. NRQL has no built-in JSON serialization function.
-
-## `trendline` — Not supported
-
-Computes moving averages over time series data. NRQL has no moving average function. For trend analysis, use `TIMESERIES` with `COMPARE WITH` to compare time periods.
-
-<!-- spl-cases: prediction-trendline -->
-```
-✅ Confirmed by human
-SPL:  * | trendline sma5(count) as trend
-🔴 SPL command 'trendline' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
-
-## `tscollect` — Not supported
-
-Writes results to a time-series collection (tsidx) for accelerated access. Splunk-specific acceleration; New Relic handles query performance through its storage engine, not user-managed indexes.
-
-## `tstats` — Not supported
-
-Performs statistical queries on indexed fields or data model datasets. This is Splunk's acceleration layer; NRQL queries all data directly without a separate accelerated path.
-
-<!-- spl-cases: data-tstats -->
-```
-✅ Confirmed by human
-SPL:  | tstats count FROM datamodel=Endpoint.Processes
-🔴 `tstats` queries target Splunk CIM data models which normalize events from multiple sourcetypes into a standard schema. To translate, identify which sourcetypes populate the data model in your Splunk deployment, then query those events directly using their raw field names.
-```
-<!-- /spl-cases -->
-
-## `union` — Not supported
-
-Merges results from two or more datasets. NRQL has no UNION operator — you can query multiple event types with `FROM Type1, Type2`, but cannot merge arbitrary result sets.
-
-## `untable` — Not supported
-
-Converts results from a tabular format to a list format. No NRQL equivalent — result format is controlled by the visualization layer.
-
-## `walklex` — Not supported
-
-Returns the terms in the index lexicon. This is a Splunk index-level introspection command with no NRQL equivalent.
-
-## `x11` — Not supported
-
-Performs seasonal decomposition on time series data. Splunk ML toolkit feature with no NRQL equivalent.
-
-## `xmlunescape` — Not supported
-
-Unescapes XML-encoded characters in field values. NRQL has no string unescaping functions; preprocess at ingest time.
-
-## `xpath` — Not supported
-
-Extracts values from XML data using XPath expressions. NRQL has no XML or XPath support; convert to JSON at ingest and use `jparse()`.
-
-
-##Subsearch
-
-Subsearch lets you use the results of one search as an argument to another.
-
-
-## `format` — Not supported
-
-Formats subsearch results into a search string. NRQL subqueries use a different syntax and don't require explicit formatting.
-
-## `return` — Not supported
-
-Returns field values from a subsearch. NRQL subqueries return scalar values directly.
-
-## `set` — Not supported
-
-See [Correlation > `set`](#set--not-supported).
-
-SPL subsearches translate partially to NRQL subqueries and JOINs. See [Correlation > `join`](#join) for the closest equivalent.
-
----
-
-##Internal
-
-Splunk internal commands used by the search pipeline. These are implementation details of Splunk's distributed search architecture.
-
-## `collapse` — Not supported
-
-Collapses events from distributed search. Internal to Splunk's distributed search processing.
-
-## `dump` — Not supported
-
-Exports raw data for debugging. Internal diagnostic command.
-
-## `findkeywords` — Not supported
-
-Identifies distinguishing keywords between two sets of events. Internal analysis command.
-
-## `makejson` — Not supported
-
-Creates a JSON string from field values. NRQL has no JSON serialization functions.
-
-## `noop` — Not supported
-
-A no-operation command used for testing or disabling parts of a search pipeline. No NRQL equivalent needed.
-
-## `prjob` — Not supported
-
-Internal command for managing parallel reduce jobs in distributed search.
-
-## `redistribute` — Not supported
-
-Redistributes data across search processors for load balancing. Internal to Splunk's distributed architecture.
-
-## `runshellscript` — Not supported
-
-Executes a shell script from within a search. NRQL is a pure query language with no system-level execution.
-
----
-
-##3rd-Party and Custom Commands
-
-Add-on commands provided by Splunk apps and technology add-ons.
-
-## `awssnsalert` — Not supported
-
-Sends alerts via Amazon SNS (Splunk Add-on for AWS). Use New Relic alert notification channels instead.
-
-## `sendalert` — Not supported
-
-Triggers a custom alert action. Use New Relic alert policies and notification workflows.
-
-## `snowincident` / `snowincidentstream` — Not supported
-
-Creates ServiceNow incidents (Splunk Add-on for ServiceNow). Use New Relic's ServiceNow integration for incident creation.
-
-## `snowevent` / `snoweventstream` — Not supported
-
-Creates ServiceNow events (Splunk Add-on for ServiceNow). Use New Relic's ServiceNow integration.
-
-## `typeahead` — Not supported
-
-Provides search term suggestions. This is a Splunk UI feature; New Relic has its own query autocomplete.
-
-## `typelearner` — Not supported
-
-Learns event types from data patterns. Splunk-specific type inference.
-
-## `typer` — Not supported
-
-Assigns event types to events. Splunk-specific event classification.
-
----
-
-##Unknown commands
+### Unknown commands
 
 Commands not recognized by the translator produce a generic unsupported message.
 
-<!-- spl-cases: unsupported-unknown -->
-```
-✅ Confirmed by human
-SPL:  * | xyzcommand foo bar
-🔴 SPL command 'xyzcommand' has no known NRQL equivalent
-```
-<!-- /spl-cases -->
 
 ---
 
@@ -3137,7 +2503,7 @@ SPL:  * | xyzcommand foo bar
 
 # Statistical and Charting Functions
 
-##Stats Function Mapping
+## Stats Function Mapping
 
 <!-- spl-table: stats-functions -->
 | SPL function | NRQL function | Notes |
@@ -3283,7 +2649,7 @@ NRQL: FROM Log SELECT percentile(numeric(duration) / 1000, 95) AS 'p95_sec'
 ```
 <!-- /spl-cases -->
 
-##Stats Functions with No NRQL Equivalent
+## Stats Functions with No NRQL Equivalent
 
 <!-- spl-table: stats-no-equiv -->
 | SPL function | Notes |
@@ -3320,7 +2686,7 @@ NRQL: FROM Log SELECT * FACET host
 
 # Time Format Variables and Modifiers
 
-##Time constraints (earliest/latest)
+## Time constraints (earliest/latest)
 
 SPL time modifiers like `earliest=-24h` and `latest=now` translate to NRQL `SINCE` and `UNTIL` clauses.
 
@@ -3382,7 +2748,7 @@ NRQL: FROM Log SELECT * SINCE 1 hour ago
 ```
 <!-- /spl-cases -->
 
-##Macros
+## Macros
 
 SPL time macros and shorthand.
 
@@ -3427,7 +2793,7 @@ NRQL: FROM Log SELECT count(*) WHERE $my_base_macro
 
 # Search Syntax
 
-##Field Comparisons
+## Field Comparisons
 
 Field-value comparisons in the implicit search clause.
 
@@ -3488,7 +2854,7 @@ NRQL: FROM Log SELECT * WHERE level = 'ERROR'
 ```
 <!-- /spl-cases -->
 
-##JSON Array Access
+## JSON Array Access
 
 Splunk's `{}` notation for JSON array fields translates to `jparse()` + `contains()` in NRQL.
 
@@ -3530,7 +2896,7 @@ NRQL: FROM Log SELECT * WHERE jparse(message, 'sourceIPs[0]') = '10.0.0.1'
 ```
 <!-- /spl-cases -->
 
-##Boolean Operators (AND, OR, NOT)
+## Boolean Operators (AND, OR, NOT)
 
 Boolean logic in search expressions.
 
@@ -3611,7 +2977,7 @@ NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```
 <!-- /spl-cases -->
 
-##IN Operator
+## IN Operator
 
 The `IN()` operator for matching against a list of values.
 
@@ -3642,7 +3008,7 @@ NRQL: FROM Log SELECT * WHERE `parameters.doc_title` LIKE '%dhl%' OR `parameters
 ```
 <!-- /spl-cases -->
 
-##Wildcards
+## Wildcards
 
 Wildcard patterns in field values.
 
@@ -3666,7 +3032,7 @@ NRQL: FROM Log SELECT * WHERE host NOT LIKE 'test%'
 ```
 <!-- /spl-cases -->
 
-##Quoted Strings and Escaping
+## Quoted Strings and Escaping
 
 Handling of quoted strings and special characters.
 
@@ -3708,7 +3074,7 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND user_agent = 'Mozilla/5.0
 ```
 <!-- /spl-cases -->
 
-##NRQL Reserved Words as Field Names
+## NRQL Reserved Words as Field Names
 
 Fields that collide with NRQL reserved words are backtick-escaped.
 
@@ -3780,7 +3146,7 @@ NRQL: FROM Log SELECT * WHERE bytecount = '1024' OR numeric(bytecount) = 1024
 ```
 <!-- /spl-cases -->
 
-##Metadata Fields (index, sourcetype, source, host)
+## Metadata Fields (index, sourcetype, source, host)
 
 SPL metadata fields that have no direct NRQL equivalent are translated as attribute filters with a warning.
 
@@ -3802,7 +3168,7 @@ NRQL: FROM Log SELECT * WHERE sourcetype LIKE 'access_%'
 
 # Graceful Degradation
 
-##Empty and Invalid Input
+## Empty and Invalid Input
 
 How the translator handles empty strings, null, and malformed SPL.
 
@@ -3862,7 +3228,7 @@ SPL:  `mymacro`status=200
 ```
 <!-- /spl-cases -->
 
-##Bare Keywords (full-text search)
+## Bare Keywords (full-text search)
 
 Bare keywords without field assignments translate to `message LIKE '%keyword%'`. SPL bare keywords search `_raw` (the raw log line), so `message LIKE` is the correct NRQL equivalent — not `allColumnSearch()`, which searches every column and is extremely expensive.
 
@@ -3926,7 +3292,7 @@ NRQL: FROM Log SELECT count(*) WHERE message LIKE '%%peer-system-ip:%%'
 
 # Edge Cases & Real-World Queries
 
-##Edge Cases
+## Edge Cases
 
 Boundary conditions, unusual syntax, and tricky translations.
 
@@ -4102,6 +3468,6 @@ NRQL: FROM Log SELECT average(`response.time`) FACET host
 ```
 <!-- /spl-cases -->
 
-##Real-World Queries
+## Real-World Queries
 
 Real-world query regression tests are in `test/helpers/spl-real-world.json` (339 queries from customer usage and Splunk security detections).

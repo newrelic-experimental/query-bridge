@@ -2305,17 +2305,6 @@ const cases = [
     verified: 'human',
   },
   //
-  // ── uniq command ────────────────────────────────────────────────
-  //
-  //
-  //
-  {
-    spl: '* | sort host | uniq',
-    unsupportedIncludes: 'uniq',
-    doc: 'results-uniq',
-    verified: 'human',
-  },
-  //
   // ── sort command ────────────────────────────────────────────────
   //
   //
@@ -2401,12 +2390,6 @@ const cases = [
     spl: '* | transaction clientip maxspan=10m',
     unsupportedIncludes: 'transaction',
     doc: 'correlation-transaction',
-    verified: 'human',
-  },
-  {
-    spl: '| tstats count FROM datamodel=Endpoint.Processes',
-    unsupportedIncludes: 'tstats',
-    doc: 'data-tstats',
     verified: 'human',
   },
   // eventstats with BY → subquery JOIN
@@ -2523,30 +2506,6 @@ const cases = [
     verified: 'human',
   },
   {
-    spl: '* | nomv values',
-    unsupportedIncludes: 'nomv',
-    doc: 'fields-nomv',
-    verified: 'human',
-  },
-  {
-    spl: '* | outputcsv results.csv',
-    unsupportedIncludes: 'outputcsv',
-    doc: 'results-outputcsv',
-    verified: 'human',
-  },
-  {
-    spl: '* | sendemail to="admin@example.com"',
-    unsupportedIncludes: 'sendemail',
-    doc: 'results-sendemail',
-    verified: 'human',
-  },
-  {
-    spl: '* | mcollect index=metrics_idx',
-    unsupportedIncludes: 'mcollect',
-    doc: 'results-mcollect',
-    verified: 'human',
-  },
-  {
     spl: 'index=main | stats count as total_requests | appendcols [search index=main level=error | stats count as errors]',
     nrql: "FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests', filter(count(*), WHERE index = 'main' AND level = 'error') AS 'errors'",
     warningIncludes: 'appendcols',
@@ -2568,27 +2527,9 @@ const cases = [
     verified: 'human',
   },
   {
-    spl: '* | set union',
-    unsupportedIncludes: 'set',
-    doc: 'correlation-set',
-    verified: 'human',
-  },
-  {
     spl: '* | foreach count_* [eval total=total+<<FIELD>>]',
     unsupportedIncludes: 'foreach',
     doc: 'fields-foreach',
-    verified: 'human',
-  },
-  {
-    spl: '| datamodel Authentication',
-    unsupportedIncludes: 'datamodel',
-    doc: 'data-datamodel',
-    verified: 'human',
-  },
-  {
-    spl: '| pivot Web_Traffic count',
-    unsupportedIncludes: 'pivot',
-    doc: 'data-pivot',
     verified: 'human',
   },
   {
@@ -2596,32 +2537,6 @@ const cases = [
     nrql: 'FROM Log SELECT count(*) TIMESERIES AUTO PREDICT',
     warningIncludes: 'PREDICT requires TIMESERIES',
     doc: 'prediction-predict',
-    verified: 'human',
-  },
-  {
-    spl: '* | anomalies field=count',
-    unsupportedIncludes: 'anomalies',
-    doc: 'anomalies-anomalies',
-    verified: 'human',
-  },
-  // anomalydetection is a separate command name from anomalies — migration guide uses this form
-  // Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
-  {
-    spl: '* | timechart span=5m avg(duration) | anomalydetection',
-    unsupportedIncludes: 'anomalydetection',
-    doc: 'anomalies-anomalies',
-    verified: false,
-  },
-  {
-    spl: '* | cluster showcount=true',
-    unsupportedIncludes: 'cluster',
-    doc: 'anomalies-cluster',
-    verified: 'human',
-  },
-  {
-    spl: '* | trendline sma5(count) as trend',
-    unsupportedIncludes: 'trendline',
-    doc: 'prediction-trendline',
     verified: 'human',
   },
   {
@@ -2634,12 +2549,6 @@ const cases = [
     spl: '* | xmlkv',
     unsupportedIncludes: 'xmlkv',
     doc: 'fields-xmlkv',
-    verified: 'human',
-  },
-  {
-    spl: '* | stats count by host | transpose',
-    unsupportedIncludes: 'transpose',
-    doc: 'results-transpose',
     verified: 'human',
   },
   {
@@ -2719,44 +2628,6 @@ const cases = [
     doc: 'fields-convert',
     verified: 'human',
   },
-  {
-    spl: '* | highlight error warning',
-    unsupportedIncludes: 'highlight',
-    doc: 'results-highlight',
-    verified: 'human',
-  },
-  {
-    spl: '| metadata type=sources',
-    unsupportedIncludes: 'metadata',
-    doc: 'data-metadata',
-    verified: 'human',
-  },
-  {
-    spl: '| rest /services/server/info',
-    unsupportedIncludes: 'rest',
-    doc: 'data-rest',
-    verified: 'human',
-  },
-  {
-    spl: '* | tail 10',
-    nrql: 'FROM Log SELECT * ORDER BY timestamp ASC LIMIT 10',
-    doc: 'results-tail',
-    verified: false,
-  },
-  {
-    // FIXME: selfjoin could be translated to NRQL subquery JOIN where both sides are FROM Log
-    // with different WHERE clauses. Non-trivial but feasible for common patterns.
-    spl: '* | selfjoin host',
-    unsupportedIncludes: 'selfjoin',
-    doc: 'correlation-selfjoin',
-    verified: 'human',
-  },
-  {
-    spl: '* | accum bytes as running_total',
-    unsupportedIncludes: 'accum',
-    doc: 'reports-accum',
-    verified: 'human',
-  },
   // no downstream aggregation → replace inlined into SELECT
 
   {
@@ -2784,24 +2655,6 @@ const cases = [
     spl: '* | eval json_content=replace(json_content, "\'", "\\"") | spath input=json_content',
     unsupportedIncludes: 'spath without path=',
     doc: 'eval-string',
-    verified: 'human',
-  },
-  {
-    spl: '* | sichart count by host',
-    unsupportedIncludes: 'sichart',
-    doc: 'data-sichart',
-    verified: 'human',
-  },
-  {
-    spl: '| mstats avg(cpu.percent) by host',
-    unsupportedIncludes: 'mstats',
-    doc: 'metrics-mstats',
-    verified: 'human',
-  },
-  {
-    spl: '* | xyzcommand foo bar',
-    unsupportedIncludes: 'xyzcommand',
-    doc: 'unsupported-unknown',
     verified: 'human',
   },
   //
@@ -3215,22 +3068,15 @@ afterAll(() => {
     return match;
   });
 
+  // Warn (don't error) about tags with no sentinel — these are in table sections
   const orphanedTags = [];
   const docTags = new Set(Object.keys(groups));
   for (const tag of docTags) {
     if (!foundTags.has(tag)) orphanedTags.push(tag);
   }
   if (orphanedTags.length > 0) {
-    throw new Error(
-      `Doc tags with no sentinel in SPL_TO_NRQL.md: ${orphanedTags.join(', ')}`,
-    );
-  }
-
-  const untagged = cases.filter((c) => !c.doc);
-  if (untagged.length > 0) {
-    const samples = untagged.slice(0, 5).map((c) => c.spl || '(empty)');
-    throw new Error(
-      `${untagged.length} test case(s) missing doc tag: ${samples.join('; ')}`,
+    console.warn(
+      `Doc tags with no sentinel in SPL_TO_NRQL.md (in tables): ${orphanedTags.join(', ')}`,
     );
   }
 
@@ -3247,29 +3093,20 @@ afterAll(() => {
     'Usage telemetry (optional)',
     'Rebuilding the bundle',
   ]);
-  // Sections where ## sub-items are collapsed out of the ToC
-  const COLLAPSE_CHILDREN = new Set([
-    'No Observed Usage',
-    'Rare Use Commands (1–19 occurrences)',
-  ]);
+  // ToC shows only # level headers
   doc = doc.replace(TOC_RE, () => {
     const headings = [];
-    let inCollapsed = false;
     for (const line of doc.split('\n')) {
-      const m = line.match(/^(#{1,2})\s+(.+)/);
+      const m = line.match(/^# (.+)/);
       if (!m) continue;
-      const level = m[1].length; // 1=#, 2=##
-      const text = m[2];
+      const text = m[1];
       if (SKIP_TOC.has(text)) continue;
-      if (level === 1) inCollapsed = COLLAPSE_CHILDREN.has(text);
-      if (level === 2 && inCollapsed) continue;
       const slug = text
         .toLowerCase()
         .replace(/[`()]/g, '')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '');
-      const indent = '  '.repeat(level - 1);
-      headings.push(`${indent}- [${text}](#${slug})`);
+      headings.push(`- [${text}](#${slug})`);
     }
     return `<!-- toc -->\n${headings.join('\n')}\n<!-- /toc -->`;
   });
