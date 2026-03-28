@@ -20,9 +20,11 @@ import path from 'path';
 
 import { translateSplToNrql } from '../../src/translate.js';
 import { parseSplTime } from '../../src/input/spl/splTime.js';
+import { messages } from '../../src/messages.js';
 
-// AI-DEV: To add test cases, append to the `cases` array. Do NOT modify the test runner.
-
+// AI-DEV: To add test cases, append to the `cases` array.
+// Use `warningFunc`/`unsupportedFunc` (array of message keys from messages.js) for message assertions.
+// The test runner verifies exhaustively: every listed function must be called, and no unlisted function may be called.
 const cases = [
   //
   // ── Empty / invalid input ───────────────────────────────────────
@@ -187,7 +189,7 @@ const cases = [
   {
     spl: '_raw=*error*',
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
-    warningIncludes: '_raw is not a valid NRQL field',
+    warningFunc: ['raw_mapped_to_message'],
     doc: 'field-comparisons',
     verified: 'human',
   },
@@ -292,7 +294,7 @@ const cases = [
   {
     spl: '`macro_a` AND `macro_b`',
     nrql: 'FROM Log SELECT * WHERE $macro_a AND $macro_b',
-    warningIncludes: 'macro',
+    warningFunc: ['macro_translated'],
     doc: 'boolean-operators',
     verified: 'human',
   },
@@ -371,7 +373,7 @@ const cases = [
   {
     spl: '* NOT [|inputlookup exclude.csv] | stats count',
     nrql: 'FROM Log SELECT count(*) WHERE {{column}} NOT IN (FROM lookup(exclude) SELECT {{column}} LIMIT MAX)',
-    warningIncludes: 'NOT [|inputlookup exclude.csv]',
+    warningFunc: ['not_inputlookup_translated'],
     doc: 'in-operator',
     verified: 'human',
   },
@@ -564,21 +566,21 @@ const cases = [
   {
     spl: '* | `my_macro`',
     nrql: 'FROM Log SELECT * WHERE $my_macro',
-    warningIncludes: 'macro',
+    warningFunc: ['macro_translated'],
     doc: 'macros',
     verified: 'human',
   },
   {
     spl: '* | `my_macro(field1, field2)`',
     nrql: 'FROM Log SELECT * WHERE $my_macro(field1, field2)',
-    warningIncludes: 'macro',
+    warningFunc: ['macro_translated'],
     doc: 'macros',
     verified: 'human',
   },
   {
     spl: '`my_base_macro` | stats count',
     nrql: 'FROM Log SELECT count(*) WHERE $my_base_macro',
-    warningIncludes: 'macro',
+    warningFunc: ['macro_translated'],
     doc: 'macros',
     verified: 'human',
   },
@@ -596,7 +598,7 @@ const cases = [
   {
     spl: 'latest=-1h',
     nrql: 'FROM Log SELECT * SINCE 24 hours ago UNTIL 1 hour ago',
-    warningIncludes: 'latest without earliest',
+    warningFunc: ['latest_without_earliest'],
     doc: 'time-constraints',
     verified: 'human',
   },
@@ -702,7 +704,7 @@ const cases = [
   {
     spl: '* | spath input=payload path=user.id output=uid | eval uid_num = uid / 1',
     nrql: "FROM Log WITH jparse(payload, 'user.id') AS uid, numeric(uid) / 1 AS uid_num SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-eval-arithmetic',
     verified: 'human',
   },
@@ -744,7 +746,7 @@ const cases = [
   // eval mvjoin() → unsupported (NRQL can't join array elements)
   {
     spl: '* | eval joined = mvjoin(tags, ", ")',
-    unsupportedIncludes: 'mvjoin',
+    unsupportedFunc: ['eval_mvjoin_unsupported'],
     doc: 'eval-multivalue',
     verified: 'human',
   },
@@ -880,7 +882,7 @@ const cases = [
   // eval replace() with regex pattern → unsupported (NRQL replace is literal-only)
   {
     spl: '* | eval x=replace(name, "\\\\d+", "")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
@@ -961,19 +963,19 @@ const cases = [
   },
   {
     spl: '* | eval x=typeof(val)',
-    unsupportedIncludes: 'typeof()',
+    unsupportedFunc: ['eval_func_unsupported'],
     doc: 'eval-type',
     verified: 'human',
   },
   {
     spl: '* | eval x=isbool(val)',
-    unsupportedIncludes: 'isbool()',
+    unsupportedFunc: ['eval_func_unsupported'],
     doc: 'eval-type',
     verified: 'human',
   },
   {
     spl: '* | eval x=isstr(val)',
-    unsupportedIncludes: 'isstr()',
+    unsupportedFunc: ['eval_func_unsupported'],
     doc: 'eval-type',
     verified: 'human',
   },
@@ -1001,7 +1003,7 @@ const cases = [
   {
     spl: '* | eval x=mvindex(values)',
     nrql: 'FROM Log WITH values AS x SELECT *',
-    warningIncludes: 'mvindex() requires at least 2 arguments',
+    warningFunc: ['eval_mvindex_args'],
     doc: 'eval-multivalue',
     verified: 'human',
   },
@@ -1021,46 +1023,46 @@ const cases = [
   },
   {
     spl: '* | eval x=replace(name, "[abc]", "")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
   {
     spl: '* | eval x=replace(name, "test.*end", "")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
   // replace() regex detection — quantifiers after word chars
   {
     spl: '* | eval x=replace(name, "\\d+", "")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
   {
     spl: '* | eval x=replace(name, "foo+", "")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
   {
     spl: '* | eval x=replace(name, "x?y", "")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
   // replace() regex detection — alternation
   {
     spl: '* | eval x=replace(name, "foo|bar", "")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
   // replace() regex detection — \s+ parsed as s+ (parser strips backslash)
   {
     spl: '* | eval x=replace(name, "\\s+", " ")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
@@ -1094,7 +1096,7 @@ const cases = [
   // replace() with URL that also has real regex — should still flag
   {
     spl: '* | eval x=replace(uri, "https://example.com/.*", "")',
-    unsupportedIncludes: 'regex',
+    unsupportedFunc: ['eval_replace_regex'],
     doc: 'eval-string',
     verified: 'human',
   },
@@ -1115,7 +1117,7 @@ const cases = [
   {
     spl: '* | eval kb = bytes / 1024 | rename kb as kilobytes',
     nrql: "FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *",
-    warningIncludes: 'original field names',
+    warningFunc: ['rename_keeps_original'],
     doc: 'fields-eval-arithmetic',
     verified: 'human',
   },
@@ -1127,21 +1129,21 @@ const cases = [
   {
     spl: '* | lookup geo_table src_ip',
     nrql: 'FROM Log JOIN (FROM lookup(geo_table) SELECT * FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *',
-    warningIncludes: 'lookup table',
+    warningFunc: ['lookup_upload_reminder'],
     doc: 'correlation-lookup',
     verified: 'human',
   },
   {
     spl: '* | lookup ip_to_country src_ip OUTPUT country',
     nrql: 'FROM Log JOIN (FROM lookup(ip_to_country) SELECT country FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *',
-    warningIncludes: 'lookup table',
+    warningFunc: ['lookup_upload_reminder'],
     doc: 'correlation-lookup',
     verified: 'human',
   },
   {
     spl: '* | lookup users_lookup username AS user OUTPUT department',
     nrql: 'FROM Log JOIN (FROM lookup(users_lookup) SELECT department FACET username LIMIT MAX) ON user = username SELECT *',
-    warningIncludes: 'lookup table',
+    warningFunc: ['lookup_upload_reminder'],
     doc: 'correlation-lookup',
     verified: 'human',
   },
@@ -1151,35 +1153,36 @@ const cases = [
   {
     spl: '* | inputlookup geo_ips',
     nrql: 'FROM lookup(geo_ips) SELECT *',
-    warningIncludes: 'lookup table',
+    warningFunc: ['lookup_upload_reminder'],
     doc: 'results-inputlookup',
     verified: 'human',
   },
   {
     spl: '* | inputlookup append=true geo_ips',
     nrql: 'FROM lookup(geo_ips) SELECT *',
-    warningIncludes: 'lookup table',
+    warningFunc: ['lookup_upload_reminder'],
     doc: 'results-inputlookup',
     verified: 'human',
   },
   {
     spl: '* | inputlookup my_table',
     nrql: 'FROM lookup(my_table) SELECT *',
-    warningIncludes: 'lookup table',
+    warningFunc: ['lookup_upload_reminder'],
     doc: 'results-inputlookup',
     verified: 'human',
   },
   // join with inputlookup subsearch (no leading pipe)
   {
     spl: '* | join host [inputlookup servers.csv]',
-    unsupportedIncludes: 'explicit fields',
+    warningFunc: ['join_subsearch_warning', 'lookup_upload_reminder'],
+    unsupportedFunc: ['join_needs_fields'],
     doc: 'results-inputlookup',
     verified: 'human',
   },
   {
     spl: '| inputlookup users.csv where role="admin"',
     nrql: "FROM lookup(users.csv) SELECT * WHERE role = 'admin'",
-    warningIncludes: 'inputlookup WHERE',
+    warningFunc: ['inputlookup_where_warning', 'lookup_upload_reminder'],
     doc: 'results-inputlookup',
     verified: 'human',
   },
@@ -1207,7 +1210,7 @@ const cases = [
   },
   {
     spl: '* | rex field=message "\\d+"',
-    unsupportedIncludes: 'no named capture',
+    unsupportedFunc: ['rex_no_groups'],
     doc: 'fields-rex',
     verified: 'human',
   },
@@ -1221,7 +1224,7 @@ const cases = [
   // max_match=0 parsed but unsupported — capture() returns first match only
   {
     spl: '* | rex field=message "(?<skus>\\d{6,})" max_match=0',
-    unsupportedIncludes: 'max_match',
+    unsupportedFunc: ['rex_max_match'],
     doc: 'fields-rex',
     verified: 'human',
   },
@@ -1237,7 +1240,7 @@ const cases = [
   //
   {
     spl: '* | rex mode=sed field=message "s/old/new/g"',
-    unsupportedIncludes: 'sed',
+    unsupportedFunc: ['rex_sed_unsupported'],
     doc: 'fields-rex-sed',
     verified: 'human',
   },
@@ -1246,7 +1249,7 @@ const cases = [
   //
   {
     spl: '* | rex field=message "(?<=prefix)(?<val>\\w+)"',
-    unsupportedIncludes: 'lookahead/lookbehind',
+    unsupportedFunc: ['rex_lookaround'],
     doc: 'fields-rex-pcre',
     verified: 'human',
   },
@@ -1259,7 +1262,7 @@ const cases = [
   {
     spl: '* | spath input=payload path=user.name output=username',
     nrql: "FROM Log WITH jparse(payload, 'user.name') AS username SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1267,7 +1270,7 @@ const cases = [
   {
     spl: '* | spath path=response.status',
     nrql: "FROM Log WITH jparse(message, 'response.status') AS status SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1275,14 +1278,14 @@ const cases = [
   {
     spl: '* | spath input=_raw path=data.id output=id',
     nrql: "FROM Log WITH jparse(message, 'data.id') AS id SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
   // Auto-extraction (no path) — unsupported
   {
     spl: '* | spath',
-    unsupportedIncludes: 'auto-extraction',
+    unsupportedFunc: ['spath_no_path'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1290,28 +1293,28 @@ const cases = [
   {
     spl: '* | spath path=response.code output=code | stats count by code',
     nrql: "FROM Log WITH jparse(message, 'response.code') AS code SELECT count(*) FACET code",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only', 'facet_default_limit'],
     doc: 'fields-spath',
     verified: 'human',
   },
   // Auto-extraction with input — unsupported
   {
     spl: '* | spath input=payload',
-    unsupportedIncludes: 'auto-extraction',
+    unsupportedFunc: ['spath_no_path'],
     doc: 'fields-spath',
     verified: 'human',
   },
   {
     spl: '* | spath path=user.name output=name | spath path=user.email output=email',
     nrql: "FROM Log WITH jparse(message, 'user.name') AS name, jparse(message, 'user.email') AS email SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
   {
     spl: '* | spath path=request.url output=url | rex field=url "(?<domain>[^/]+)"',
     nrql: "FROM Log WITH jparse(message, 'request.url') AS url, capture(url, r'.*(?P<domain>[^/]+).*') AS (domain) SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1319,7 +1322,7 @@ const cases = [
   {
     spl: '* | spath "AppID"',
     nrql: "FROM Log WITH jparse(message, 'AppID') AS AppID SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1327,7 +1330,7 @@ const cases = [
   {
     spl: '* | spath source_name',
     nrql: "FROM Log WITH jparse(message, 'source_name') AS source_name SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1335,7 +1338,7 @@ const cases = [
   {
     spl: '* | spath path=errors{}.code output=error_code | search error_code=404',
     nrql: "FROM Log WITH jparse(message, 'errors[*].code') AS error_code SELECT * WHERE error_code = '404' OR numeric(error_code) = 404",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1343,7 +1346,7 @@ const cases = [
   {
     spl: '* | spath path=items{}.status',
     nrql: "FROM Log WITH jparse(message, 'items[*].status') AS status SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1351,7 +1354,7 @@ const cases = [
   {
     spl: '* | spath input=request_body path=user.preferences{}.key output=pref_key',
     nrql: "FROM Log WITH jparse(request_body, 'user.preferences[*].key') AS pref_key SELECT *",
-    warningIncludes: 'only works on JSON',
+    warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: 'human',
   },
@@ -1394,7 +1397,7 @@ const cases = [
   },
   {
     spl: '* | fillnull value=0',
-    unsupportedIncludes: 'field list',
+    unsupportedFunc: ['fillnull_no_fields'],
     doc: 'fields-fillnull',
     verified: 'human',
   },
@@ -1424,7 +1427,7 @@ const cases = [
   {
     spl: '* | rename src_ip AS source_address',
     nrql: "FROM Log SELECT src_ip AS 'source_address', *",
-    warningIncludes: 'original field names',
+    warningFunc: ['rename_keeps_original'],
     doc: 'fields-rename',
     verified: 'human',
   },
@@ -1438,26 +1441,26 @@ const cases = [
   {
     spl: '* | rename _time AS "Time"',
     nrql: "FROM Log SELECT timestamp AS 'Time', *",
-    warningIncludes: 'original field names',
+    warningFunc: ['rename_keeps_original'],
     doc: 'fields-rename',
     verified: 'human',
   },
   {
     spl: '* | rename properties.* as *',
-    unsupportedIncludes: 'Wildcard rename',
+    unsupportedFunc: ['rename_wildcard'],
     doc: 'fields-rename',
     verified: 'human',
   },
   {
     spl: '* | rename src_ip as src user_name as user',
     nrql: "FROM Log SELECT src_ip AS 'src', user_name AS 'user', *",
-    warningIncludes: 'original field names',
+    warningFunc: ['rename_keeps_original'],
     doc: 'fields-rename',
     verified: 'human',
   },
   {
     spl: '* | rename "IsOutlier(count)" as isOutlier',
-    unsupportedIncludes: 'parentheses',
+    unsupportedFunc: ['rename_parens'],
     doc: 'fields-rename',
     verified: 'human',
   },
@@ -1614,7 +1617,7 @@ const cases = [
   {
     spl: '* | stats stdevp(latency) by host',
     nrql: 'FROM Log SELECT stddev(latency) FACET host',
-    warningIncludes: 'stdevp',
+    warningFunc: ['stdevp_precision', 'facet_default_limit'],
     doc: 'stats-functions',
     verified: 'human',
   },
@@ -1645,13 +1648,13 @@ const cases = [
   {
     spl: '* | stats list(user) by host',
     nrql: 'FROM Log SELECT uniques(user) FACET host',
-    warningIncludes: 'list()',
+    warningFunc: ['list_order_warning', 'facet_default_limit'],
     doc: 'stats-functions',
     verified: 'human',
   },
   {
     spl: '* | stats xyzfunc(field) by host',
-    warningIncludes: 'xyzfunc()',
+    warningFunc: ['unknown_stats_func', 'facet_default_limit'],
     nrql: 'FROM Log SELECT * FACET host',
     doc: 'stats-functions',
     verified: 'human',
@@ -1665,14 +1668,14 @@ const cases = [
   {
     spl: '* | stats exactperc95(latency) as exact_p95 by service',
     nrql: "FROM Log SELECT percentile(latency, 95) AS 'exact_p95' FACET service",
-    warningIncludes: 'exactperc',
+    warningFunc: ['perc_precision', 'facet_default_limit'],
     doc: 'stats-functions',
     verified: 'human',
   },
   {
     spl: '* | stats upperperc99(response_time) by endpoint',
     nrql: 'FROM Log SELECT percentile(response_time, 99) FACET endpoint',
-    warningIncludes: 'upperperc',
+    warningFunc: ['perc_precision', 'facet_default_limit'],
     doc: 'stats-functions',
     verified: 'human',
   },
@@ -1725,21 +1728,21 @@ const cases = [
   // Stats no-equiv — representative cases: statistical, time-based, and rate
   {
     spl: '* | stats mode(status) by host',
-    warningIncludes: 'mode()',
+    warningFunc: ['no_equiv_func', 'facet_default_limit'],
     nrql: 'FROM Log SELECT * FACET host',
     doc: 'stats-no-equiv',
     verified: 'human',
   },
   {
     spl: '* | stats earliest_time(message) as first_seen by host',
-    warningIncludes: 'earliest_time()',
+    warningFunc: ['no_equiv_func', 'facet_default_limit'],
     nrql: 'FROM Log SELECT * FACET host',
     doc: 'stats-no-equiv',
     verified: 'human',
   },
   {
     spl: '* | stats rate_avg(cpu) by host',
-    warningIncludes: 'rate_avg()',
+    warningFunc: ['no_equiv_func', 'facet_default_limit'],
     nrql: 'FROM Log SELECT * FACET host',
     doc: 'stats-no-equiv',
     verified: 'human',
@@ -1804,7 +1807,7 @@ const cases = [
   {
     spl: '* | stats count | predict count',
     nrql: 'FROM Log SELECT count(*) TIMESERIES AUTO PREDICT',
-    warningIncludes: 'PREDICT requires TIMESERIES',
+    warningFunc: ['predict_needs_timeseries'],
     doc: 'reports-timechart',
     verified: 'human',
   },
@@ -1885,7 +1888,7 @@ const cases = [
   {
     spl: '* | top 5 useother=true status',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5",
-    warningIncludes: 'useother',
+    warningFunc: ['top_useother'],
     doc: 'reports-top',
     verified: 'human',
   },
@@ -1916,7 +1919,7 @@ const cases = [
   {
     spl: '* | top 5 status by host',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5",
-    warningIncludes: 'top with groupBy',
+    warningFunc: ['top_groupby_warning'],
     doc: 'reports-top-groupby',
     verified: 'human',
   },
@@ -2102,7 +2105,11 @@ const cases = [
   {
     spl: '* | join host [search index=other | stats count by host]',
     nrql: "FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'other' FACET host LIMIT MAX) ON host = host SELECT *",
-    warningIncludes: 'JOIN',
+    warningFunc: [
+      'join_subsearch_warning',
+      'join_cardinality_limit',
+      'facet_default_limit',
+    ],
     doc: 'correlation-join',
     verified: 'human',
   },
@@ -2114,55 +2121,67 @@ const cases = [
   },
   {
     spl: '* | join type=outer host [search * | stats count by host]',
-    unsupportedIncludes: 'outer join',
+    unsupportedFunc: ['join_outer_unsupported'],
     doc: 'correlation-join',
     verified: 'human',
   },
   {
     spl: '* | join host [search status=500 | table host, message]',
     nrql: "FROM Log JOIN (FROM Log SELECT host, message WHERE status = '500' OR numeric(status) = 500 LIMIT MAX) ON host = host SELECT *",
-    warningIncludes: 'JOIN',
+    warningFunc: ['join_cardinality_limit'],
     doc: 'correlation-join',
     verified: 'human',
   },
   {
     spl: '* | join src_ip [search * | stats count, avg(bytes) by src_ip]',
     nrql: 'FROM Log JOIN (FROM Log SELECT count(*), average(bytes) FACET src_ip LIMIT MAX) ON src_ip = src_ip SELECT *',
-    warningIncludes: 'JOIN',
+    warningFunc: [
+      'join_subsearch_warning',
+      'join_cardinality_limit',
+      'facet_default_limit',
+    ],
     doc: 'correlation-join',
     verified: 'human',
   },
   {
     spl: '* | join host [search * | stats count by host | head 100]',
     nrql: 'FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT 100) ON host = host SELECT *',
-    warningIncludes: 'JOIN',
+    warningFunc: ['join_cardinality_limit'],
     doc: 'correlation-join',
     verified: 'human',
   },
   {
     spl: '* | join host [search status=200 host=web*]',
-    unsupportedIncludes: 'explicit fields',
+    unsupportedFunc: ['join_needs_fields'],
     doc: 'correlation-join',
     verified: 'human',
   },
   {
     spl: 'status=500 | join host [search * | stats count by host]',
     nrql: "FROM Log JOIN (FROM Log SELECT count(*) FACET host LIMIT MAX) ON host = host SELECT * WHERE status = '500' OR numeric(status) = 500",
-    warningIncludes: 'JOIN',
+    warningFunc: [
+      'join_subsearch_warning',
+      'join_cardinality_limit',
+      'facet_default_limit',
+    ],
     doc: 'correlation-join',
     verified: 'human',
   },
   {
     spl: '* | stats count by host | join host [search * | stats avg(cpu) by host]',
     nrql: 'FROM Log JOIN (FROM Log SELECT average(cpu) FACET host LIMIT MAX) ON host = host SELECT count(*) FACET host',
-    warningIncludes: 'JOIN',
+    warningFunc: [
+      'join_subsearch_warning',
+      'join_cardinality_limit',
+      'facet_default_limit',
+    ],
     doc: 'correlation-join',
     verified: 'human',
   },
   {
     spl: '* | join user [search * | table user, role]',
     nrql: 'FROM Log JOIN (FROM Log SELECT user, role LIMIT MAX) ON user = user SELECT *',
-    warningIncludes: 'JOIN',
+    warningFunc: ['join_cardinality_limit'],
     doc: 'correlation-join',
     verified: 'human',
   },
@@ -2174,21 +2193,21 @@ const cases = [
   {
     spl: '* | dedup host',
     nrql: 'FROM Log SELECT latest(timestamp) FACET host LIMIT MAX',
-    warningIncludes: 'dedup',
+    warningFunc: ['dedup_facet_warning'],
     doc: 'results-dedup',
     verified: 'human',
   },
   {
     spl: '* | dedup host, status',
     nrql: 'FROM Log SELECT latest(timestamp) FACET host, status LIMIT MAX',
-    warningIncludes: 'dedup',
+    warningFunc: ['dedup_facet_warning'],
     doc: 'results-dedup',
     verified: 'human',
   },
   {
     spl: '* | stats count by host | dedup host',
     nrql: 'FROM Log SELECT count(*) FACET host LIMIT MAX',
-    warningIncludes: 'dedup',
+    warningFunc: ['dedup_facet_warning'],
     doc: 'results-dedup',
     verified: 'human',
   },
@@ -2271,7 +2290,7 @@ const cases = [
   {
     spl: '* | fields - _raw, _time',
     nrql: 'FROM Log SELECT *',
-    warningIncludes: 'fields - (exclude mode)',
+    warningFunc: ['fields_exclude_limited'],
     doc: 'results-table',
     verified: 'human',
   },
@@ -2375,7 +2394,7 @@ const cases = [
   {
     spl: '* | stats count by host | reverse',
     nrql: 'FROM Log SELECT count(*) FACET host ORDER BY timestamp ASC',
-    warningIncludes: 'reverse',
+    warningFunc: ['reverse_after_agg', 'facet_default_limit'],
     doc: 'results-reverse',
     verified: false,
   },
@@ -2388,7 +2407,7 @@ const cases = [
   // ── Unsupported commands (distributed by Splunk category) ─────
   {
     spl: '* | transaction clientip maxspan=10m',
-    unsupportedIncludes: 'transaction',
+    unsupportedFunc: ['unsupported_command'],
     doc: 'correlation-transaction',
     verified: 'human',
   },
@@ -2396,7 +2415,7 @@ const cases = [
   {
     spl: '* | eventstats count by host',
     nrql: "FROM Log JOIN (FROM Log SELECT count(*) AS 'count' FACET host LIMIT MAX) ON host = host SELECT *",
-    warningIncludes: '5,000',
+    warningFunc: ['join_cardinality_limit'],
     doc: 'reports-eventstats',
     verified: 'human',
   },
@@ -2404,14 +2423,14 @@ const cases = [
   {
     spl: '* | eventstats avg(duration) AS avg_dur BY host',
     nrql: "FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur' FACET host LIMIT MAX) ON host = host SELECT *",
-    warningIncludes: '5,000',
+    warningFunc: ['join_cardinality_limit'],
     doc: 'reports-eventstats',
     verified: 'human',
   },
   // eventstats with multiple BY fields — unsupported (NRQL JOIN only supports single ON key)
   {
     spl: '* | eventstats sum(bytes) AS total BY host, status',
-    unsupportedIncludes: 'multiple BY fields',
+    unsupportedFunc: ['eventstats_multi_by'],
     doc: 'reports-eventstats',
     verified: 'human',
   },
@@ -2436,7 +2455,7 @@ const cases = [
   {
     spl: '* | eventstats max(timestamp) as lastImport BY source',
     nrql: "FROM Log JOIN (FROM Log SELECT max(timestamp) AS 'lastImport' FACET source LIMIT MAX) ON source = source SELECT *",
-    warningIncludes: '5,000',
+    warningFunc: ['join_cardinality_limit'],
     doc: 'reports-eventstats',
     verified: 'human',
   },
@@ -2444,13 +2463,13 @@ const cases = [
   {
     spl: '* | eventstats avg(duration) AS avg_dur, max(duration) AS max_dur BY host',
     nrql: "FROM Log JOIN (FROM Log SELECT average(duration) AS 'avg_dur', max(duration) AS 'max_dur' FACET host LIMIT MAX) ON host = host SELECT *",
-    warningIncludes: '5,000',
+    warningFunc: ['join_cardinality_limit'],
     doc: 'reports-eventstats',
     verified: 'human',
   },
   {
     spl: '* | streamstats count by host',
-    unsupportedIncludes: 'streamstats',
+    unsupportedFunc: ['streamstats_unsupported'],
     doc: 'reports-streamstats',
     verified: 'human',
   },
@@ -2460,100 +2479,105 @@ const cases = [
   // Pattern 1: expand-then-filter (most common ~40%)
   {
     spl: '* | spath path=cloudformation{}.stack_prefix output=stack_prefix | mvexpand stack_prefix | search stack_prefix="fff000-gitlabrole"',
-    unsupportedIncludes: 'mvexpand',
+    warningFunc: ['spath_json_only'],
+    unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: false,
   },
   // mvexpand with function-call field name (stats list() creates literal field name)
   {
     spl: '* | mvexpand list(orderNumber)',
-    unsupportedIncludes: 'mvexpand',
+    unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: false,
   },
   // Pattern 2: dedup round-trip (~30%)
   {
     spl: '* | stats values(title) as title | mvexpand title',
-    unsupportedIncludes: 'mvexpand',
+    unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: false,
   },
   // Pattern 3: expand + aggregate by expanded field
   {
     spl: '* | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms',
-    unsupportedIncludes: 'mvexpand',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: false,
   },
   // Pattern 4: symmetric counting
   {
     spl: '* | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset',
-    unsupportedIncludes: 'mvexpand',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: false,
   },
   // Pattern 5: expand + sort only (no aggregation by field)
   {
     spl: 'index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber',
-    unsupportedIncludes: 'mvexpand',
+    warningFunc: ['list_order_warning', 'facet_default_limit'],
+    unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: false,
   },
   {
     spl: '* | mvcombine delim="," values',
-    unsupportedIncludes: 'mvcombine',
+    unsupportedFunc: ['unsupported_command'],
     doc: 'fields-mvcombine',
     verified: 'human',
   },
   {
     spl: 'index=main | stats count as total_requests | appendcols [search index=main level=error | stats count as errors]',
     nrql: "FROM Log SELECT filter(count(*), WHERE index = 'main') AS 'total_requests', filter(count(*), WHERE index = 'main' AND level = 'error') AS 'errors'",
-    warningIncludes: 'appendcols',
+    warningFunc: ['append_filter_warning'],
     doc: 'correlation-appendcols',
     verified: 'human',
   },
   {
     // appendcols with different FACET on subsearch — can't merge
     spl: '* | stats count as total | appendcols [search * | stats count by host]',
-    unsupportedIncludes: 'mismatched FACET',
+    warningFunc: ['append_subsearch_warning', 'facet_default_limit'],
+    unsupportedFunc: ['append_facet_mismatch'],
     doc: 'correlation-appendcols',
     verified: 'human',
   },
   {
     spl: '* | stats count as search_count | appendpipe [stats count | where count=0]',
     nrql: "FROM Log SELECT count(*) AS 'search_count'",
-    warningIncludes: 'appendpipe',
+    warningFunc: ['appendpipe_row_append'],
     doc: 'correlation-appendpipe',
     verified: 'human',
   },
   {
     spl: '* | foreach count_* [eval total=total+<<FIELD>>]',
-    unsupportedIncludes: 'foreach',
+    unsupportedFunc: ['unsupported_command'],
     doc: 'fields-foreach',
     verified: 'human',
   },
   {
     spl: '* | predict count',
     nrql: 'FROM Log SELECT count(*) TIMESERIES AUTO PREDICT',
-    warningIncludes: 'PREDICT requires TIMESERIES',
+    warningFunc: ['predict_needs_timeseries'],
     doc: 'prediction-predict',
     verified: 'human',
   },
   {
     spl: '* | extract pairdelim=","',
-    unsupportedIncludes: 'extract',
+    unsupportedFunc: ['kvparse_unsupported'],
     doc: 'fields-extract',
     verified: 'human',
   },
   {
     spl: '* | xmlkv',
-    unsupportedIncludes: 'xmlkv',
+    unsupportedFunc: ['unsupported_command'],
     doc: 'fields-xmlkv',
     verified: 'human',
   },
   {
     spl: '* | timechart count | timewrap 1d',
-    unsupportedIncludes: 'timewrap',
+    unsupportedFunc: ['unsupported_command'],
     doc: 'reports-timewrap',
     verified: 'human',
   },
@@ -2561,7 +2585,7 @@ const cases = [
     // '1234567' → 1234567
     spl: '* | convert num(bytes)',
     nrql: 'FROM Log WITH numeric(bytes) AS bytes_converted SELECT *',
-    warningIncludes: 'cannot overwrite a field in-place',
+    warningFunc: ['convert_alias_warning'],
     doc: 'fields-convert',
     verified: 'human',
   },
@@ -2569,7 +2593,7 @@ const cases = [
     // '1,234,567' → 1234567
     spl: '* | convert rmcomma(total)',
     nrql: "FROM Log WITH numeric(replace(total, ',', '')) AS total_converted SELECT *",
-    warningIncludes: 'cannot overwrite a field in-place',
+    warningFunc: ['convert_alias_warning'],
     doc: 'fields-convert',
     verified: 'human',
   },
@@ -2584,19 +2608,19 @@ const cases = [
     // '2026-03-13T23:48:47.007Z' → 1741916927007
     spl: '* | convert mktime(timestr)',
     nrql: 'FROM Log WITH toTimestamp(timestr) AS timestr_converted SELECT *',
-    warningIncludes: 'cannot overwrite a field in-place',
+    warningFunc: ['convert_alias_warning'],
     doc: 'fields-convert',
     verified: 'human',
   },
   {
     spl: '* | convert dur2sec(duration)',
-    unsupportedIncludes: 'dur2sec',
+    unsupportedFunc: ['convert_dur2sec_unsupported'],
     doc: 'fields-convert',
     verified: false,
   },
   {
     spl: '* | convert mstime(elapsed)',
-    unsupportedIncludes: 'mstime',
+    unsupportedFunc: ['convert_mstime_unsupported'],
     doc: 'fields-convert',
     verified: false,
   },
@@ -2610,21 +2634,21 @@ const cases = [
   },
   {
     spl: '* | convert auto(field)',
-    unsupportedIncludes: 'auto',
+    unsupportedFunc: ['convert_auto_unsupported'],
     doc: 'fields-convert',
     verified: false,
   },
   {
     // '512MB' — can't strip arbitrary units in NRQL
     spl: '* | convert rmunit(field)',
-    unsupportedIncludes: 'rmunit',
+    unsupportedFunc: ['convert_func_unsupported'],
     doc: 'fields-convert',
     verified: 'human',
   },
   {
     // '512m' — memory normalization; NR data is already numeric bytes
     spl: '* | convert memk(field)',
-    unsupportedIncludes: 'memk',
+    unsupportedFunc: ['convert_func_unsupported'],
     doc: 'fields-convert',
     verified: 'human',
   },
@@ -2653,7 +2677,7 @@ const cases = [
   // replace eval: fix JSON quoting — self-referencing eval inlined into SELECT to avoid circular dependency
   {
     spl: '* | eval json_content=replace(json_content, "\'", "\\"") | spath input=json_content',
-    unsupportedIncludes: 'spath without path=',
+    unsupportedFunc: ['spath_no_path'],
     doc: 'eval-string',
     verified: 'human',
   },
@@ -2785,7 +2809,7 @@ const cases = [
   {
     spl: '* | sort -count, +name, host',
     nrql: 'FROM Log SELECT * ORDER BY count DESC',
-    warningIncludes: 'additional sort fields ignored',
+    warningFunc: ['sort_single_field'],
     doc: 'edge-cases',
     verified: 'human',
   },
@@ -2820,7 +2844,7 @@ const cases = [
   {
     spl: 'index=main "Cache hit" | stats count as Hits | append [search index=main "Cache miss" | stats count as Misses]',
     nrql: "FROM Log SELECT filter(count(*), WHERE index = 'main' AND message LIKE '%Cache hit%') AS 'Hits', filter(count(*), WHERE index = 'main' AND message LIKE '%Cache miss%') AS 'Misses'",
-    warningIncludes: 'append translated to filter()',
+    warningFunc: ['append_filter_warning'],
     doc: 'correlation-append',
     verified: 'human',
   },
@@ -2828,22 +2852,22 @@ const cases = [
   {
     spl: '* | stats avg(duration) | append [search * | stats max(duration)]',
     nrql: 'FROM Log SELECT average(duration), max(duration)',
-    warningIncludes: 'append merged into a single query',
+    warningFunc: ['append_merged'],
     doc: 'correlation-append',
     verified: 'human',
   },
   // append with no aggregations on either side — raw event append = UNION, not supported
   {
     spl: 'index=web | append [search index=api]',
-    unsupportedIncludes:
-      'append with subsearch cannot be automatically translated',
+    unsupportedFunc: ['append_no_agg'],
     doc: 'correlation-append',
     verified: 'human',
   },
   // append with different FACET — can't merge because groupings differ
   {
     spl: '* | stats count as total | append [search * | stats avg(duration) by host]',
-    unsupportedIncludes: 'mismatched FACET',
+    warningFunc: ['append_subsearch_warning', 'facet_default_limit'],
+    unsupportedFunc: ['append_facet_mismatch'],
     doc: 'correlation-append',
     verified: 'human',
   },
@@ -2851,7 +2875,11 @@ const cases = [
   {
     spl: 'error | stats count by host | append [search success | stats count by host]',
     nrql: "FROM Log SELECT filter(count(*), WHERE message LIKE '%error%'), filter(count(*), WHERE message LIKE '%success%') FACET host",
-    warningIncludes: 'append translated to filter()',
+    warningFunc: [
+      'append_subsearch_warning',
+      'append_filter_warning',
+      'facet_default_limit',
+    ],
     doc: 'correlation-append',
     verified: 'human',
   },
@@ -2859,7 +2887,11 @@ const cases = [
   {
     spl: '* | stats count by host | append [search * | stats avg(duration) by host]',
     nrql: 'FROM Log SELECT count(*), average(duration) FACET host',
-    warningIncludes: 'append merged into a single query',
+    warningFunc: [
+      'append_subsearch_warning',
+      'append_merged',
+      'facet_default_limit',
+    ],
     doc: 'correlation-append',
     verified: 'human',
   },
@@ -2867,7 +2899,7 @@ const cases = [
   {
     spl: 'error | stats avg(duration) as err_dur | append [search success | stats avg(duration) as ok_dur]',
     nrql: "FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%') AS 'err_dur', filter(average(duration), WHERE message LIKE '%success%') AS 'ok_dur'",
-    warningIncludes: 'append translated to filter()',
+    warningFunc: ['append_filter_warning'],
     doc: 'correlation-append',
     verified: 'human',
   },
@@ -2875,7 +2907,7 @@ const cases = [
   {
     spl: 'error | stats avg(duration) | append [search success | stats max(duration)]',
     nrql: "FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), filter(max(duration), WHERE message LIKE '%success%')",
-    warningIncludes: 'append translated to filter()',
+    warningFunc: ['append_filter_warning'],
     doc: 'correlation-append',
     verified: 'human',
   },
@@ -2887,7 +2919,7 @@ const cases = [
     skip: true,
     spl: 'index=web | stats count as web_count | append [search index=api | stats count as api_count]',
     nrql: "FROM Log SELECT filter(count(*), WHERE index = 'web') AS 'web_count', filter(count(*), WHERE index = 'api') AS 'api_count'",
-    warningIncludes: 'append translated to filter()',
+    warningFunc: ['append_filter_warning'],
     doc: 'correlation-append',
     verified: false,
   },
@@ -2896,13 +2928,214 @@ const cases = [
     skip: true,
     spl: '* | where status=500 | stats avg(duration) as err_dur | append [search * | stats avg(duration) as all_dur]',
     nrql: "FROM Log SELECT filter(average(duration), WHERE numeric(status) = 500) AS 'err_dur', filter(average(duration), WHERE 1=1) AS 'all_dur'",
-    warningIncludes: 'append translated to filter()',
+    warningFunc: ['append_filter_warning'],
     doc: 'correlation-append',
+    verified: false,
+  },
+
+  //
+  // ── NRQL Feature Gaps (customer migration feedback) ───────────────
+  //
+
+  // Gap #2 — dedup + stats: warn about 5K LIMIT MAX sampling
+  {
+    spl: '* | dedup userId | stats count by routeName',
+    nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) FACET routeName LIMIT MAX',
+    warningFunc: ['dedup_facet_warning', 'dedup_limit_max_cap'],
+    doc: 'dedup',
+    verified: 'llm',
+  },
+  // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
+  {
+    spl: '* | dedup userId | timechart count span=1m',
+    nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) LIMIT MAX TIMESERIES 1 minute',
+    warningFunc: [
+      'dedup_facet_warning',
+      'dedup_limit_max_cap',
+      'dedup_timeseries_warning',
+    ],
+    doc: 'timechart',
+    verified: 'llm',
+  },
+  // Gap #7 — >5 rex commands: warn about capture() limit
+  {
+    spl: '* | rex field=f1 "(?<a>\\w+)" | rex field=f2 "(?<b>\\w+)" | rex field=f3 "(?<c>\\w+)" | rex field=f4 "(?<d>\\w+)" | rex field=f5 "(?<e>\\w+)" | rex field=f6 "(?<f>\\w+)"',
+    nrql: "FROM Log WITH capture(f1, r'.*(?P<a>\\w+).*') AS (a), capture(f2, r'.*(?P<b>\\w+).*') AS (b), capture(f3, r'.*(?P<c>\\w+).*') AS (c), capture(f4, r'.*(?P<d>\\w+).*') AS (d), capture(f5, r'.*(?P<e>\\w+).*') AS (e), capture(f6, r'.*(?P<f>\\w+).*') AS (f) SELECT *",
+    warningFunc: ['rex_capture_limit'],
+    doc: 'rex',
+    verified: 'llm',
+  },
+  // Gap #13 — split() multi-char delimiter
+  {
+    spl: '* | eval parts = split(field, "},{")',
+    nrql: "FROM Log WITH split(field, '},{') AS parts SELECT *",
+    warningFunc: ['split_multi_char_delimiter'],
+    doc: 'eval',
+    verified: 'llm',
+  },
+  // Gap #3 — cascading mvexpand
+  {
+    spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels',
+    warningFunc: ['spath_json_only'],
+    unsupportedFunc: ['mvexpand_unsupported', 'mvexpand_cascading'],
+    doc: 'mvexpand',
+    verified: 'llm',
+  },
+  // Gap #5 — mvzip unsupported
+  {
+    spl: '* | eval paired = mvzip(nodes, skus)',
+    unsupportedFunc: ['mvzip_unsupported'],
+    doc: 'eval',
+    verified: 'llm',
+  },
+  // Gap #22 — streamstats
+  {
+    spl: '* | streamstats count as row_num',
+    unsupportedFunc: ['streamstats_unsupported'],
+    doc: 'streamstats',
+    verified: 'llm',
+  },
+  // Gap #10 — kvparse / extract
+  {
+    spl: '* | extract',
+    unsupportedFunc: ['kvparse_unsupported'],
+    doc: 'extract',
+    verified: 'llm',
+  },
+  // Gap #15 — list() order not preserved
+  {
+    spl: '* | stats list(eventType) by orderId',
+    nrql: 'FROM Log SELECT uniques(eventType) FACET orderId',
+    warningFunc: ['list_order_warning', 'facet_default_limit'],
+    doc: 'stats',
+    verified: 'llm',
+  },
+  // Gap #4 — cross-expand field matching (two mvexpands on different fields)
+  {
+    spl: '* | spath input=_raw output=validation path=validations{} | mvexpand validation | spath input=_raw output=sku_data path=items{} | mvexpand sku_data',
+    warningFunc: ['spath_json_only'],
+    unsupportedFunc: ['mvexpand_unsupported', 'mvexpand_cascading'],
+    doc: 'mvexpand',
+    verified: 'llm',
+  },
+  // Gap #12 — FACET default 10 warning
+  {
+    spl: '* | stats count by host',
+    nrql: 'FROM Log SELECT count(*) FACET host',
+    warningFunc: ['facet_default_limit'],
+    doc: 'stats',
+    verified: 'llm',
+  },
+  // Gap #16 — append workaround hint
+  {
+    spl: '* | append [search * | table host]',
+    unsupportedFunc: ['append_no_agg'],
+    doc: 'correlation-append',
+    verified: 'llm',
+  },
+  // Gap #17 — coalesce translates to OR chain (already implemented)
+  {
+    spl: '* | eval combined = coalesce(msg, message)',
+    nrql: 'FROM Log WITH (msg OR message) AS combined SELECT *',
+    doc: 'eval',
+    verified: 'llm',
+  },
+  // Gap #18 — multi-column ORDER BY (already covered by sort_single_field)
+  {
+    spl: '* | sort host, -duration',
+    nrql: 'FROM Log SELECT * ORDER BY host ASC',
+    warningFunc: ['sort_single_field'],
+    doc: 'sort',
+    verified: 'llm',
+  },
+
+  //
+  // ── NRQL Feature Gaps — B-tier FIXME tests (skip: true) ──────────
+  //
+
+  // Gap #3 — FIXME: cascading mvexpand workaround generation
+  // When implemented, the translator should emit a nested-FROM pattern:
+  //   FROM (FROM Log EXPAND jparse(Items) AS item SELECT item[Sku], item[Channels]
+  //     FACET ... LIMIT MAX)
+  //   EXPAND jparse(Channels) AS channel SELECT channel[Name]
+  // See customer positive feedback: "Triple-nested FROM with double EXPAND"
+  {
+    skip: true,
+    spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels | spath input=channels path=Name output=channelName',
+    nrql: 'FIXME: should emit nested FROM with EXPAND at each level',
+    doc: 'mvexpand',
+    verified: false,
+  },
+  // Gap #2 — FIXME: dedup + timechart should emit nested subquery approach
+  // SPL dedup keeps first event per userId (most recent in historical search).
+  // The eval before dedup tags Submit as orders=1; after dedup, only shoppers
+  // whose last action was Submit retain orders=1. Then eval addtobags tags the rest.
+  // Formula: (shoppers whose last action = Submit) / (last action = AddBag) × 100
+  //
+  // Best-effort NRQL: nested latest(routeName) FACET userId, then filter/count.
+  // Limitations: LIMIT MAX caps at 5K (customer has <N> users/hr),
+  // TIMESERIES on outer query produces nulls after first bucket.
+  //
+  // BLOCKER: `timechart eval(...)` doesn't parse — the grammar only recognizes
+  // `name(eval(...))` (e.g., count(eval(if(...)))) but not bare `eval(expr)` as a
+  // top-level stats_function. The customer's `timechart eval((sum(x)*100)/sum(y))`
+  // uses eval as the top-level expression wrapping arithmetic over aggregation fns.
+  //
+  // FIX: Add an alternative to `stats_function` in spl.grammar that accepts
+  // `eval(expr) as alias` as a top-level entry. The eval parser (eval_inner_expr)
+  // already exists and handles nested parens — just needs to be reused:
+  //   stats_function = ... / _* 'eval'i '(' _* expr:eval_inner_expr _* ')' alias:as_clause?
+  //     { return { name: 'eval', args: [], alias: alias, evalFilter: expr }; }
+  // The handler (aggregationHandlers.js handleTimechart) would then need to
+  // recognize evalFilter on a bare eval entry and translate the arithmetic.
+  {
+    skip: true,
+    spl: '(routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as orderCompletionRate span=1m',
+    nrql: 'FIXME: needs grammar change for timechart eval(), then nested FROM (SELECT latest(routeName) AS lastRoute FACET userId LIMIT MAX) with filter/count formula + warnings',
+    doc: 'dedup',
+    verified: false,
+  },
+
+  // Gap #1 — FIXME: {} multivalue field syntax should use jparse + EXPAND
+  // SPL `stats count by validations{}.code` auto-expands the array and groups by each
+  // element's .code subfield. No explicit mvexpand needed in SPL.
+  // Translator currently backtick-escapes the field name literally, producing wrong NRQL.
+  // MCP-validated: val[code] works in SELECT but fails in FACET ("unexpected '['").
+  // Workaround: getField(val, 'code') works in both SELECT and FACET.
+  {
+    skip: true,
+    spl: '* | stats count by validations{}.code',
+    nrql: "FROM Log SELECT count(val) EXPAND jparse(validations) AS val FACET getField(val, 'code') LIMIT MAX",
+    doc: 'stats',
+    verified: false,
+  },
+
+  // Gap #14 — FIXME: mvindex last-element workaround
+  // SPL mvindex(result, -1) natively supports negative indexes.
+  // NRQL workaround: nested if() with length check for each possible array size.
+  // See customer doc for 14-level nested if() example.
+  {
+    skip: true,
+    spl: '* | eval last = mvindex(result, -1)',
+    unsupportedFunc: ['mvindex_last_element'],
+    doc: 'eval',
     verified: false,
   },
 ];
 
 describe('translateSplToNrql', () => {
+  const spies = {};
+
+  beforeEach(() => {
+    for (const key of Object.keys(messages)) {
+      spies[key] = vi.spyOn(messages, key);
+    }
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   cases.forEach((c, i) => {
     const label = c.spl === null ? 'null' : c.spl || '(empty)';
     const testFn = c.skip ? it.skip : it;
@@ -2914,14 +3147,25 @@ describe('translateSplToNrql', () => {
         const joined = r.errors.join(' ');
         expect(joined).toContain(c.errorIncludes);
       }
-      if ('warningIncludes' in c) {
-        const joined = r.warnings.join(' ');
-        expect(joined).toContain(c.warningIncludes);
-      }
-      if ('unsupportedIncludes' in c) {
-        expect(
-          r.unsupported.some((u) => u.includes(c.unsupportedIncludes)),
-        ).toBe(true);
+      if ('warningFunc' in c || 'unsupportedFunc' in c) {
+        const expectedWarnings = new Set(c.warningFunc || []);
+        const expectedUnsupported = new Set(c.unsupportedFunc || []);
+        const allExpected = new Set([
+          ...expectedWarnings,
+          ...expectedUnsupported,
+        ]);
+        // Every expected function must have been called
+        for (const fn of allExpected) {
+          expect(spies[fn]).toHaveBeenCalled();
+        }
+        // No unexpected functions should have been called
+        for (const [key, spy] of Object.entries(spies)) {
+          if (!allExpected.has(key) && spy.mock.calls.length > 0) {
+            expect.fail(
+              `unexpected message function '${key}' was called but not listed in warningFunc/unsupportedFunc`,
+            );
+          }
+        }
       }
     });
   });
