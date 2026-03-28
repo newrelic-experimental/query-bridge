@@ -23,8 +23,8 @@ import { parseSplTime } from '../../src/input/spl/splTime.js';
 import { messages } from '../../src/messages.js';
 
 // AI-DEV: To add test cases, append to the `cases` array.
-// Use `warningFunc`/`unsupportedFunc` (message key or array of keys from messages.js) for new tests.
-// Legacy `warningIncludes`/`unsupportedIncludes` (substring match) still work but are being migrated.
+// Use `warningFunc`/`unsupportedFunc` (array of message keys from messages.js) for message assertions.
+// The test runner verifies exhaustively: every listed function must be called, and no unlisted function may be called.
 const cases = [
   //
   // ── Empty / invalid input ───────────────────────────────────────
@@ -3166,15 +3166,6 @@ describe('translateSplToNrql', () => {
             );
           }
         }
-      }
-      if ('warningIncludes' in c) {
-        const joined = r.warnings.join(' ');
-        expect(joined).toContain(c.warningIncludes);
-      }
-      if ('unsupportedIncludes' in c) {
-        expect(
-          r.unsupported.some((u) => u.includes(c.unsupportedIncludes)),
-        ).toBe(true);
       }
     });
   });
