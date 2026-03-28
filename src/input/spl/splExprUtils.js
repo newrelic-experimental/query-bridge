@@ -65,8 +65,9 @@ const SPL_TO_NRQL_FUNCS = {
   stdev: { nrql: 'stddev' },
   stdevp: {
     nrql: 'stddev',
-    warning:
-      'SPL stdevp() is population stddev; mapped to NRQL stddev() which is sample stddev. Results may differ.',
+    get warning() {
+      return messages.stdevp_precision();
+    },
   },
   values: { nrql: 'uniques' },
   list: {
@@ -148,9 +149,7 @@ export function mapFunction(name, args) {
         : null;
     return {
       expr: Func('percentile', nrqlArgs),
-      warning: variant
-        ? `SPL ${variant}${n}() mapped to NRQL percentile(); precision may differ`
-        : null,
+      warning: variant ? messages.perc_precision(variant, n) : null,
     };
   }
 
@@ -180,14 +179,14 @@ export function mapFunction(name, args) {
   if (NO_EQUIV_FUNCS[lowerName]) {
     return {
       expr: null,
-      warning: `SPL ${NO_EQUIV_FUNCS[lowerName]}`,
+      warning: messages.no_equiv_func(NO_EQUIV_FUNCS[lowerName]),
     };
   }
 
   // Unknown function — warn and omit
   return {
     expr: null,
-    warning: `SPL function ${name}() has no known NRQL equivalent`,
+    warning: messages.unknown_stats_func(name),
   };
 }
 

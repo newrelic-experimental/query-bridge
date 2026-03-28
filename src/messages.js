@@ -234,8 +234,24 @@ export const messages = {
   inputlookup_where_warning: () =>
     'inputlookup WHERE condition translated as-is; verify field names match the lookup table schema',
 
+  // ── splExprUtils mapFunction warnings ────────────────────────────
+
+  // SPL: `* | stats stdevp(latency) by host`
+  stdevp_precision: () =>
+    'SPL stdevp() is population stddev; mapped to NRQL stddev() which is sample stddev. Results may differ.',
+
+  // SPL: `* | stats exactperc95(latency) by host`
+  perc_precision: (variant, n) =>
+    `SPL ${variant}${n}() mapped to NRQL percentile(); precision may differ`,
+
+  // SPL: `* | stats mode(status) by host`
+  no_equiv_func: (name) => `SPL ${name}`,
+
+  // SPL: `* | stats xyzfunc(field) by host`
+  unknown_stats_func: (name) =>
+    `SPL function ${name}() has no known NRQL equivalent`,
+
   // ── aggregationHandlers ───────────────────────────────────────────
-  // Note: mapFunction warnings (stdevp, list, perc, mode, etc.) are in splExprUtils.js
 
   // SPL: `* | top 10 status by host`
   top_groupby_warning: () =>
