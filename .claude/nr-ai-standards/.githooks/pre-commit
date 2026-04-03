@@ -1,0 +1,29 @@
+#!/bin/bash
+# Require CHANGELOG.md and VERSION to be updated when non-trivial files change.
+# Trivial files: CHANGELOG.md itself, VERSION, .gitignore, .claude/settings.local.json
+
+trivial_only=true
+while IFS= read -r file; do
+  case "$file" in
+    CHANGELOG.md|VERSION|.gitignore|.claude/settings.local.json) ;;
+    *) trivial_only=false; break ;;
+  esac
+done < <(git diff --cached --name-only)
+
+if [ "$trivial_only" = "true" ]; then
+  exit 0
+fi
+
+staged=$(git diff --cached --name-only)
+
+if ! echo "$staged" | grep -q '^CHANGELOG.md$'; then
+  echo "BLOCKED: Non-trivial files are staged but CHANGELOG.md is not."
+  echo "Update CHANGELOG.md to describe what changed and why."
+  exit 1
+fi
+
+if ! echo "$staged" | grep -q '^VERSION$'; then
+  echo "BLOCKED: Non-trivial files are staged but VERSION is not."
+  echo "Bump the version in VERSION to match the new CHANGELOG entry."
+  exit 1
+fi
