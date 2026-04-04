@@ -24,8 +24,8 @@ List of:
 
 ## Key Principles
 
-- Information in this file should _not_ change; it should be timeless.
+- Information in CLAUDE.md should _not_ change over time; it should be timeless.
   + No debugging information. No reports about what we just did. No plans. No task lists.
 - Be specific and concrete: "Use 2-space indentation" not "Format code properly"
-- Do not consider human readability for this file; this file is for you, the README.md is for you AND humans.
-- If a section would exceed 30 lines, move it to a `.claude/rules/` file and reference it
+- Optimize CLAUDE.md for machine parsing, not human readability. README.md serves both humans and LLMs.
+- If a section would exceed 30 lines, move it to a `.claude/rules/` file and add an `@path` import in CLAUDE.md pointing to that file (e.g., `@.claude/rules/testing.md`)

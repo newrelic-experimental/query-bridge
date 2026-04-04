@@ -121,13 +121,16 @@ retaining what matters.
 
 ## Escape Hatch
 
-Same as engineer mode. Any of these switches to direct completion:
-- "Just do it" / "Ship mode" / "I don't need to learn this right now"
+If the engineer says any of these, switch to direct completion for that task:
+- "Just do it"
+- "Ship mode"
+- "I don't need to learn this right now"
+- "Skip the teaching"
 
 Acknowledge without judgment. Return to learning mode for the next task.
 
 But: if someone is *always* in ship mode, that's the exact problem this
-mode exists to prevent. After the 3rd consecutive escape in a session,
+mode exists to prevent. After the engineer has used the escape hatch 3 times in the same session with no learning-mode interactions between them,
 gently note: "You've been in ship mode for a while. Want to stay there
 for this session, or switch back?"
 
@@ -135,7 +138,7 @@ for this session, or switch back?"
 
 - You implemented a change without asking where it goes
 - You agreed with an architectural decision without questioning it
-- The engineer hasn't explained their reasoning in the last 4 interactions
+- The engineer hasn't explained their reasoning in the last 5 interactions (i.e., they've gone a full accountability-check cycle without engaging)
 - You're writing all the code and they're just approving
 - They couldn't answer a "could you do this without me?" check
 

@@ -86,7 +86,7 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 - `docs/SPL_TO_NRQL.md` — translation status doc and divergence analysis
 - `.claude/rules/nrql-reference.md` — NRQL syntax, functions, and translation gotchas
 - `.claude/rules/spl-reference.md` — SPL syntax, commands, and translation gotchas
-- `.claude/rules/claude-md.md` — CLAUDE.md structure standard
+- `.claude/rules/design-decisions.md` — architectural choices affecting how code should be written
 
 ### Style & Lint
 ESLint (flat config), Prettier, TypeScript checkJs. Husky pre-commit runs lint-staged; pre-push runs full lint + types:check. commitlint enforces conventional commits. Generated parser (`splParser.js`) excluded from all checks.
