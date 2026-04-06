@@ -123,6 +123,49 @@ For approved cases only, use the Edit tool to change `verified: 'llm'` → `veri
 
 ---
 
+## Mode 3: Real-Data Validation (NRQL Semantic Verification)
+
+Validates that translated NRQL not only compiles but produces meaningful results against real data in account 1.
+
+### When to Use
+
+- Tagging test cases with `semantic_verification: 'mcp'`
+- After implementing new NRQL features (EXPAND, new clause types)
+- For queries involving array expansion, nested JSON, or subquery nesting
+- When MCP compilation passes but semantic correctness is uncertain
+
+### What Counts as Proof
+
+The query must return **non-null, non-zero, non-empty computed values**. None of the following count as proof:
+
+- `0` (e.g., `count: 0`) — proves compilation, not computation
+- `[]` — empty result set
+- `''` — empty string
+- `null`
+- Timeout
+- Error
+
+If the exact query returns any of the above, adapt it to target real data (use known fields from `nrql-corpus.md`). If you can't get real computed values after 3 attempts, leave it untagged.
+
+### Workflow
+
+1. **Find matching data**: Use discovery queries to confirm data exists
+2. **Run the translated NRQL**: Execute against account 1
+3. **Check results return real values**: Numbers > 0, non-empty strings, actual rows with populated fields. See "What Counts as Proof" above.
+4. **Verify semantics**: Does the result represent what the SPL query intended?
+
+### Output Format
+
+After every batch of 4, show a proof table:
+
+```
+| Line | Pattern | Adapted NRQL | Proof Value | Tag |
+```
+
+After every 5 batches (20 tags), pause for a scorecard checkpoint showing: total tagged, total skipped, FIXMEs found.
+
+---
+
 ## Handling Edge Cases
 
 - **Template variables** (`$var$`): Substitute a literal value before MCP validation (e.g., `$host$` → `'web-01'`)

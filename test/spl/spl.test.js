@@ -130,6 +130,7 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE message LIKE '%100\\%cpu%'",
     doc: 'bare-keywords',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   // Escaped quotes in bare search values
   {
@@ -151,12 +152,14 @@ const cases = [
     nrql: "FROM Log SELECT count(*) WHERE message LIKE '%control-connection-state-change%'",
     doc: 'bare-keywords',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   {
     spl: 'TERM("*peer-system-ip:*") | stats count',
     nrql: "FROM Log SELECT count(*) WHERE message LIKE '%%peer-system-ip:%%'",
     doc: 'bare-keywords',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   //
   // ── Field comparisons ───────────────────────────────────────────
@@ -169,6 +172,7 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE numeric(status) >= 400 AND status != '500' AND numeric(status) != 500 AND action = 'purchase'",
     doc: 'field-comparisons',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   // Numeric equality: integer, negative, decimal — all produce dual string/numeric
   {
@@ -278,6 +282,7 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE EventCode = '4720' OR numeric(EventCode) = 4720 OR EventCode = '4732' OR numeric(EventCode) = 4732",
     doc: 'boolean-operators',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   {
     spl: 'NOT debug',
@@ -311,18 +316,21 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR (b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3)",
     doc: 'boolean-operators',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   {
     spl: '(a=1 OR b=2) AND c=3',
     nrql: "FROM Log SELECT * WHERE a = '1' OR numeric(a) = 1 OR b = '2' OR numeric(b) = 2 AND c = '3' OR numeric(c) = 3",
     doc: 'boolean-operators',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   {
     spl: 'a=1 b=2 OR c=3 d=4',
     nrql: "FROM Log SELECT * WHERE (a = '1' OR numeric(a) = 1 AND b = '2' OR numeric(b) = 2) OR (c = '3' OR numeric(c) = 3 AND d = '4' OR numeric(d) = 4)",
     doc: 'boolean-operators',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   {
     spl: 'NOT status=500 host=web',
@@ -335,6 +343,7 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE NOT (status = '500' OR numeric(status) = 500 AND host = 'web')",
     doc: 'boolean-operators',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   // NOT() without space + boolean group inside + combined with bare keyword
   {
@@ -349,6 +358,7 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
     doc: 'boolean-operators',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   //
   // ── IN operator ─────────────────────────────────────────────────
@@ -395,6 +405,7 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE host LIKE '%server' AND host LIKE 'web%' AND message LIKE '%error%' AND path LIKE '/api/%/users'",
     doc: 'wildcards',
     verified: 'human',
+    semantic_verification: 'mcp',
   },
   // Match-all wildcard
   {
