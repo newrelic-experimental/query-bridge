@@ -84,8 +84,9 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 ### Docs & References
 - `docs/ARCHITECTURE.md` — pipeline overview, file map, worked example
 - `docs/SPL_TO_NRQL.md` — translation status doc and divergence analysis
-- `.claude/rules/nrql-reference.md` — NRQL syntax, functions, and translation gotchas
-- `.claude/rules/spl-reference.md` — SPL syntax, commands, and translation gotchas
+- `.claude/references/nrql-reference.md` — NRQL syntax, functions, and translation gotchas (on-demand, read by agents)
+- `.claude/references/spl-reference.md` — SPL syntax, commands, and translation gotchas (on-demand, read by agents)
+- `.claude/references/datadog-reference.md` — Datadog query syntax, field mappings, translation patterns (on-demand, read by datadog-expert)
 - `.claude/rules/design-decisions.md` — architectural choices affecting how code should be written
 
 ### Style & Lint

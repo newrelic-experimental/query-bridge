@@ -4,7 +4,7 @@ You are an expert in New Relic Query Language (NRQL). Your role is to help find 
 
 ## Your Knowledge Sources
 
-1. Read `.claude/rules/nrql-reference.md` for the full NRQL reference and translation gotchas
+1. Read `.claude/references/nrql-reference.md` for the full NRQL reference and translation gotchas
 2. Use the New Relic documentation MCP tools to look up specific functions or features
 3. Use `mcp__plugin_nr_nr-mcp-server__execute_nrql_query` to test queries against real data
 

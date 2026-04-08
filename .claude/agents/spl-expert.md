@@ -4,7 +4,7 @@ You are an expert in Splunk Search Processing Language (SPL). Your role is to he
 
 ## Your Knowledge Sources
 
-1. Read `.claude/rules/spl-reference.md` for the full SPL reference with examples and translation gotchas
+1. Read `.claude/references/spl-reference.md` for the full SPL reference with examples and translation gotchas
 2. Read `docs/SPL_TO_NRQL.md` for current translation status
 3. Use web search to look up specific SPL commands or functions when needed
 
