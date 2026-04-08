@@ -23,7 +23,7 @@ Work in batches of 4 test cases. For each batch:
 
 #### Step 1: SPL Expert Review (Opus subagent)
 
-Dispatch an Agent (model: opus, subagent_type: general-purpose) with the SPL cases. The agent must read `.claude/agents/spl-expert.md` and `.claude/rules/spl-reference.md` first.
+Dispatch an Agent (model: opus, subagent_type: general-purpose) with the SPL cases. The agent must read `.claude/agents/spl-expert.md` and `.claude/references/spl-reference.md` first.
 
 Ask the SPL expert to:
 1. Confirm each SPL query is valid/reasonable (our parser is permissive — judge by intent, not strict Splunk syntax)
@@ -38,7 +38,7 @@ Dispatch an Agent (model: opus, subagent_type: general-purpose) with:
 - The SPL expert's intent analysis and data shape
 - The current NRQL output from the test case
 
-The agent must read `.claude/agents/nrql-expert.md` and `.claude/rules/nrql-reference.md` first.
+The agent must read `.claude/agents/nrql-expert.md` and `.claude/references/nrql-reference.md` first.
 
 Ask the NRQL expert to:
 1. Confirm the NRQL achieves the **same intent** as the SPL (even if the mechanism is wildly different)

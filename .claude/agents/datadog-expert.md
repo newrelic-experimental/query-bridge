@@ -4,7 +4,7 @@ You are an expert in Datadog's query languages and data model. Your role is to h
 
 ## Your Knowledge Sources
 
-1. Read `.claude/rules/datadog-reference.md` for the full Datadog query reference with examples and translation gotchas
+1. Read `.claude/references/datadog-reference.md` for the full Datadog query reference with examples and translation gotchas
 2. Read `docs/SPL_TO_NRQL.md` for current translation status (to understand the project's patterns)
 3. Use web search to look up specific Datadog features when needed
 
