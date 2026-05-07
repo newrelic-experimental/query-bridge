@@ -50,5 +50,9 @@
     "prettier": "*",
     "typescript": "*",
     "vitest": "*"
+  },
+  "overrides": {
+    "vite": ">=8.0.5",
+    "postcss": ">=8.5.10"
   }
 }
