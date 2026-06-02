@@ -68,7 +68,6 @@ const cases = [
     'message=fn(x)',
     'status IN ()',
     'https://example.com/path?q=1',
-    '`mymacro`status=200',
   ].map((spl) => ({
     spl,
     errorIncludes: 'Failed to parse SPL',
@@ -3315,6 +3314,47 @@ const cases = [
     nrql: "FROM Log SELECT count(*), average(bytes) WHERE index = 'x' FACET host",
     warningFunc: ['facet_default_limit'],
     doc: 'tokenizer-stats-multi-fn-regression',
+    verified: false,
+  },
+
+  // ── quote-boundary: a closing quote acts as a term separator ──────
+  {
+    spl: 'index=x cs_uri_query !="*Lucky*"cs_uri_query != "*nui*"',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND cs_uri_query NOT LIKE '%Lucky%' AND cs_uri_query NOT LIKE '%nui%'",
+    doc: 'tokenizer-quote-boundary',
+    verified: false,
+  },
+  {
+    spl: 'index="mattbotsummary"$device$',
+    nrql: "FROM Log SELECT * WHERE index = 'mattbotsummary' AND {{device}}",
+    doc: 'tokenizer-quote-boundary-token',
+    verified: false,
+  },
+  {
+    // A closing backtick (end of macro) is a term boundary like a closing quote:
+    // `mymacro`status=200 is the macro followed by a comparison, no space needed.
+    spl: '`mymacro`status=200',
+    nrql: "FROM Log SELECT * WHERE $mymacro AND status = '200' OR numeric(status) = 200",
+    warningFunc: ['macro_translated'],
+    doc: 'tokenizer-quote-boundary-macro',
+    verified: false,
+  },
+  {
+    spl: 'index=x cs_uri_query !="*Lucky*" cs_uri_query != "*nui*"',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND cs_uri_query NOT LIKE '%Lucky%' AND cs_uri_query NOT LIKE '%nui%'",
+    doc: 'tokenizer-quote-boundary-spaced-regression',
+    verified: false,
+  },
+  {
+    spl: 'index=x foo="a" OR bar="b"',
+    nrql: "FROM Log SELECT * WHERE (index = 'x' AND foo = 'a') OR bar = 'b'",
+    doc: 'tokenizer-quote-boundary-or-regression',
+    verified: false,
+  },
+  {
+    spl: 'index=x (foo="a") | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' AND foo = 'a'",
+    doc: 'tokenizer-quote-boundary-paren-regression',
     verified: false,
   },
 ];

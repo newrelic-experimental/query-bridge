@@ -1159,7 +1159,7 @@ or_expr
     }
 
 and_expr
-  = left:not_expr rest:((_+ 'AND'i _+ / _+ !('OR'i _+)) right:not_expr { return right; })*
+  = left:not_expr rest:((_+ 'AND'i _+ / _+ !('OR'i _+) / delimiter_boundary) right:not_expr { return right; })*
     {
       var result = left;
       for (var i = 0; i < rest.length; i++) {
@@ -1167,6 +1167,16 @@ and_expr
       }
       return result;
     }
+
+// Splunk treats a self-closing delimiter (closing quote OR closing backtick of a
+// macro) as an implicit term boundary, so the next term can be jammed against it
+// with no whitespace: `!="*x*"field=y`, `index="z"$token$`, `` `macro`field=y ``.
+// This zero-width separator is reachable only right after a delimiter-terminated
+// term; gate it on the next token being a new search term (a comparison, a
+// $token$, another quoted value, or a macro) so a single intended value is never
+// split.
+delimiter_boundary
+  = &(search_field _* comparison_op / '$' template_var_name '$' / '"' / "'" / '`')
 
 not_expr
   = 'NOT'i _* '(' _* ')' { return null; }
