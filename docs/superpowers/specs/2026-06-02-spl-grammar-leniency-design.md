@@ -84,13 +84,18 @@ known option names, or stop-at-`identifier=`). May share root cause with sort/ch
 **Parse fix:** `'top'i` already case-insensitive (verify); accept `limit=N` before
 the field list; accept comma/space-separated multi-field list.
 
-**Emit:** `SELECT count(*) AS count, count(*) * 100.0 / (SELECT count(*) FROM Log <WHERE>) AS percent FROM Log <WHERE> FACET a, b LIMIT N`.
+**Emit:** the actual emitter form (observed in review) is
+`FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) <WHERE>) AS 'percent' <WHERE> FACET a, b ORDER BY count DESC LIMIT N`.
+Note: subquery is `(FROM Log SELECT count(*) ...)` not `(SELECT count(*) FROM Log
+...)`; only `percent` is aliased (`count` is bare); `ORDER BY count DESC` is present.
 - NRQL FACET supports multiple fields. ✓
-- SPL `top` emits `count` AND `percent` columns by default. **Emit percent
-  faithfully via subquery** — validated working (see Validation). NOT omitted.
-- **Guardrail:** the percent subquery's `(SELECT count(*) FROM Log ...)` MUST carry
+- **Percent ALREADY works today** for single-field top — this task only adds the
+  multi-field PARSE. The percent subquery wiring (with matched WHERE) already exists.
+- SPL `top` emits `count` AND `percent` columns by default. Emit percent faithfully
+  via subquery — validated working (see Validation).
+- **Guardrail:** the percent subquery's `(FROM Log SELECT count(*) ...)` MUST carry
   the SAME WHERE clause as the outer query, or the denominator is the whole dataset
-  and percentages are wrong.
+  and percentages are wrong. (Already satisfied by the existing wiring.)
 
 ### 3. bin (20)
 **Parse fix:** add optional `as_clause` to the bin/bucket productions.
@@ -119,10 +124,20 @@ ensure multivalue funcs (`mvcount`, etc.) resolve in where.
 **Emit:**
 - `!(match(field,"regex"))` → `NOT (field RLIKE 'regex')`. NRQL supports `NOT (...)`;
   `RLIKE` is correct for `match()` (regex), NOT `LIKE` (literal/`%`).
-- `.25` → **pass through verbatim**. Live-validated: NRQL natively accepts
-  leading-dot decimal literals and evaluates `.25` to exactly `0.25` (see
-  Validation). The grammar accepts a leading-dot number literal; the emitter passes
-  it unchanged — no normalization step.
+- **GUARDRAIL:** `!=` comparison must be matched BEFORE the bare-`!` NOT rule, and
+  bare `!` only matches when followed by `(` or whitespace+expr — never `=`.
+  Otherwise `where x != 5` mis-parses as `!(x = 5)`. (Verified currently correct;
+  must stay correct after adding `!` NOT.)
+- **`where`-after-`stats` does NOT emit HAVING** — the emitter has no HAVING support.
+  It wraps as a subquery: `FROM (FROM Log SELECT count(*) ... FACET f LIMIT MAX)
+  SELECT * WHERE <cond>`. Any HAVING assertion is wrong.
+- `.25` leading-dot decimal is a real EMIT BUG today, not just a parse gap:
+  `where .25 > count` (after stats) currently emits `` WHERE `.25` > 'count' `` —
+  `.25` wrongly backticked as an attribute, `count` as a string. Fix must classify a
+  leading-dot token as a NUMBER so the comparison builder treats the field as a
+  field. Target: `... WHERE .25 > numeric(count)`. (NRQL accepts leading-dot
+  decimals — live-validated — so pass-through of the literal is fine; the bug is the
+  operand misclassification.)
 - `="TRUE"` in where is an exact string match (distinct from search substring).
 
 ### 6. Long tail + tokenizer leniency (~37)
@@ -169,9 +184,11 @@ Per-commit checklist:
 ## Validation
 
 - **Percent subquery (item 2):** live-validated against account 1 via
-  `execute_nrql_query`. The pattern
-  `SELECT count(*) AS count, count(*) * 100.0 / (SELECT count(*) FROM Log) AS percent FROM Log FACET <field> LIMIT N`
-  compiles and returns correct percentages. ✓
+  `execute_nrql_query` — the nested-aggregate-in-SELECT percentage pattern compiles
+  and returns correct percentages. ✓ (The clause order I tested was NRQL's
+  order-tolerant form; the translator's actual emitter output is
+  `FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) <WHERE>) AS 'percent' <WHERE> FACET <fields> ORDER BY count DESC LIMIT N`,
+  which is equivalent and already what the codebase produces for single-field top.)
 - **Leading-dot decimal (item 5):** live-validated against account 1. NRQL accepts
   `.25` directly and evaluates it to exactly `0.25` (`SELECT .25 AS quarter` →
   `0.25`; `WHERE .5 > 0.25` filters correctly). Design passes the literal through
