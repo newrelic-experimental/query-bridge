@@ -1955,7 +1955,7 @@ SPL:  * | eval x=replace(name, "test.*end", "")
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "\d+", "")
-🔴 `replace()` with regex pattern 'd+' not supported — NRQL replace() is literal-only
+🔴 `replace()` with regex pattern '\d+' not supported — NRQL replace() is literal-only
 ```
 
 ```
@@ -1979,7 +1979,7 @@ SPL:  * | eval x=replace(name, "foo|bar", "")
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "\s+", " ")
-🔴 `replace()` with regex pattern 's+' not supported — NRQL replace() is literal-only
+🔴 `replace()` with regex pattern '\s+' not supported — NRQL replace() is literal-only
 ```
 
 ```
@@ -3110,9 +3110,9 @@ NRQL: FROM Log SELECT * WHERE path = 'C:\\Windows\\System32'
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  msg="line1\nline2"
-NRQL: FROM Log SELECT * WHERE msg = 'line1\nline2'
+NRQL: FROM Log SELECT * WHERE msg = 'line1\\nline2'
 ```
 
 ```

@@ -1303,18 +1303,27 @@ keyword_char
   = '\\' ch:. { return ch; }
   / [^ \t\r\n\f|()=!<>"`']
 
+/* String char rules. Splunk's only real escape sequences are \\, \", and
+   \' — quote-escapes plus literal-backslash. Every other backslash sequence
+   (\d, \s, \w, \(, \., \n, \t, \r, ...) passes through verbatim with the
+   backslash preserved. This matches the canonical SPL example
+   `match(field, "^\d{1,3}\.\d{1,3}...")` working with single backslashes,
+   and the docs note (TextFunctions, replace()) that eval performs only one
+   level of escaping before passing strings to PCRE — meaning \\ becomes \
+   but \n stays as the two characters \ + n. NRQL accepts \n as newline
+   either way; the difference matters for regex semantics. */
 double_string_char
-  = '\\n' { return '\n'; }
-  / '\\t' { return '\t'; }
-  / '\\r' { return '\r'; }
-  / '\\' ch:. { return ch; }
+  = '\\\\' { return '\\'; }
+  / '\\"' { return '"'; }
+  / '\\\'' { return '\''; }
+  / '\\' ch:. { return '\\' + ch; }
   / [^"\\]
 
 single_string_char
-  = '\\n' { return '\n'; }
-  / '\\t' { return '\t'; }
-  / '\\r' { return '\r'; }
-  / '\\' ch:. { return ch; }
+  = '\\\\' { return '\\'; }
+  / '\\"' { return '"'; }
+  / '\\\'' { return '\''; }
+  / '\\' ch:. { return '\\' + ch; }
   / [^'\\]
 
 /* ============================================================

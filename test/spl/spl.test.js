@@ -438,11 +438,15 @@ const cases = [
     doc: 'quoted-strings',
     verified: 'human',
   },
+  // SPL preserves \n as a literal backslash-n inside double-quoted strings
+  // (Splunk's only real C-escape sequences are \\ and \"/\'). NRQL needs the
+  // backslash escaped to \\ so the resulting LIKE/string literal carries
+  // the same two chars (\, n), not a real newline.
   {
     spl: 'msg="line1\\nline2"',
-    nrql: "FROM Log SELECT * WHERE msg = 'line1\\nline2'",
+    nrql: "FROM Log SELECT * WHERE msg = 'line1\\\\nline2'",
     doc: 'quoted-strings',
-    verified: 'human',
+    verified: false,
   },
   // Double-quoted with spaces, pipe, equals, comma, empty, unicode — all in one implicit-AND
   {
