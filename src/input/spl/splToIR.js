@@ -21,6 +21,7 @@ import {
   buildJparseComparison,
   coerceValue,
   escapeWildcard,
+  isNumeric,
   normalizeSubsearch,
 } from './splExprUtils.js';
 import * as parser from './splParser.js';
@@ -176,6 +177,21 @@ export function translateSearchExpr(node, ir) {
       case 'Comparison': {
         let { field, value, operator: op } = node;
 
+        // Reversed operands: `.25 > count` parses `.25` into the field slot and
+        // `count` into the value slot. When the left is a numeric literal and the
+        // right is a field name, emit `<number> op numeric(<field>)` rather than
+        // backticking the number as an attribute. Equality keeps a plain compare.
+        const leftLooksNumeric = /^-?(\d+\.\d+|\.\d+|\d+)$/.test(field);
+        const rightLooksField = /^[a-zA-Z_][\w.]*$/.test(value);
+        if (leftLooksNumeric && rightLooksField && !field.includes('{')) {
+          const numLit = RawNrql(field);
+          const fieldId = Identifier(value === '_time' ? 'timestamp' : value);
+          if (op === '=' || op === '!=') {
+            return BinOp(op, numLit, fieldId);
+          }
+          return BinOp(op, numLit, Func('numeric', [fieldId]));
+        }
+
         // SPL metadata field _raw → NRQL message
         if (field === '_raw') {
           field = 'message';
@@ -228,6 +244,27 @@ export function translateSearchExpr(node, ir) {
         }
 
         return buildComparison(field, op, value);
+      }
+
+      // Function call on the left of a comparison: mvcount(f) > 1.
+      case 'FuncComparison': {
+        const left = walkEvalExpr(node.left, ir);
+        if (!left) {
+          unsupported.push(messages.search_func_unsupported(node.left.name));
+          return null;
+        }
+        const { value, operator: op } = node;
+        if (isNumeric(value)) {
+          if (op === '=' || op === '!=') {
+            return BinOp(op, left, Literal(Number(value), 'number'));
+          }
+          return BinOp(
+            op,
+            Func('numeric', [left]),
+            Literal(Number(value), 'number'),
+          );
+        }
+        return BinOp(op, left, Literal(value, 'string'));
       }
 
       case 'InComparison': {

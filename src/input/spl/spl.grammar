@@ -264,10 +264,14 @@ where_and_expr
 
 where_not_expr
   = 'NOT'i _+ expr:where_primary { return { type: 'Not', operand: expr }; }
+  // `!` as NOT — only before '(' or whitespace, never before '=' (that is the
+  // `!=` comparison operator, handled inside where_comparison).
+  / '!' &('(' / _) _* expr:where_primary { return { type: 'Not', operand: expr }; }
   / where_primary
 
 where_primary
   = '(' _* expr:where_expression _* ')' { return expr; }
+  / where_func_comparison
   / where_function_call
   / where_comparison
 
@@ -275,6 +279,13 @@ where_function_call
   = name:function_name '(' _* args:function_args _* ')'
     {
       return { type: 'FunctionCall', name: name, args: args };
+    }
+
+// A function call on the LEFT of a comparison: mvcount(f) > 1, len(x) >= 3, etc.
+where_func_comparison
+  = fn:where_function_call _* op:comparison_op _* value:where_value
+    {
+      return { type: 'FuncComparison', left: fn, operator: op, value: value };
     }
 
 where_comparison

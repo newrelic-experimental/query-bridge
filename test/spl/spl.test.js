@@ -3240,6 +3240,33 @@ const cases = [
     doc: 'sort-leading-zero-regression',
     verified: false,
   },
+
+  // ── where: bang negation, leading-dot decimals, mvcount ───────────
+  {
+    spl: 'index=x | where !(match(f,"^SYS"))',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND f NOT RLIKE r'^SYS'",
+    doc: 'where-bang-negation',
+    verified: false,
+  },
+  {
+    spl: 'index=x | stats count by f | where .25 > count',
+    nrql: "FROM (FROM Log SELECT count(*) WHERE index = 'x' FACET f LIMIT MAX) SELECT * WHERE .25 > numeric(count)",
+    doc: 'where-leading-dot-decimal',
+    verified: false,
+  },
+  {
+    spl: 'index=x | where mvcount(f) > 1',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(length(f)) > 1",
+    warningFunc: ['eval_length_warning'],
+    doc: 'where-mvcount',
+    verified: false,
+  },
+  {
+    spl: 'index=x | where count != 5',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND count != '5' AND numeric(count) != 5",
+    doc: 'where-bang-regression',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {
