@@ -3213,6 +3213,33 @@ const cases = [
     doc: 'bin-as-alias',
     verified: false,
   },
+
+  // ── sort leniency: trailing limit, type hints, space-sign multi-key ──
+  {
+    spl: 'index=x | sort - time_taken limit=10',
+    nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY time_taken DESC LIMIT 10",
+    doc: 'sort-leniency',
+    verified: false,
+  },
+  {
+    spl: 'index=x | sort num(duration)',
+    nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY duration ASC",
+    doc: 'sort-typehint',
+    verified: false,
+  },
+  {
+    spl: 'index=x | sort -aaa username',
+    nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY aaa DESC",
+    warningFunc: ['sort_single_field'],
+    doc: 'sort-space-multikey',
+    verified: false,
+  },
+  {
+    spl: 'index=x | sort 0 host',
+    nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY host ASC",
+    doc: 'sort-leading-zero-regression',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

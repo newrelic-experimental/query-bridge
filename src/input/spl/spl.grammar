@@ -334,12 +334,12 @@ fields_command
    Sort command: | sort [-|+]field, ...
    ============================================================ */
 sort_command
-  = 'sort'i _+ limit:sort_limit? fields:sort_field_list
+  = 'sort'i _+ limit:sort_limit? fields:sort_field_list trailingLimit:sort_trailing_limit?
     {
       return {
         type: 'SortCommand',
         fields: fields,
-        limit: limit
+        limit: trailingLimit !== null && trailingLimit !== undefined ? trailingLimit : limit
       };
     }
 
@@ -347,12 +347,19 @@ sort_limit
   = n:[0-9]+ _+
     { return parseInt(n.join(''), 10); }
 
+// SPL also allows a trailing `limit=N` after the sort fields.
+sort_trailing_limit
+  = _* 'limit'i '=' n:[0-9]+
+    { return parseInt(n.join(''), 10); }
+
+// Sort keys are separated by commas OR whitespace. A whitespace-separated key
+// must not be a `limit=` option (handled by sort_trailing_limit).
 sort_field_list
-  = first:sort_field rest:(',' _* f:sort_field { return f; })*
+  = first:sort_field rest:((_* ',' _* / _+) f:sort_field { return f; })*
     { return [first].concat(rest); }
 
 sort_field
-  = _* dir:[-+]? _* name:field_name order:sort_order? _*
+  = _* dir:[-+]? _* name:sort_field_name order:sort_order?
     {
       var direction = 'asc';
       if (dir === '-') direction = 'desc';
@@ -362,6 +369,13 @@ sort_field
         direction: direction
       };
     }
+
+// A sort field may be wrapped in a type-hint: num(f) / str(f) / ip(f).
+// The hint only tells Splunk how to compare; NRQL ignores it, so we keep the
+// bare field name. A bare field must not be `limit=...` (a trailing option).
+sort_field_name
+  = ('num'i / 'str'i / 'ip'i) '(' _* name:field_name _* ')' { return name; }
+  / !('limit'i '=') name:field_name { return name; }
 
 sort_order
   = _+ 'desc'i { return 'desc'; }

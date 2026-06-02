@@ -41,6 +41,11 @@ export function handleSort(cmd, ir) {
   if (cmd.fields.length > 1) {
     ir.warnings.push(messages.sort_single_field());
   }
+  // SPL `sort N field` / `sort field limit=N` caps the result to N rows.
+  // `sort 0 ...` means unlimited, so leave ir.limit unset.
+  if (cmd.limit != null && cmd.limit > 0) {
+    ir.limit = cmd.limit;
+  }
 }
 
 export function handleHead(cmd, ir) {
