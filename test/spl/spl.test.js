@@ -2086,6 +2086,15 @@ const cases = [
     doc: 'results-where',
     verified: 'human',
   },
+  // Regression: where-pipe with an unknown eval function as the whole primary
+  // used to crash with TypeError because translateWhereExpr forgot to forward
+  // `ir` to translateSearchExpr, and the FunctionCall fallthrough then called
+  // walkEvalFunc with ir=undefined. Should now produce unsupported, not throw.
+  {
+    spl: '* | where in(minute_check, "00", "30")',
+    unsupportedFunc: ['eval_func_unsupported'],
+    verified: false,
+  },
   //
   // ── where on aggregation ────────────────────────────────────────
   //
