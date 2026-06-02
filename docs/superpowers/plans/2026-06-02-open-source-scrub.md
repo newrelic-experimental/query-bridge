@@ -21,15 +21,18 @@
 
 ## Phase 0 — Relocate corpus to private repo (BEFORE any deletion)
 
-> Requires human input: source zip file paths (open item). Do not proceed past Task 0.1 until provided.
+> **Source archives (provided):**
+> - `~/Downloads/REDACTED.tgz` (34MB) — full Splunk SRE app repo export for **Customer A** (apps prefixed with the `<CUSTOMER_A>` company-initial prefix). Contains 119 `.conf` files, 836 embedded `.git` objects, and an apikeys app — i.e. infra-as-code that MAY hold live credentials. Per owner decision: stored raw in the private repo; NOT scanned; NOT used as the query source.
+> - `~/Downloads/REDACTED.saved.zip` (15MB) — Splunk knowledge-object export for **Customer B** (`saved_searches.json` 155MB + `dashboards.json` 54MB uncompressed). Carries Splunk Cloud hostnames + servicesNS metadata (`<SPLUNK_HOST_B>`, app/user paths). **This is the query source.**
+> - `~/Downloads/function_usage_counts.csv` — usage statistics only (function → occurrence counts), NOT queries. Stored as a coverage reference; feeds deferred Phase 2.
+>
+> **AI-DEV:** Both archives name real customers (mapping file has the details). The query JSON the generator emits must contain ONLY SPL `search` strings with all hostname/app/user metadata stripped — see Task 0.2.
 
 ### Task 0.1: Create the private corpus repo
 
 **Files:** none in this repo.
 
-- [ ] **Step 1: Confirm zip source paths with the human.** The current `test/spl/spl-real-world.json` is a derived artifact; the zips are the real source. Get their absolute paths before continuing.
-
-- [ ] **Step 2: Create the private GHE repo.**
+- [ ] **Step 1: Create the private GHE repo.**
 
 Run:
 ```bash
@@ -46,51 +49,59 @@ git clone git@source.<GHE_DOMAIN>:logging/nr-query-bridge-corpus.git ../nr-query
 ```
 Expected: empty repo cloned to a sibling directory.
 
-### Task 0.2: Write the zip→JSON generator
+### Task 0.2: Store raw archives + write the query generator
 
 **Files:**
+- Create: `../nr-query-bridge-corpus/sources/` (raw archives, verbatim)
 - Create: `../nr-query-bridge-corpus/generate-corpus.mjs`
+- Create: `../nr-query-bridge-corpus/spl-real-world.json` (generator output)
 - Create: `../nr-query-bridge-corpus/README.md`
-- Create: `../nr-query-bridge-corpus/zips/` (holds human-provided source zips)
+- Create: `../nr-query-bridge-corpus/.gitattributes` (Git LFS for large files)
 
-- [ ] **Step 1: Place the source zips.** Copy the human-provided zip files into `../nr-query-bridge-corpus/zips/`.
+- [ ] **Step 1: Enable Git LFS for the large archives + JSON.** `saved_searches.json` is ~155MB uncompressed; the tgz is 34MB. Track binaries/large blobs via LFS so the repo stays usable.
 
-- [ ] **Step 2: Inspect one zip to learn its structure.**
-
-Run:
 ```bash
-unzip -l ../nr-query-bridge-corpus/zips/<first-zip-name>.zip | head -30
+cd ../nr-query-bridge-corpus
+git lfs install
+printf '%s\n' 'sources/** filter=lfs diff=lfs merge=lfs -text' '*.tgz filter=lfs diff=lfs merge=lfs -text' '*.zip filter=lfs diff=lfs merge=lfs -text' > .gitattributes
+mkdir -p sources
+cd -
 ```
-Expected: a listing of the archive contents (CSV/JSON/txt of SPL queries). Note the format — the generator parses whatever this reveals. (Format is unknown until the zips are provided; write the parser to match.)
 
-- [ ] **Step 3: Write `generate-corpus.mjs`.** It must: read every zip in `zips/`, extract each SPL query, emit `spl-real-world.json` as an array of `{ "spl": "<query>" }` objects (the shape both test consumers expect — verified: `realWorldEntries.forEach((entry) => entry.spl)` in `spl.test.js`, `.map((q) => q.spl)` in `spl-fuzz.test.js`). Deterministic ordering (sort) so regeneration is reproducible. No anonymization — verbatim queries.
+- [ ] **Step 2: Copy the raw archives verbatim into `sources/`** (owner-approved: configs/keys/.git included, stored only in this private repo).
+
+```bash
+cp ~/Downloads/REDACTED.tgz ~/Downloads/REDACTED.saved.zip ~/Downloads/function_usage_counts.csv ../nr-query-bridge-corpus/sources/
+```
+
+- [ ] **Step 3: Write `generate-corpus.mjs`.** It must:
+  1. Read `sources/REDACTED.saved.zip` → parse `saved_searches.json` and `dashboards.json` (each is `{ entry: [ { name, content: { search, ... }, ... } ] }`; dashboards embed SPL in panel `<query>`/`search` elements).
+  2. Extract ONLY the SPL string from each entry — the `content.search` field for saved searches, the panel query text for dashboards. **Discard all metadata** (`id`, `links`, `origin`, `updated`, `acl`, hostnames, servicesNS user/app paths). This is the metadata-stripping requirement: a query body may look generic while its surrounding `id`/`origin` carry `<SPLUNK_HOST_B>`.
+  3. Emit `spl-real-world.json` as a deduplicated, sorted array of `{ "spl": "<query>" }` — the shape both consumers expect (verified: `realWorldEntries.forEach((entry) => entry.spl)` in `spl.test.js`; `.map((q) => q.spl)` in `spl-fuzz.test.js`). Verbatim queries, no anonymization (this is the private repo).
+  4. (The Customer A tgz is NOT a query source — it's archival only. Skip it in the generator.)
 
 - [ ] **Step 4: Run the generator.**
 
-Run:
 ```bash
 cd ../nr-query-bridge-corpus && node generate-corpus.mjs && cd -
 ```
-Expected: `../nr-query-bridge-corpus/spl-real-world.json` written. Print the query count.
+Expected: `spl-real-world.json` written; print the query count.
 
-- [ ] **Step 5: Verify the regenerated corpus is complete.** Compare against the current committed corpus as a lower bound — the regenerated set should contain at least the queries currently shipped.
+- [ ] **Step 5: Confirm NO hostname/metadata leaked into the query JSON.** The output must contain SPL only. Sweep for the Customer B hostname/app patterns (look them up in `docs/local/scrub-mappings.yml` → `customer_b`) plus generic metadata markers:
 
-Run:
 ```bash
-echo "current:"; git grep -c '"spl"' -- test/spl/spl-real-world.json
-echo "regenerated:"; grep -c '"spl"' ../nr-query-bridge-corpus/spl-real-world.json
+grep -ciE "<SPLUNK_HOST_B-real>|servicesNS|<CUSTOMER_B-real>|\borigin\b|https://" ../nr-query-bridge-corpus/spl-real-world.json
 ```
-Expected: regenerated count ≥ current (1,881). Investigate any shortfall before proceeding.
+Expected: `0`. If non-zero, the extractor is pulling metadata, not just the `search` field — fix Step 3 before continuing.
 
-- [ ] **Step 6: Write `README.md`** in the corpus repo documenting: what this repo is (private real-world corpus + generator), why it's separate (contains customer data — cannot be public), how to regenerate (`node generate-corpus.mjs`), and a pointer back to the public repo.
+- [ ] **Step 6: Write `README.md`** documenting: what this repo is (private archival source + query generator), why it's separate (contains data for two named customers + possible live credentials — cannot be public), how to regenerate (`node generate-corpus.mjs`), the LFS setup, and a pointer to the public repo.
 
 - [ ] **Step 7: Commit + push the corpus repo.**
 
-Run:
 ```bash
 cd ../nr-query-bridge-corpus
-git add zips/ generate-corpus.mjs spl-real-world.json README.md
-git commit -m "feat: add source zips, generator, and regenerated corpus"
+git add .gitattributes sources/ generate-corpus.mjs spl-real-world.json README.md
+git commit -m "feat: add source archives, generator, and regenerated corpus"
 git push origin HEAD
 cd -
 ```
@@ -265,7 +276,14 @@ Expected: all PASS.
 Run: `git grep -niF "<each-real-value>" -- . ':(exclude)package-lock.json' ':(exclude)docs/local/'`
 Expected: empty (or only genericized forms). Use the anchored `\b<prefix>[-_][a-z0-9]` pattern for the `<CUSTOMER_A>` prefix — never a bare prefix substring.
 
-- [ ] **Step 3: Broad regex sweep (tree).**
+- [ ] **Step 3: Customer-name + Splunk-host sweep (tree).** Both customers are named; the KO export carries Splunk Cloud hostnames. Look up the real Customer B name + host in `docs/local/scrub-mappings.yml` (`customer_b`) and sweep for them plus the generic `servicesNS` marker:
+
+```bash
+git grep -niE "<CUSTOMER_B-real>|<SPLUNK_HOST_B-real>|servicesNS" -- . ':(exclude)package-lock.json' ':(exclude)docs/local/'
+```
+Expected: empty. (Customer A's prefix is covered by Step 2's anchored pattern.)
+
+- [ ] **Step 4: Broad regex sweep (tree).**
 
 Run:
 ```bash
@@ -274,7 +292,7 @@ git grep -nE "NRAK-[A-Za-z0-9]|AKIA[0-9A-Z]{8}" -- . ':(exclude)package-lock.jso
 ```
 Expected: no real secrets; only the intended/none.
 
-- [ ] **Step 4: STOP — Phase A done.** The tree is clean and reviewable as a PR. Get human confirmation before starting Phase B (history rewrite).
+- [ ] **Step 5: STOP — Phase A done.** The tree is clean and reviewable as a PR. Get human confirmation before starting Phase B (history rewrite).
 
 ---
 
@@ -400,6 +418,7 @@ These run later, in separate sessions:
 
 ## Open items (resolve before the relevant task)
 
-- **Source zip paths** — needed for Task 0.2. (Blocks Phase 0.)
+- **Source archives** — RESOLVED: `~/Downloads/REDACTED.tgz` (Customer A, archival only), `~/Downloads/REDACTED.saved.zip` (Customer B, query source), `~/Downloads/function_usage_counts.csv` (usage stats / coverage ref).
 - **`package.json` team email** — keep / public alias / remove. (Blocks Task A.5 Step 2.)
 - **Force-push coordination** — warn holders of the 11 branches. (Blocks Task B.6.)
+- **(Advisory, owner-acknowledged)** the tgz may contain live customer credentials (an apikeys app + 119 `.conf` files). Stored in the private repo per owner decision; consider rotating any keys that are still live — independent of this effort.
