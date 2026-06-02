@@ -3284,11 +3284,6 @@ SPL:  status IN ()
 ✅ Confirmed by human
 SPL:  https://example.com/path?q=1
 ```
-
-```
-✅ Confirmed by human
-SPL:  `mymacro`status=200
-```
 <!-- /spl-cases -->
 
 ## Bare Keywords (full-text search)
