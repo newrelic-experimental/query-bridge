@@ -3,7 +3,8 @@
     "allow": [
       "Bash(bash .claude/skills/verify-integration/verify.sh:*)",
       "Bash(bash .claude/skills/integrate-standards-batch/discover.sh:*)",
-      "Bash(bash .claude/skills/integrate-standards-batch/classify.sh:*)"
+      "Bash(bash .claude/skills/integrate-standards-batch/classify.sh:*)",
+      "node bin/spl2nrql.js *"
     ],
     "deny": []
   }
