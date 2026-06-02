@@ -126,3 +126,5 @@ Four custom agents in `.claude/agents/`. Invoke via the Agent tool with `subagen
 - **nrql-expert** — NRQL equivalents, syntax validation, optimal query approaches. Research-only (no edits).
 - **nrql-validator** — Executes NRQL against account 1 via MCP (`execute_nrql_query`), classifies as SUCCESS/FAILURE with exact error messages. Use to bulk-validate translated queries.
 - **datadog-expert** - Datadog query expert, query intent, syntax. Research-only (no edits).
+
+The domain knowledge behind each agent lives in a matching skill (`spl-knowledge`, `nrql-knowledge`, `nrql-validation`, `datadog-knowledge`). Each agent is a thin wrapper — persona, tools, and a pointer to its skill. The main thread can load a skill directly (e.g. invoke `spl-knowledge` to explain an SPL query) instead of booting an agent, or dispatch the agent when it wants the work done in a separate context.
