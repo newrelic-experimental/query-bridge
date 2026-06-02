@@ -4023,7 +4023,7 @@ function peg$parse(input, options) {
   }
 
   function peg$parsewhere_command() {
-    let s0, s1, s2, s3;
+    let s0, s1, s2, s3, s4;
 
     s0 = peg$currPos;
     s1 = input.substr(peg$currPos, 5);
@@ -4034,21 +4034,36 @@ function peg$parse(input, options) {
       if (peg$silentFails === 0) { peg$fail(peg$e39); }
     }
     if (s1 !== peg$FAILED) {
-      s2 = [];
+      s2 = peg$currPos;
+      peg$silentFails++;
       s3 = peg$parse_();
-      if (s3 !== peg$FAILED) {
-        while (s3 !== peg$FAILED) {
-          s2.push(s3);
-          s3 = peg$parse_();
+      if (s3 === peg$FAILED) {
+        if (input.charCodeAt(peg$currPos) === 40) {
+          s3 = peg$c5;
+          peg$currPos++;
+        } else {
+          s3 = peg$FAILED;
+          if (peg$silentFails === 0) { peg$fail(peg$e5); }
         }
+      }
+      peg$silentFails--;
+      if (s3 !== peg$FAILED) {
+        peg$currPos = s2;
+        s2 = undefined;
       } else {
         s2 = peg$FAILED;
       }
       if (s2 !== peg$FAILED) {
-        s3 = peg$parsewhere_expression();
-        if (s3 !== peg$FAILED) {
+        s3 = [];
+        s4 = peg$parse_();
+        while (s4 !== peg$FAILED) {
+          s3.push(s4);
+          s4 = peg$parse_();
+        }
+        s4 = peg$parsewhere_expression();
+        if (s4 !== peg$FAILED) {
           peg$savedPos = s0;
-          s0 = peg$f50(s3);
+          s0 = peg$f50(s4);
         } else {
           peg$currPos = s0;
           s0 = peg$FAILED;

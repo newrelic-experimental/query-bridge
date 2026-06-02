@@ -3287,6 +3287,20 @@ const cases = [
     doc: 'tokenizer-in-comma-regression',
     verified: false,
   },
+
+  // ── where(...) with no space before the paren ─────────────────────
+  {
+    spl: 'index=x | where(staked>0)',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(staked) > 0",
+    doc: 'tokenizer-where-no-space',
+    verified: false,
+  },
+  {
+    spl: 'index=x | where (staked>0)',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(staked) > 0",
+    doc: 'tokenizer-where-space-regression',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

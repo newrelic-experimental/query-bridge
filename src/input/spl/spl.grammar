@@ -231,7 +231,9 @@ over_clause
    Where command: | where <expression>
    ============================================================ */
 where_command
-  = 'where'i _+ expr:where_expression
+  // `where(expr)` with no space before the paren is valid SPL — require the next
+  // char to be whitespace or '(' so `wherefoo` doesn't parse as `where foo`.
+  = 'where'i &(_ / '(') _* expr:where_expression
     {
       return {
         type: 'WhereCommand',
