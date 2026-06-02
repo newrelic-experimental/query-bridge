@@ -29,6 +29,7 @@
   "scripts": {
     "prepublishOnly": "npm test",
     "test": "vitest run",
+    "diag": "node scripts/corpus-diagnostic.mjs",
     "build:parsers": "peggy -o src/input/spl/splParser.js --format es src/input/spl/spl.grammar",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
