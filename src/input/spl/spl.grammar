@@ -165,7 +165,7 @@ by_field_item
   = name:field_name !(_* '=') { return name; }
 
 field_list
-  = first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })*
+  = (',' _*)? first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })* (_* ',')?
     { return [first].concat(rest); }
 
 field_name
@@ -320,7 +320,7 @@ search_pipe_command
    Table command: | table field1, field2, ...
    ============================================================ */
 table_command
-  = 'table'i _+ fields:field_list
+  = 'table'i &(_ / ',') _* fields:field_list
     {
       return {
         type: 'TableCommand',
@@ -1272,7 +1272,7 @@ in_comparison
     }
 
 in_value_list
-  = first:in_value rest:(',' _* v:in_value { return v; })*
+  = first:in_value rest:((_* ',' _* / _+) v:in_value { return v; })*
     { return [first].concat(rest); }
 
 in_value

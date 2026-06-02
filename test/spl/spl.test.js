@@ -3267,6 +3267,26 @@ const cases = [
     doc: 'where-bang-regression',
     verified: false,
   },
+
+  // ── tokenizer leniency: empty list items, IN space-separation ─────
+  {
+    spl: 'index=x | table, _time, host',
+    nrql: "FROM Log SELECT timestamp, host WHERE index = 'x'",
+    doc: 'tokenizer-empty-list-item',
+    verified: false,
+  },
+  {
+    spl: 'index=x f IN ("a" "b", "c")',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND f IN ('a', 'b', 'c')",
+    doc: 'tokenizer-in-space-separated',
+    verified: false,
+  },
+  {
+    spl: 'index=x f IN ("a", "b", "c")',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND f IN ('a', 'b', 'c')",
+    doc: 'tokenizer-in-comma-regression',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {
