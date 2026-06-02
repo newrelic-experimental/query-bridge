@@ -98,7 +98,8 @@ stats_command
     }
 
 stats_function_list
-  = first:stats_function rest:(stats_function_separator fn:stats_function { return fn; })*
+  // A stray trailing comma before the by-clause is tolerated (`stats count, by h`).
+  = first:stats_function rest:(stats_function_separator fn:stats_function { return fn; })* (_* ',')?
     {
       return [first].concat(rest);
     }

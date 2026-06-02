@@ -3301,6 +3301,22 @@ const cases = [
     doc: 'tokenizer-where-space-regression',
     verified: false,
   },
+
+  // ── stats: stray comma before the by-clause ───────────────────────
+  {
+    spl: 'index=x | stats count, by host',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'tokenizer-stats-stray-comma',
+    verified: false,
+  },
+  {
+    spl: 'index=x | stats count, avg(bytes) by host',
+    nrql: "FROM Log SELECT count(*), average(bytes) WHERE index = 'x' FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'tokenizer-stats-multi-fn-regression',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

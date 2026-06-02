@@ -1695,6 +1695,30 @@ function peg$parse(input, options) {
           s3 = peg$FAILED;
         }
       }
+      s3 = peg$currPos;
+      s4 = [];
+      s5 = peg$parse_();
+      while (s5 !== peg$FAILED) {
+        s4.push(s5);
+        s5 = peg$parse_();
+      }
+      if (input.charCodeAt(peg$currPos) === 44) {
+        s5 = peg$c2;
+        peg$currPos++;
+      } else {
+        s5 = peg$FAILED;
+        if (peg$silentFails === 0) { peg$fail(peg$e2); }
+      }
+      if (s5 !== peg$FAILED) {
+        s4 = [s4, s5];
+        s3 = s4;
+      } else {
+        peg$currPos = s3;
+        s3 = peg$FAILED;
+      }
+      if (s3 === peg$FAILED) {
+        s3 = null;
+      }
       peg$savedPos = s0;
       s0 = peg$f5(s1, s2);
     } else {
