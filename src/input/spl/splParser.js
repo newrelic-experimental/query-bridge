@@ -816,21 +816,23 @@ function peg$parse(input, options) {
       rawText: '_time span=' + span
     };
   }
-  function peg$f140(span, field) {
+  function peg$f140(span, field, alias) {
     return {
       type: 'BinCommand',
       field: field,
       span: field === '_time' ? span : null,
       width: field !== '_time' ? parseInt(span, 10) || null : null,
+      alias: alias || null,
       rawText: 'span=' + span + ' ' + field
     };
   }
-  function peg$f141(field, width) {
+  function peg$f141(field, width, alias) {
     return {
       type: 'BinCommand',
       field: field,
       span: null,
       width: parseInt(width.join(''), 10),
+      alias: alias || null,
       rawText: field + ' span=' + width.join('')
     };
   }
@@ -8174,8 +8176,12 @@ function peg$parse(input, options) {
               if (s5 !== peg$FAILED) {
                 s6 = peg$parsefield_name();
                 if (s6 !== peg$FAILED) {
+                  s7 = peg$parseas_clause();
+                  if (s7 === peg$FAILED) {
+                    s7 = null;
+                  }
                   peg$savedPos = s0;
-                  s0 = peg$f140(s4, s6);
+                  s0 = peg$f140(s4, s6, s7);
                 } else {
                   peg$currPos = s0;
                   s0 = peg$FAILED;
@@ -8274,8 +8280,12 @@ function peg$parse(input, options) {
                     s6 = peg$FAILED;
                   }
                   if (s6 !== peg$FAILED) {
+                    s7 = peg$parseas_clause();
+                    if (s7 === peg$FAILED) {
+                      s7 = null;
+                    }
                     peg$savedPos = s0;
-                    s0 = peg$f141(s3, s6);
+                    s0 = peg$f141(s3, s6, s7);
                   } else {
                     peg$currPos = s0;
                     s0 = peg$FAILED;

@@ -131,11 +131,14 @@ export function translateAstToIR(ast) {
 
   // Remove _time from FACET when TIMESERIES is present (TIMESERIES already groups by time)
   if (ir.timeseries && ir.facet.length > 0) {
+    const timeAliases = ir._timeBucketAliases || new Set();
     ir.facet = ir.facet.filter(
       (f) =>
         !(
           f.type === 'Identifier' &&
-          (f.name === '_time' || f.name === 'timestamp')
+          (f.name === '_time' ||
+            f.name === 'timestamp' ||
+            timeAliases.has(f.name))
         ),
     );
   }

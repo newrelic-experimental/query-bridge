@@ -682,23 +682,25 @@ bin_command
         rawText: '_time span=' + span
       };
     }
-  / ('bin'i / 'bucket'i) _+ 'span=' span:span_value _+ field:field_name
+  / ('bin'i / 'bucket'i) _+ 'span=' span:span_value _+ field:field_name alias:as_clause?
     {
       return {
         type: 'BinCommand',
         field: field,
         span: field === '_time' ? span : null,
         width: field !== '_time' ? parseInt(span, 10) || null : null,
+        alias: alias || null,
         rawText: 'span=' + span + ' ' + field
       };
     }
-  / ('bin'i / 'bucket'i) _+ field:field_name _+ 'span=' width:[0-9]+
+  / ('bin'i / 'bucket'i) _+ field:field_name _+ 'span=' width:[0-9]+ alias:as_clause?
     {
       return {
         type: 'BinCommand',
         field: field,
         span: null,
         width: parseInt(width.join(''), 10),
+        alias: alias || null,
         rawText: field + ' span=' + width.join('')
       };
     }

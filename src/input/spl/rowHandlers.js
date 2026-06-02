@@ -104,6 +104,13 @@ export function handleDedup(cmd, ir) {
 export function handleBin(cmd, ir) {
   if (cmd.field === '_time' && cmd.span) {
     ir.timeseries = formatSpan(cmd.span);
+    if (cmd.alias) {
+      // `bin _time as X` names the time bucket. NRQL has no named time bucket;
+      // downstream references to the alias map to TIMESERIES, so record the name
+      // and strip it from FACET later (splToIR FACET-strip pass).
+      if (!ir._timeBucketAliases) ir._timeBucketAliases = new Set();
+      ir._timeBucketAliases.add(cmd.alias);
+    }
     if (ir.select.length === 0) {
       ir.select.push(Func('count', []));
     }

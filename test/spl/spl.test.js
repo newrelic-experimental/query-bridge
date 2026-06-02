@@ -3204,6 +3204,15 @@ const cases = [
     doc: 'top-multifield-regression',
     verified: false,
   },
+
+  // ── bin/bucket as-alias ───────────────────────────────────────────
+  {
+    spl: 'index=x | bin span=1m _time as min | stats count by min',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' TIMESERIES 1 minute",
+    warningFunc: ['facet_default_limit'],
+    doc: 'bin-as-alias',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {
