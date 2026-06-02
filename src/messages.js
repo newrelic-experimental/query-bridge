@@ -39,6 +39,10 @@ export const messages = {
   spath_json_only: () =>
     'jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead',
 
+  // SPL: `* | regex foo=$bar$` (unquoted RHS or template variable, no quoted pattern)
+  regex_command_unparsed: (rawText) =>
+    `regex command pattern could not be parsed: ${rawText.trim()}`,
+
   // ── rowHandlers ───────────────────────────────────────────────────
 
   // SPL: `* | fields - host`

@@ -958,6 +958,13 @@ const cases = [
     doc: 'eval-conditional',
     verified: 'human',
   },
+  // Regression: eval like() pattern with an apostrophe must escape it as \'
+  // so it doesn't terminate the surrounding NRQL '...' string literal.
+  {
+    spl: '* | eval x=if(like(message, "%Can\'t cover%"), "y", "n")',
+    nrql: "FROM Log WITH if(message LIKE '%Can\\'t cover%', 'y', 'n') AS x SELECT *",
+    verified: false,
+  },
   // eval tonumber() → numeric()
   {
     spl: '* | eval x=tonumber(val)',
@@ -2265,6 +2272,22 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'",
     doc: 'results-regex',
     verified: 'human',
+  },
+  // Regression: regex pattern containing a literal apostrophe must escape it
+  // as \' inside the r'...' literal so the regex literal doesn't terminate
+  // early and produce invalid NRQL.
+  {
+    spl: '* | regex message="don\'t"',
+    nrql: "FROM Log SELECT * WHERE message RLIKE r'don\\'t'",
+    verified: false,
+  },
+  // Regression: `| regex foo=$bar$` (unquoted/template-variable RHS) used to
+  // emit Rlike(field, null) and crash the emitter. Should now report
+  // unsupported with a descriptive message.
+  {
+    spl: '* | regex accountUsername=$Account_Username$',
+    unsupportedFunc: ['regex_command_unparsed'],
+    verified: false,
   },
   //
   // ── table / fields ──────────────────────────────────────────────

@@ -7,6 +7,7 @@
 import {
   escapeAttributeNameForNrql,
   escapeStringLiteralForNrql,
+  escapeRegexPatternForNrql,
 } from './nrqlEncoding.js';
 
 // ── Expression emission ──────────────────────────────────────
@@ -38,7 +39,7 @@ export function emitExpr(node) {
       }
       // NOT(Rlike) → field NOT RLIKE r'pattern'
       if (node.child.type === 'Rlike') {
-        return `${emitExpr(node.child.field)} NOT RLIKE r'${node.child.pattern}'`;
+        return `${emitExpr(node.child.field)} NOT RLIKE r'${escapeRegexPatternForNrql(node.child.pattern)}'`;
       }
       const inner = emitExpr(node.child);
       // Parenthesize compound expressions under NOT
@@ -66,7 +67,7 @@ export function emitExpr(node) {
       return `${emitExpr(node.field)} LIKE '${node.pattern}'`;
 
     case 'Rlike':
-      return `${emitExpr(node.field)} RLIKE r'${node.pattern}'`;
+      return `${emitExpr(node.field)} RLIKE r'${escapeRegexPatternForNrql(node.pattern)}'`;
 
     case 'In':
       return `${emitExpr(node.field)} IN (${node.values.map(emitExpr).join(', ')})`;
@@ -75,7 +76,7 @@ export function emitExpr(node) {
       return '*';
 
     case 'Regex':
-      return `r'${node.pattern}'`;
+      return `r'${escapeRegexPatternForNrql(node.pattern)}'`;
 
     case 'RawNrql':
       return node.nrql;

@@ -421,8 +421,11 @@ function walkEvalFunc(node, ir) {
             ? rawPat.value
             : (walkEvalExpr(rawPat, ir)?.value ?? String(rawPat));
       if (field && patStr) {
-        // Convert SPL wildcards to NRQL: * → %
-        const nrqlPattern = patStr.replace(/\*/g, '%');
+        // SPL `like()` uses `%` as its wildcard, but real-world queries also
+        // pass `*` (search-clause convention). Convert both to `%`. Then
+        // escape `'` so apostrophes in user content don't terminate the NRQL
+        // string literal.
+        const nrqlPattern = patStr.replace(/\*/g, '%').replace(/'/g, "\\'");
         return Like(field, nrqlPattern);
       }
       return null;
