@@ -327,6 +327,10 @@ export const messages = {
   facet_default_limit: () =>
     'NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.',
 
+  // SPL: `* | timechart count by f usenull=false`
+  usenullNoEquivalent: () =>
+    'Splunk timechart usenull option has no NRQL equivalent; null groups are included',
+
   // SPL: `* | streamstats count as row_num`
   streamstats_unsupported: () =>
     'streamstats has no NRQL equivalent; NRQL does not support row-to-row references (LAG/LEAD) or running aggregations',

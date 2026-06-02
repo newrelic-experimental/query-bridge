@@ -3168,6 +3168,27 @@ const cases = [
     doc: 'eval',
     verified: false,
   },
+
+  // ── timechart by-clause options (limit/useother/usenull) ──────────
+  {
+    spl: 'index=x | timechart span=1m count by service limit=0',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET service LIMIT MAX TIMESERIES 1 minute",
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=x | timechart count by ua useother=false usenull=false limit=5',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET ua LIMIT 5 TIMESERIES AUTO",
+    warningFunc: ['usenullNoEquivalent'],
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=x | stats count by host source',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET host, source",
+    doc: 'timechart-by-options-regression',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

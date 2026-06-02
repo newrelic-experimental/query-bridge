@@ -63,6 +63,14 @@ export function handleStats(cmd, ir) {
 export function handleTimechart(cmd, ir) {
   handleStats(cmd, ir);
   ir.timeseries = cmd.span ? formatSpan(cmd.span) : 'AUTO';
+  for (const opt of cmd.options || []) {
+    if (opt.type === 'limit') {
+      ir.limit = opt.value === 0 ? 'MAX' : opt.value;
+    } else if (opt.type === 'usenull') {
+      ir.warnings.push(messages.usenullNoEquivalent());
+    }
+    // useother=false is a no-op: NRQL never synthesizes an OTHER bucket.
+  }
 }
 
 export function handleTop(cmd, ir) {

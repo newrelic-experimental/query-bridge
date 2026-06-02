@@ -156,8 +156,13 @@ by_clause
   = _+ 'by'i _+ fields:by_field_list { return fields; }
 
 by_field_list
-  = first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })*
+  = first:by_field_item rest:((_* ',' _* / _+) name:by_field_item { return name; })*
     { return [first].concat(rest); }
+
+// A by-field is a field name NOT immediately followed by '=' (which would make it
+// a command option like limit=N / useother=false, not a grouping field).
+by_field_item
+  = name:field_name !(_* '=') { return name; }
 
 field_list
   = first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })*
