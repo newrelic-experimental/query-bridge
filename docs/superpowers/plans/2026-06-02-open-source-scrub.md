@@ -165,47 +165,45 @@ Expected: hits only in the two superpowers docs slated for deletion in A.4. If i
 ASDF_NODEJS_VERSION=24.14.0 git commit -m "docs: redact customer account id"
 ```
 
-### Task A.3: Genericize Customer B specifics in code/tests (Tier 3)
+### Task A.3: Genericize Customer B specifics in code/tests/docs (Tier 3)
 
-**Files:**
-- Modify: `src/messages.js` (lines 72, 76 — `// SPL:` comment annotations only; message bodies are clean)
-- Modify: `test/spl/spl.test.js` (~lines 2989–3141)
+**Files (Customer B identifiers leak into all four — line numbers as of writing):**
+- Modify: `src/messages.js` — `// SPL:` comments at lines 72, 76 (FAMILY_1) and line 127 (FAMILY_2). Message bodies are clean.
+- Modify: `test/spl/spl.test.js` — ~2989–3141 (FAMILY_1) and line 3062 (FAMILY_2).
+- Modify: `docs/SPL_TO_NRQL.md` — lines 1562, 1567 (FAMILY_2 in a doc example).
 
-> Look up the real field name, route names, and "<N> users/hr" value in `docs/local/scrub-mappings.yml` (`customer_b_code_leak` section). Placeholders below: field → `userId`, routes → `AddItem`/`Submit`.
+> **All real→placeholder pairs are in `docs/local/scrub-mappings.yml` → `customer_b_code_leak`. Read them from there; this plan names none.** Two families:
+> - **FAMILY_1** — the user/event field + two route names + the "<N> users/hr" comment phrase (→ `userId`, `AddItem`/`Submit`, `<N> users/hr`).
+> - **FAMILY_2** — the SKU/channel field family (→ `itemId`/`items`/`itemSku`/`channel`/`brand`).
+>
+> **AI-DEV:** FAMILY_2 was found by a targeted Customer B sweep AFTER the FAMILY_1 pass — do not assume FAMILY_1 is the only Customer B leak. When string-replacing FAMILY_2, do the longest variants first (the `...Id`/`...s` forms before the bare stem) so substrings aren't half-replaced.
 
 - [ ] **Step 1: Run the suite first (baseline green).**
 
 Run: `ASDF_NODEJS_VERSION=24.14.0 npm run test`
 Expected: PASS. Record that it's green before edits.
 
-- [ ] **Step 2: Edit `src/messages.js` comments.** Replace the two `// SPL:` annotations (lines 72, 76) that use the real field name with the generic `userId`. Example — line 72 becomes:
+- [ ] **Step 2: Edit `src/messages.js`.** In the `// SPL:` comments at lines 72, 76, replace the FAMILY_1 field with `userId`; at line 127, replace the FAMILY_2 field with its `items` placeholder. Comment-only — message *bodies* stay byte-for-byte unchanged (no behavior change).
 
-```javascript
-  // SPL: `* | dedup userId | stats count by routeName`
-```
-and line 76:
-```javascript
-  // SPL: `* | dedup userId | timechart count span=1m`
-```
-Message *bodies* (lines 73–74, 77–78) are already clean — do NOT change behavior.
+- [ ] **Step 3: Edit `test/spl/spl.test.js`.** In ~2989–3141 apply FAMILY_1 placeholders and strip the "<N> users/hr" + derived-metric customer comments; at line 3062 apply the FAMILY_2 placeholder in the `spl:` input. Update each `spl:` input AND its expected `nrql:` output together. The `LIMIT MAX 5K` warning assertions stay — only example values change.
 
-- [ ] **Step 3: Edit `test/spl/spl.test.js` (~2989–3141).** Replace the real field name → `userId`, the two real route names → `AddItem`/`Submit`, and strip the "<N> users/hr" + derived-metric customer comments. Update the `spl:` inputs AND the expected `nrql:` outputs together so they stay consistent. The `LIMIT MAX 5K` warning assertions stay — only the example values change.
+- [ ] **Step 3b: Edit `docs/SPL_TO_NRQL.md` lines 1562, 1567.** Apply the FAMILY_2 placeholder in both the SPL example and the NRQL example so they stay consistent.
 
 - [ ] **Step 4: Run the suite — confirm still green.**
 
 Run: `ASDF_NODEJS_VERSION=24.14.0 npm run test`
-Expected: PASS. If a test fails, it's because an expected `nrql:` string still references an old field name — fix the expectation to match the genericized input (do NOT change translator behavior).
+Expected: PASS. If a test fails, an expected `nrql:` string still references an old name — fix the expectation to match the genericized input (do NOT change translator behavior).
 
-- [ ] **Step 5: Confirm the identifiers are gone from these files.**
+- [ ] **Step 5: Confirm ALL Customer B identifiers are gone from surviving files.** Build the pattern from the `customer_b_code_leak` real values in the mapping file:
 
-Run: `git grep -niE "<real-field>|<real-route-1>|<real-route-2>|<N> users" -- src/messages.js test/spl/spl.test.js`
+Run: `git grep -niF -f <(awk '/real:/{gsub(/.*real: *"|".*/,""); print}' docs/local/scrub-mappings.yml) -- src/messages.js test/spl/spl.test.js docs/SPL_TO_NRQL.md`
 Expected: empty.
 
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add src/messages.js test/spl/spl.test.js
-ASDF_NODEJS_VERSION=24.14.0 git commit -m "test: genericize customer-specific field and route names"
+git add src/messages.js test/spl/spl.test.js docs/SPL_TO_NRQL.md
+ASDF_NODEJS_VERSION=24.14.0 git commit -m "docs: genericize customer-specific field and route names"
 ```
 
 ### Task A.4: Drop the two customer-narrative superpowers docs (Tier 2)
