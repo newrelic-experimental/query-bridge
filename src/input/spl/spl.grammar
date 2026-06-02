@@ -546,15 +546,26 @@ eval_func_args
     { return [first].concat(rest); }
   / '' { return []; }
 
+// Left-factored: parse the inner form once, then peek for an extension.
+// The previous form (`A op B / A`) caused catastrophic backtracking on
+// deeply-nested if(...) expressions because each level fully recursed
+// through its arguments before falling back to the shorter alternative,
+// producing O(3^n) parse paths. The peek-and-extend form is O(n).
 eval_func_arg
-  = left:eval_comparison_arg _* op:eval_bool_op _* right:eval_func_arg
-    { return { type: 'EvalBoolOp', op: op, left: left, right: right }; }
-  / eval_comparison_arg
+  = left:eval_comparison_arg tail:(_* op:eval_bool_op _* right:eval_func_arg { return { op: op, right: right }; })?
+    {
+      return tail
+        ? { type: 'EvalBoolOp', op: tail.op, left: left, right: tail.right }
+        : left;
+    }
 
 eval_comparison_arg
-  = left:eval_simple_arg _* op:comparison_op _* right:eval_simple_arg
-    { return { type: 'EvalComparison', op: op, left: left, right: right }; }
-  / eval_simple_arg
+  = left:eval_simple_arg tail:(_* op:comparison_op _* right:eval_simple_arg { return { op: op, right: right }; })?
+    {
+      return tail
+        ? { type: 'EvalComparison', op: tail.op, left: left, right: tail.right }
+        : left;
+    }
 
 eval_bool_op
   = 'AND'i { return 'AND'; }
