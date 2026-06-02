@@ -3189,6 +3189,21 @@ const cases = [
     doc: 'timechart-by-options-regression',
     verified: false,
   },
+
+  // ── top multi-field parse ─────────────────────────────────────────
+  {
+    spl: 'index=x | top limit=10 cs_user_agent, sc_status',
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET cs_user_agent, sc_status ORDER BY count DESC LIMIT 10",
+    doc: 'top-multifield',
+    verified: false,
+  },
+  {
+    spl: 'index=x | top host by region',
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET host, region ORDER BY count DESC LIMIT 10",
+    warningFunc: ['top_groupby_warning'],
+    doc: 'top-multifield-regression',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

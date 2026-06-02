@@ -101,7 +101,7 @@ export function handleTop(cmd, ir) {
     ir.select.push(Alias(percentExpr, percentAlias));
   }
 
-  ir.facet = [Identifier(cmd.field)];
+  ir.facet = cmd.fields.map(Identifier);
   if (cmd.groupBy && cmd.groupBy.length > 0) {
     ir.facet.push(...cmd.groupBy.map(Identifier));
     ir.warnings.push(messages.top_groupby_warning());

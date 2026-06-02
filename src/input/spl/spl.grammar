@@ -396,12 +396,12 @@ tail_command
    Options: limit=N, countfield=X, useother=bool, showperc=bool, showcount=bool
    ============================================================ */
 top_command
-  = 'top'i _+ opts:top_options field:field_name limit:(_+ 'limit'i '=' n:[0-9]+ { return parseInt(n.join(''), 10); })? by:by_clause?
+  = 'top'i _+ opts:top_options fields:top_field_list limit:(_+ 'limit'i '=' n:[0-9]+ { return parseInt(n.join(''), 10); })? by:by_clause?
     {
       return {
         type: 'TopCommand',
         count: opts.limit !== null ? opts.limit : (limit !== null && limit !== undefined ? limit : 10),
-        field: field,
+        fields: fields,
         groupBy: by || [],
         countfield: opts.countfield || null,
         percentfield: opts.percentfield || null,
@@ -409,6 +409,16 @@ top_command
         showperc: opts.showperc !== null ? opts.showperc : true
       };
     }
+
+// Comma- or space-separated top fields. A field must not be the `by` keyword
+// (which begins the by-clause) and must not be immediately followed by '='
+// (which would make it a trailing option like limit=N).
+top_field_list
+  = first:top_field_item rest:((_* ',' _* / _+) name:top_field_item { return name; })*
+    { return [first].concat(rest); }
+
+top_field_item
+  = !('by'i _) name:field_name !(_* '=') { return name; }
 
 top_options
   = items:top_option*
