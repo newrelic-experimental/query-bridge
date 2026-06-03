@@ -3447,6 +3447,14 @@ const cases = [
     doc: 'stats-agg',
     verified: false,
   },
+
+  // ── EvalArith: eval nested in stats arg (Task 7) ──
+  {
+    spl: '* | stats sum(eval(if(status>=400,1,0)))',
+    nrql: 'FROM Log SELECT filter(count(*), WHERE if(numeric(status) >= 400, 1, 0))',
+    doc: 'stats-agg',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

@@ -109,7 +109,7 @@ stats_function_separator
   / _+ !('by'i _+ / 'BY' _+)
 
 stats_function
-  = _* name:function_name '(' _* 'eval'i _* '(' _* evalExpr:eval_inner_expr _* ')' _* ')' alias:as_clause?
+  = _* name:function_name '(' _* 'eval'i _* '(' _* evalExpr:u_expr _* ')' _* ')' alias:as_clause?
     {
       return { name: name, args: [], alias: alias, evalFilter: evalExpr };
     }
