@@ -43,6 +43,17 @@ export const DualCheck = (field, op, value) => ({
   value,
 });
 
+// ── Eval AST nodes (consumed by walkEvalExpr; never emitted to NRQL directly) ──
+
+export const EvalArith = (op, left, right) => ({
+  type: 'EvalArith',
+  op,
+  left,
+  right,
+});
+
+export const EvalNot = (operand) => ({ type: 'EvalNot', operand });
+
 // ── Data source nodes ─────────────────────────────────────────
 
 export const EventType = (names) => ({ type: 'EventType', names });
