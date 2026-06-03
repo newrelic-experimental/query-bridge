@@ -93,5 +93,7 @@ export const SelectQuery = (overrides = {}) => ({
   _fillnullMap: undefined,
   /** @type {Map<string,string>|undefined} internal: field rename map, consumed during IR build */
   _fieldReplacements: undefined,
+  /** @type {Set<string>|undefined} internal: bin _time alias names, stripped from FACET when TIMESERIES present */
+  _timeBucketAliases: undefined,
   ...overrides,
 });

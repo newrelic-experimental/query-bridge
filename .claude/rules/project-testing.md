@@ -1,7 +1,7 @@
 # Project Testing Standards
 
 ## Overrides
-These replace conflicting guidance from the universal testing standards (`.claude/rules/nr-ai-standards/testing.md`):
+These replace conflicting guidance from the universal testing standards (`.claude/rules/testing.md`):
 
 - "Mock external dependencies at the edge" → No mocking needed. The translator is pure functions (string in, object out).
 
@@ -19,4 +19,4 @@ These replace conflicting guidance from the universal testing standards (`.claud
 
 ## LLM Test Verification
 
-See `@.claude/rules/nr-ai-standards/llm-test-verification.md` for the full verification process.
+See `@.claude/rules/llm-test-verification.md` for the full verification process.

@@ -39,6 +39,10 @@ export const messages = {
   spath_json_only: () =>
     'jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead',
 
+  // SPL: `* | regex foo=$bar$` (unquoted RHS or template variable, no quoted pattern)
+  regex_command_unparsed: (rawText) =>
+    `regex command pattern could not be parsed: ${rawText.trim()}`,
+
   // ── rowHandlers ───────────────────────────────────────────────────
 
   // SPL: `* | fields - host`
@@ -322,6 +326,10 @@ export const messages = {
   // SPL: `* | stats count by host`
   facet_default_limit: () =>
     'NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.',
+
+  // SPL: `* | timechart count by f usenull=false`
+  usenullNoEquivalent: () =>
+    'Splunk timechart usenull option has no NRQL equivalent; null groups are included',
 
   // SPL: `* | streamstats count as row_num`
   streamstats_unsupported: () =>

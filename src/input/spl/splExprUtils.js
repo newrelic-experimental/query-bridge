@@ -257,9 +257,11 @@ export function buildArithmeticExpr(exprStr) {
   // additive: multiplicative (('+' | '-') multiplicative)*
   function parseAdditive() {
     let left = parseMultiplicative();
+    if (left === null) return null;
     while (pos < tokens.length && (peek() === '+' || peek() === '-')) {
       const op = advance();
       const right = parseMultiplicative();
+      if (right === null) return null;
       left = BinOp(op, left, right);
     }
     return left;
@@ -268,12 +270,14 @@ export function buildArithmeticExpr(exprStr) {
   // multiplicative: atom (('*' | '/' | '%') atom)*
   function parseMultiplicative() {
     let left = parseAtom();
+    if (left === null) return null;
     while (
       pos < tokens.length &&
       (peek() === '*' || peek() === '/' || peek() === '%')
     ) {
       const op = advance();
       const right = parseAtom();
+      if (right === null) return null;
       left = BinOp(op, left, right);
     }
     return left;
@@ -282,6 +286,18 @@ export function buildArithmeticExpr(exprStr) {
   // atom: '(' additive ')' | number | field
   function parseAtom() {
     const token = peek();
+    // An operator or end-of-input where an atom is expected means the expression
+    // isn't well-formed arithmetic — fail loudly (return null) rather than emit a
+    // bogus Identifier(undefined) that crashes the emitter downstream.
+    const isOperator =
+      token === '+' ||
+      token === '-' ||
+      token === '*' ||
+      token === '/' ||
+      token === '%';
+    if (token === undefined || isOperator) {
+      return null;
+    }
     if (token === '(') {
       advance(); // consume '('
       const inner = parseAdditive();
@@ -296,7 +312,10 @@ export function buildArithmeticExpr(exprStr) {
     return Func('numeric', [Identifier(field)]);
   }
 
-  return parseAdditive();
+  const result = parseAdditive();
+  // A malformed expression returns the bare string as an identifier rather than a
+  // half-built tree with undefined operands.
+  return result === null ? Identifier(exprStr) : result;
 }
 
 // ── Tree utilities ──────────────────────────────────────────

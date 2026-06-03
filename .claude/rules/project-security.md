@@ -1,7 +1,7 @@
 # Project Security Standards
 
 ## Overrides
-These supplement the universal security standards (`.claude/rules/nr-ai-standards/security.md`):
+These supplement the universal security standards (`.claude/rules/security.md`):
 
 - No new overrides — project follows the universal standards.
 

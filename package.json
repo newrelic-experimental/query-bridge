@@ -20,11 +20,14 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git@source.<GHE_DOMAIN>:logging/nr-query-bridge.git"
+    "url": "git+https://github.com/newrelic/nr-query-bridge.git"
   },
+  "bugs": {
+    "url": "https://github.com/newrelic/nr-query-bridge/issues"
+  },
+  "homepage": "https://github.com/newrelic/nr-query-bridge#readme",
   "author": {
-    "name": "Logging Team",
-    "email": "<PUBLIC_CONTACT>"
+    "name": "Logging Team"
   },
   "scripts": {
     "prepublishOnly": "npm test",

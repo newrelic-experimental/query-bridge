@@ -98,7 +98,8 @@ stats_command
     }
 
 stats_function_list
-  = first:stats_function rest:(stats_function_separator fn:stats_function { return fn; })*
+  // A stray trailing comma before the by-clause is tolerated (`stats count, by h`).
+  = first:stats_function rest:(stats_function_separator fn:stats_function { return fn; })* (_* ',')?
     {
       return [first].concat(rest);
     }
@@ -156,16 +157,30 @@ by_clause
   = _+ 'by'i _+ fields:by_field_list { return fields; }
 
 by_field_list
-  = first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })*
+  = first:by_field_item rest:((_* ',' _* / _+) name:by_field_item { return name; })*
     { return [first].concat(rest); }
 
+// A by-field is a field name NOT immediately followed by '=' (which would make it
+// a command option like limit=N / useother=false, not a grouping field).
+by_field_item
+  = name:quotable_field_name !(_* '=') { return name; }
+
 field_list
-  = first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })*
+  = (',' _*)? first:quotable_field_name rest:((_* ',' _* / _+) name:quotable_field_name { return name; })* (_* ',')?
     { return [first].concat(rest); }
 
 field_name
   = '*' { return '*'; }
   / chars:[a-zA-Z0-9_.\-:{}]+ { return chars.join(''); }
+
+// A field name that may be double-quoted — Splunk allows quoting field names that
+// contain spaces or other special chars (`table "Full message"`, `stats count by
+// "Container Name"`). Used only in list/by contexts where a quote means a field
+// name, NOT in eval/where/search contexts where a quote means a string literal.
+// Returns the inner text; the emitter backticks names that need it.
+quotable_field_name
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / field_name
 
 /* ============================================================
    Timechart command: | timechart [span=X] fn() [by field]
@@ -226,7 +241,9 @@ over_clause
    Where command: | where <expression>
    ============================================================ */
 where_command
-  = 'where'i _+ expr:where_expression
+  // `where(expr)` with no space before the paren is valid SPL — require the next
+  // char to be whitespace or '(' so `wherefoo` doesn't parse as `where foo`.
+  = 'where'i &(_ / '(') _* expr:where_expression
     {
       return {
         type: 'WhereCommand',
@@ -259,10 +276,14 @@ where_and_expr
 
 where_not_expr
   = 'NOT'i _+ expr:where_primary { return { type: 'Not', operand: expr }; }
+  // `!` as NOT — only before '(' or whitespace, never before '=' (that is the
+  // `!=` comparison operator, handled inside where_comparison).
+  / '!' &('(' / _) _* expr:where_primary { return { type: 'Not', operand: expr }; }
   / where_primary
 
 where_primary
   = '(' _* expr:where_expression _* ')' { return expr; }
+  / where_func_comparison
   / where_function_call
   / where_comparison
 
@@ -270,6 +291,13 @@ where_function_call
   = name:function_name '(' _* args:function_args _* ')'
     {
       return { type: 'FunctionCall', name: name, args: args };
+    }
+
+// A function call on the LEFT of a comparison: mvcount(f) > 1, len(x) >= 3, etc.
+where_func_comparison
+  = fn:where_function_call _* op:comparison_op _* value:where_value
+    {
+      return { type: 'FuncComparison', left: fn, operator: op, value: value };
     }
 
 where_comparison
@@ -304,7 +332,7 @@ search_pipe_command
    Table command: | table field1, field2, ...
    ============================================================ */
 table_command
-  = 'table'i _+ fields:field_list
+  = 'table'i &(_ / ',') _* fields:field_list
     {
       return {
         type: 'TableCommand',
@@ -329,12 +357,12 @@ fields_command
    Sort command: | sort [-|+]field, ...
    ============================================================ */
 sort_command
-  = 'sort'i _+ limit:sort_limit? fields:sort_field_list
+  = 'sort'i _+ limit:sort_limit? fields:sort_field_list trailingLimit:sort_trailing_limit?
     {
       return {
         type: 'SortCommand',
         fields: fields,
-        limit: limit
+        limit: trailingLimit !== null && trailingLimit !== undefined ? trailingLimit : limit
       };
     }
 
@@ -342,12 +370,19 @@ sort_limit
   = n:[0-9]+ _+
     { return parseInt(n.join(''), 10); }
 
+// SPL also allows a trailing `limit=N` after the sort fields.
+sort_trailing_limit
+  = _* 'limit'i '=' n:[0-9]+
+    { return parseInt(n.join(''), 10); }
+
+// Sort keys are separated by commas OR whitespace. A whitespace-separated key
+// must not be a `limit=` option (handled by sort_trailing_limit).
 sort_field_list
-  = first:sort_field rest:(',' _* f:sort_field { return f; })*
+  = first:sort_field rest:((_* ',' _* / _+) f:sort_field { return f; })*
     { return [first].concat(rest); }
 
 sort_field
-  = _* dir:[-+]? _* name:field_name order:sort_order? _*
+  = _* dir:[-+]? _* name:sort_field_name order:sort_order?
     {
       var direction = 'asc';
       if (dir === '-') direction = 'desc';
@@ -357,6 +392,13 @@ sort_field
         direction: direction
       };
     }
+
+// A sort field may be wrapped in a type-hint: num(f) / str(f) / ip(f).
+// The hint only tells Splunk how to compare; NRQL ignores it, so we keep the
+// bare field name. A bare field must not be `limit=...` (a trailing option).
+sort_field_name
+  = ('num'i / 'str'i / 'ip'i) '(' _* name:field_name _* ')' { return name; }
+  / !('limit'i '=') name:field_name { return name; }
 
 sort_order
   = _+ 'desc'i { return 'desc'; }
@@ -391,12 +433,12 @@ tail_command
    Options: limit=N, countfield=X, useother=bool, showperc=bool, showcount=bool
    ============================================================ */
 top_command
-  = 'top'i _+ opts:top_options field:field_name limit:(_+ 'limit'i '=' n:[0-9]+ { return parseInt(n.join(''), 10); })? by:by_clause?
+  = 'top'i _+ opts:top_options fields:top_field_list limit:(_+ 'limit'i '=' n:[0-9]+ { return parseInt(n.join(''), 10); })? by:by_clause?
     {
       return {
         type: 'TopCommand',
         count: opts.limit !== null ? opts.limit : (limit !== null && limit !== undefined ? limit : 10),
-        field: field,
+        fields: fields,
         groupBy: by || [],
         countfield: opts.countfield || null,
         percentfield: opts.percentfield || null,
@@ -404,6 +446,16 @@ top_command
         showperc: opts.showperc !== null ? opts.showperc : true
       };
     }
+
+// Comma- or space-separated top fields. A field must not be the `by` keyword
+// (which begins the by-clause) and must not be immediately followed by '='
+// (which would make it a trailing option like limit=N).
+top_field_list
+  = first:top_field_item rest:((_* ',' _* / _+) name:top_field_item { return name; })*
+    { return [first].concat(rest); }
+
+top_field_item
+  = !('by'i _) name:field_name !(_* '=') { return name; }
 
 top_options
   = items:top_option*
@@ -546,15 +598,26 @@ eval_func_args
     { return [first].concat(rest); }
   / '' { return []; }
 
+// Left-factored: parse the inner form once, then peek for an extension.
+// The previous form (`A op B / A`) caused catastrophic backtracking on
+// deeply-nested if(...) expressions because each level fully recursed
+// through its arguments before falling back to the shorter alternative,
+// producing O(3^n) parse paths. The peek-and-extend form is O(n).
 eval_func_arg
-  = left:eval_comparison_arg _* op:eval_bool_op _* right:eval_func_arg
-    { return { type: 'EvalBoolOp', op: op, left: left, right: right }; }
-  / eval_comparison_arg
+  = left:eval_comparison_arg tail:(_* op:eval_bool_op _* right:eval_func_arg { return { op: op, right: right }; })?
+    {
+      return tail
+        ? { type: 'EvalBoolOp', op: tail.op, left: left, right: tail.right }
+        : left;
+    }
 
 eval_comparison_arg
-  = left:eval_simple_arg _* op:comparison_op _* right:eval_simple_arg
-    { return { type: 'EvalComparison', op: op, left: left, right: right }; }
-  / eval_simple_arg
+  = left:eval_simple_arg tail:(_* op:comparison_op _* right:eval_simple_arg { return { op: op, right: right }; })?
+    {
+      return tail
+        ? { type: 'EvalComparison', op: tail.op, left: left, right: tail.right }
+        : left;
+    }
 
 eval_bool_op
   = 'AND'i { return 'AND'; }
@@ -656,23 +719,25 @@ bin_command
         rawText: '_time span=' + span
       };
     }
-  / ('bin'i / 'bucket'i) _+ 'span=' span:span_value _+ field:field_name
+  / ('bin'i / 'bucket'i) _+ 'span=' span:span_value _+ field:field_name alias:as_clause?
     {
       return {
         type: 'BinCommand',
         field: field,
         span: field === '_time' ? span : null,
         width: field !== '_time' ? parseInt(span, 10) || null : null,
+        alias: alias || null,
         rawText: 'span=' + span + ' ' + field
       };
     }
-  / ('bin'i / 'bucket'i) _+ field:field_name _+ 'span=' width:[0-9]+
+  / ('bin'i / 'bucket'i) _+ field:field_name _+ 'span=' width:[0-9]+ alias:as_clause?
     {
       return {
         type: 'BinCommand',
         field: field,
         span: null,
         width: parseInt(width.join(''), 10),
+        alias: alias || null,
         rawText: field + ' span=' + width.join('')
       };
     }
@@ -1103,7 +1168,7 @@ or_expr
     }
 
 and_expr
-  = left:not_expr rest:((_+ 'AND'i _+ / _+ !('OR'i _+)) right:not_expr { return right; })*
+  = left:not_expr rest:((_+ 'AND'i _+ / _+ !('OR'i _+) / delimiter_boundary) right:not_expr { return right; })*
     {
       var result = left;
       for (var i = 0; i < rest.length; i++) {
@@ -1111,6 +1176,16 @@ and_expr
       }
       return result;
     }
+
+// Splunk treats a self-closing delimiter (closing quote OR closing backtick of a
+// macro) as an implicit term boundary, so the next term can be jammed against it
+// with no whitespace: `!="*x*"field=y`, `index="z"$token$`, `` `macro`field=y ``.
+// This zero-width separator is reachable only right after a delimiter-terminated
+// term; gate it on the next token being a new search term (a comparison, a
+// $token$, another quoted value, or a macro) so a single intended value is never
+// split.
+delimiter_boundary
+  = &(search_field _* comparison_op / '$' template_var_name '$' / '"' / "'" / '`')
 
 not_expr
   = 'NOT'i _* '(' _* ')' { return null; }
@@ -1219,7 +1294,7 @@ in_comparison
     }
 
 in_value_list
-  = first:in_value rest:(',' _* v:in_value { return v; })*
+  = first:in_value rest:((_* ',' _* / _+) v:in_value { return v; })*
     { return [first].concat(rest); }
 
 in_value
@@ -1292,18 +1367,27 @@ keyword_char
   = '\\' ch:. { return ch; }
   / [^ \t\r\n\f|()=!<>"`']
 
+/* String char rules. Splunk's only real escape sequences are \\, \", and
+   \' — quote-escapes plus literal-backslash. Every other backslash sequence
+   (\d, \s, \w, \(, \., \n, \t, \r, ...) passes through verbatim with the
+   backslash preserved. This matches the canonical SPL example
+   `match(field, "^\d{1,3}\.\d{1,3}...")` working with single backslashes,
+   and the docs note (TextFunctions, replace()) that eval performs only one
+   level of escaping before passing strings to PCRE — meaning \\ becomes \
+   but \n stays as the two characters \ + n. NRQL accepts \n as newline
+   either way; the difference matters for regex semantics. */
 double_string_char
-  = '\\n' { return '\n'; }
-  / '\\t' { return '\t'; }
-  / '\\r' { return '\r'; }
-  / '\\' ch:. { return ch; }
+  = '\\\\' { return '\\'; }
+  / '\\"' { return '"'; }
+  / '\\\'' { return '\''; }
+  / '\\' ch:. { return '\\' + ch; }
   / [^"\\]
 
 single_string_char
-  = '\\n' { return '\n'; }
-  / '\\t' { return '\t'; }
-  / '\\r' { return '\r'; }
-  / '\\' ch:. { return ch; }
+  = '\\\\' { return '\\'; }
+  / '\\"' { return '"'; }
+  / '\\\'' { return '\''; }
+  / '\\' ch:. { return '\\' + ch; }
   / [^'\\]
 
 /* ============================================================

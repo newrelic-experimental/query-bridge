@@ -96,13 +96,19 @@ export function handleSpath(cmd, ir) {
 }
 
 export function handleRegex(cmd, ir) {
+  // Grammar produces pattern: null for unparseable forms (e.g. unquoted RHS,
+  // template-variable RHS like `regex foo=$bar$`). Loud failure beats emitting
+  // a syntactically-broken Rlike with no pattern.
+  if (cmd.pattern == null) {
+    ir.unsupported.push(messages.regex_command_unparsed(cmd.rawText || ''));
+    return;
+  }
   const field = cmd.field || '_raw';
   const fieldId = field === '_raw' ? Identifier('message') : Identifier(field);
-  const pattern = cmd.pattern;
   if (cmd.negate) {
-    ir.where.push(Not(Rlike(fieldId, pattern)));
+    ir.where.push(Not(Rlike(fieldId, cmd.pattern)));
   } else {
-    ir.where.push(Rlike(fieldId, pattern));
+    ir.where.push(Rlike(fieldId, cmd.pattern));
   }
 }
 

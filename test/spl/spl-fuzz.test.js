@@ -536,8 +536,9 @@ describe('SPL→NRQL property-based fuzz tests', () => {
     fc.assert(
       fc.property(arbSplQuery, (spl) => {
         const r = translateSplToNrql(spl);
-        // Allow "undefined" in warnings/errors (those are messages), but not in NRQL
-        expect(r.nrql).not.toContain('undefined');
+        // Only flag "undefined" outside string/regex literals — user data can
+        // legitimately contain the word "undefined" (e.g. JS error messages).
+        expect(stripStringsAndRegex(r.nrql)).not.toContain('undefined');
       }),
       { numRuns },
     );
@@ -718,8 +719,9 @@ describe('SPL→NRQL property-based fuzz tests', () => {
     fc.assert(
       fc.property(arbEvalMulti, (spl) => {
         const r = translateSplToNrql(spl);
-        expect(r.nrql).not.toContain('[object Object]');
-        expect(r.nrql).not.toContain('undefined');
+        const code = stripStringsAndRegex(r.nrql);
+        expect(code).not.toContain('[object Object]');
+        expect(code).not.toContain('undefined');
       }),
       { numRuns: 200 },
     );
@@ -887,22 +889,70 @@ describe('SPL→NRQL property-based fuzz tests', () => {
 
 // ── Structural validation helpers ────────────────────────────────────
 
-/** Count occurrences of a char, skipping escaped and inside strings */
+/**
+ * Replace single-string and regex-literal contents with empty so structural
+ * checks don't false-positive on user data that happens to contain reserved
+ * substrings like `undefined` or `[object Object]`.
+ */
+function stripStringsAndRegex(str) {
+  let out = '';
+  let inSingle = false;
+  let inRegex = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if ((inSingle || inRegex) && ch === '\\') {
+      i++;
+      continue;
+    }
+    if (ch === "'" && !inRegex && !inSingle) {
+      inSingle = true;
+      continue;
+    }
+    if (ch === "'" && inSingle) {
+      inSingle = false;
+      continue;
+    }
+    if (ch === 'r' && str[i + 1] === "'" && !inSingle && !inRegex) {
+      inRegex = true;
+      i++;
+      continue;
+    }
+    if (ch === "'" && inRegex) {
+      inRegex = false;
+      continue;
+    }
+    if (inSingle || inRegex) continue;
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * Count net (opens − closes) of `open`/`close` outside string and regex
+ * literals. Handles NRQL escapes (`\X` consumes the next char) so that `'\\'`
+ * is correctly seen as a string containing a literal backslash, and `r'...'`
+ * regex literals only enter when not already inside one.
+ */
 function countUnescaped(str, open, close) {
   let depth = 0;
   let inSingle = false;
   let inRegex = false;
   for (let i = 0; i < str.length; i++) {
     const ch = str[i];
-    const prev = i > 0 ? str[i - 1] : '';
-    if (prev === '\\') continue;
-    // Track single-quoted strings
-    if (ch === "'" && !inRegex) {
-      inSingle = !inSingle;
+    if ((inSingle || inRegex) && ch === '\\') {
+      // `\X` consumes the next char as an escape inside the literal.
+      i++;
       continue;
     }
-    // Track regex literals r'...'
-    if (ch === 'r' && str[i + 1] === "'" && !inSingle) {
+    if (ch === "'" && !inRegex && !inSingle) {
+      inSingle = true;
+      continue;
+    }
+    if (ch === "'" && inSingle) {
+      inSingle = false;
+      continue;
+    }
+    if (ch === 'r' && str[i + 1] === "'" && !inSingle && !inRegex) {
       inRegex = true;
       i++;
       continue;
@@ -942,16 +992,18 @@ function hasDuplicateKeywords(nrql) {
 
 /** Check NRQL has valid clause structure (FROM before SELECT, etc.) */
 function hasValidStructure(nrql) {
-  // Strip subqueries (content inside balanced parens) for top-level check
-  let top = nrql;
+  // Strip string/regex literals first so paren counting isn't fooled by
+  // escaped parens inside regex content (e.g. \( \[ in r'...').
+  // Then strip subquery contents (balanced parens) for top-level check.
+  const noLiterals = stripStringsAndRegex(nrql);
   let depth = 0;
   let result = '';
-  for (const ch of top) {
+  for (const ch of noLiterals) {
     if (ch === '(') depth++;
     if (depth === 0) result += ch;
     if (ch === ')') depth--;
   }
-  top = result;
+  let top = result;
 
   // Must have FROM and SELECT at top level
   if (!top.includes('FROM')) return 'missing FROM';
@@ -987,9 +1039,12 @@ function assertInvariants(spl) {
   expect(r).toHaveProperty('nrql');
   expect(typeof r.nrql).toBe('string');
 
-  // No JS object stringification in NRQL
-  expect(r.nrql).not.toContain('[object Object]');
-  expect(r.nrql).not.toContain('undefined');
+  // No JS object stringification in NRQL — only check NRQL "code" portion,
+  // not user data inside string/regex literals (which legitimately may contain
+  // words like "undefined" from log content).
+  const nrqlCode = stripStringsAndRegex(r.nrql);
+  expect(nrqlCode).not.toContain('[object Object]');
+  expect(nrqlCode).not.toContain('undefined');
 
   // Messages are all strings, no IR node leaks (#5)
   for (const w of r.warnings) {
@@ -1193,8 +1248,9 @@ describe('mutation-based fuzzing', () => {
           );
         }
         expect(typeof r.nrql).toBe('string');
-        expect(r.nrql).not.toContain('[object Object]');
-        expect(r.nrql).not.toContain('undefined');
+        const code = stripStringsAndRegex(r.nrql);
+        expect(code).not.toContain('[object Object]');
+        expect(code).not.toContain('undefined');
       }),
       { numRuns },
     );

@@ -41,6 +41,11 @@ export function handleSort(cmd, ir) {
   if (cmd.fields.length > 1) {
     ir.warnings.push(messages.sort_single_field());
   }
+  // SPL `sort N field` / `sort field limit=N` caps the result to N rows.
+  // `sort 0 ...` means unlimited, so leave ir.limit unset.
+  if (cmd.limit != null && cmd.limit > 0) {
+    ir.limit = cmd.limit;
+  }
 }
 
 export function handleHead(cmd, ir) {
@@ -104,6 +109,13 @@ export function handleDedup(cmd, ir) {
 export function handleBin(cmd, ir) {
   if (cmd.field === '_time' && cmd.span) {
     ir.timeseries = formatSpan(cmd.span);
+    if (cmd.alias) {
+      // `bin _time as X` names the time bucket. NRQL has no named time bucket;
+      // downstream references to the alias map to TIMESERIES, so record the name
+      // and strip it from FACET later (splToIR FACET-strip pass).
+      if (!ir._timeBucketAliases) ir._timeBucketAliases = new Set();
+      ir._timeBucketAliases.add(cmd.alias);
+    }
     if (ir.select.length === 0) {
       ir.select.push(Func('count', []));
     }

@@ -63,8 +63,16 @@ const escapeStringLiteralForNrql = (string) => {
 const escapeStringWildcardForNrql = (string) =>
   escapeWith(stringWildcardMetacharacters, string);
 
+// Regex literals use r'...' syntax. NRQL accepts \' to embed a literal
+// apostrophe inside the regex literal (verified against the platform). The
+// pattern's own backslashes are part of the regex grammar and must NOT be
+// doubled — that would alter regex semantics.
+const escapeRegexPatternForNrql = (pattern) =>
+  typeof pattern === 'string' ? pattern.replace(/'/g, "\\'") : pattern;
+
 export {
   escapeAttributeNameForNrql,
   escapeStringLiteralForNrql,
   escapeStringWildcardForNrql,
+  escapeRegexPatternForNrql,
 };

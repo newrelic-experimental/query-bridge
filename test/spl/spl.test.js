@@ -68,7 +68,6 @@ const cases = [
     'message=fn(x)',
     'status IN ()',
     'https://example.com/path?q=1',
-    '`mymacro`status=200',
   ].map((spl) => ({
     spl,
     errorIncludes: 'Failed to parse SPL',
@@ -438,11 +437,15 @@ const cases = [
     doc: 'quoted-strings',
     verified: 'human',
   },
+  // SPL preserves \n as a literal backslash-n inside double-quoted strings
+  // (Splunk's only real C-escape sequences are \\ and \"/\'). NRQL needs the
+  // backslash escaped to \\ so the resulting LIKE/string literal carries
+  // the same two chars (\, n), not a real newline.
   {
     spl: 'msg="line1\\nline2"',
-    nrql: "FROM Log SELECT * WHERE msg = 'line1\\nline2'",
+    nrql: "FROM Log SELECT * WHERE msg = 'line1\\\\nline2'",
     doc: 'quoted-strings',
-    verified: 'human',
+    verified: false,
   },
   // Double-quoted with spaces, pipe, equals, comma, empty, unicode — all in one implicit-AND
   {
@@ -957,6 +960,13 @@ const cases = [
     nrql: "FROM Log WITH if(name LIKE 'test%', 'match', 'no') AS x SELECT *",
     doc: 'eval-conditional',
     verified: 'human',
+  },
+  // Regression: eval like() pattern with an apostrophe must escape it as \'
+  // so it doesn't terminate the surrounding NRQL '...' string literal.
+  {
+    spl: '* | eval x=if(like(message, "%Can\'t cover%"), "y", "n")',
+    nrql: "FROM Log WITH if(message LIKE '%Can\\'t cover%', 'y', 'n') AS x SELECT *",
+    verified: false,
   },
   // eval tonumber() → numeric()
   {
@@ -2086,6 +2096,15 @@ const cases = [
     doc: 'results-where',
     verified: 'human',
   },
+  // Regression: where-pipe with an unknown eval function as the whole primary
+  // used to crash with TypeError because translateWhereExpr forgot to forward
+  // `ir` to translateSearchExpr, and the FunctionCall fallthrough then called
+  // walkEvalFunc with ir=undefined. Should now produce unsupported, not throw.
+  {
+    spl: '* | where in(minute_check, "00", "30")',
+    unsupportedFunc: ['eval_func_unsupported'],
+    verified: false,
+  },
   //
   // ── where on aggregation ────────────────────────────────────────
   //
@@ -2256,6 +2275,22 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'",
     doc: 'results-regex',
     verified: 'human',
+  },
+  // Regression: regex pattern containing a literal apostrophe must escape it
+  // as \' inside the r'...' literal so the regex literal doesn't terminate
+  // early and produce invalid NRQL.
+  {
+    spl: '* | regex message="don\'t"',
+    nrql: "FROM Log SELECT * WHERE message RLIKE r'don\\'t'",
+    verified: false,
+  },
+  // Regression: `| regex foo=$bar$` (unquoted/template-variable RHS) used to
+  // emit Rlike(field, null) and crash the emitter. Should now report
+  // unsupported with a descriptive message.
+  {
+    spl: '* | regex accountUsername=$Account_Username$',
+    unsupportedFunc: ['regex_command_unparsed'],
+    verified: false,
   },
   //
   // ── table / fields ──────────────────────────────────────────────
@@ -3079,17 +3114,17 @@ const cases = [
   },
   // Gap #2 — FIXME: dedup + timechart should emit nested subquery approach
   // SPL dedup keeps first event per userId (most recent in historical search).
-  // The eval before dedup tags Submit as orders=1; after dedup, only shoppers
+  // The eval before dedup tags Submit as orders=1; after dedup, only users
   // whose last action was Submit retain orders=1. Then eval addtobags tags the rest.
-  // Formula: (shoppers whose last action = Submit) / (last action = AddBag) × 100
+  // Formula: (users whose last action = Submit) / (last action = AddItem) × 100
   //
   // Best-effort NRQL: nested latest(routeName) FACET userId, then filter/count.
-  // Limitations: LIMIT MAX caps at 5K (customer has <N> users/hr),
+  // Limitations: LIMIT MAX caps at 5K (a high-cardinality user field exceeds it),
   // TIMESERIES on outer query produces nulls after first bucket.
   //
   // BLOCKER: `timechart eval(...)` doesn't parse — the grammar only recognizes
   // `name(eval(...))` (e.g., count(eval(if(...)))) but not bare `eval(expr)` as a
-  // top-level stats_function. The customer's `timechart eval((sum(x)*100)/sum(y))`
+  // top-level stats_function. A `timechart eval((sum(x)*100)/sum(y))`
   // uses eval as the top-level expression wrapping arithmetic over aggregation fns.
   //
   // FIX: Add an alternative to `stats_function` in spl.grammar that accepts
@@ -3101,7 +3136,7 @@ const cases = [
   // recognize evalFilter on a bare eval entry and translate the arithmetic.
   {
     skip: true,
-    spl: '(routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as orderCompletionRate span=1m',
+    spl: '(routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as completionRate span=1m',
     nrql: 'FIXME: needs grammar change for timechart eval(), then nested FROM (SELECT latest(routeName) AS lastRoute FACET userId LIMIT MAX) with filter/count formula + warnings',
     doc: 'dedup',
     verified: false,
@@ -3130,6 +3165,237 @@ const cases = [
     spl: '* | eval last = mvindex(result, -1)',
     unsupportedFunc: ['mvindex_last_element'],
     doc: 'eval',
+    verified: false,
+  },
+
+  // ── timechart by-clause options (limit/useother/usenull) ──────────
+  {
+    spl: 'index=x | timechart span=1m count by service limit=0',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET service LIMIT MAX TIMESERIES 1 minute",
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=x | timechart count by ua useother=false usenull=false limit=5',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET ua LIMIT 5 TIMESERIES AUTO",
+    warningFunc: ['usenullNoEquivalent'],
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=x | stats count by host source',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET host, source",
+    doc: 'timechart-by-options-regression',
+    verified: false,
+  },
+
+  // ── top multi-field parse ─────────────────────────────────────────
+  {
+    spl: 'index=x | top limit=10 cs_user_agent, sc_status',
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET cs_user_agent, sc_status ORDER BY count DESC LIMIT 10",
+    doc: 'top-multifield',
+    verified: false,
+  },
+  {
+    spl: 'index=x | top host by region',
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET host, region ORDER BY count DESC LIMIT 10",
+    warningFunc: ['top_groupby_warning'],
+    doc: 'top-multifield-regression',
+    verified: false,
+  },
+
+  // ── bin/bucket as-alias ───────────────────────────────────────────
+  {
+    spl: 'index=x | bin span=1m _time as min | stats count by min',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' TIMESERIES 1 minute",
+    warningFunc: ['facet_default_limit'],
+    doc: 'bin-as-alias',
+    verified: false,
+  },
+
+  // ── sort leniency: trailing limit, type hints, space-sign multi-key ──
+  {
+    spl: 'index=x | sort - time_taken limit=10',
+    nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY time_taken DESC LIMIT 10",
+    doc: 'sort-leniency',
+    verified: false,
+  },
+  {
+    spl: 'index=x | sort num(duration)',
+    nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY duration ASC",
+    doc: 'sort-typehint',
+    verified: false,
+  },
+  {
+    spl: 'index=x | sort -aaa username',
+    nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY aaa DESC",
+    warningFunc: ['sort_single_field'],
+    doc: 'sort-space-multikey',
+    verified: false,
+  },
+  {
+    spl: 'index=x | sort 0 host',
+    nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY host ASC",
+    doc: 'sort-leading-zero-regression',
+    verified: false,
+  },
+
+  // ── where: bang negation, leading-dot decimals, mvcount ───────────
+  {
+    spl: 'index=x | where !(match(f,"^SYS"))',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND f NOT RLIKE r'^SYS'",
+    doc: 'where-bang-negation',
+    verified: false,
+  },
+  {
+    spl: 'index=x | stats count by f | where .25 > count',
+    nrql: "FROM (FROM Log SELECT count(*) WHERE index = 'x' FACET f LIMIT MAX) SELECT * WHERE .25 > numeric(count)",
+    doc: 'where-leading-dot-decimal',
+    verified: false,
+  },
+  {
+    spl: 'index=x | where mvcount(f) > 1',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(length(f)) > 1",
+    warningFunc: ['eval_length_warning'],
+    doc: 'where-mvcount',
+    verified: false,
+  },
+  {
+    spl: 'index=x | where count != 5',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND count != '5' AND numeric(count) != 5",
+    doc: 'where-bang-regression',
+    verified: false,
+  },
+
+  // ── tokenizer leniency: empty list items, IN space-separation ─────
+  {
+    spl: 'index=x | table, _time, host',
+    nrql: "FROM Log SELECT timestamp, host WHERE index = 'x'",
+    doc: 'tokenizer-empty-list-item',
+    verified: false,
+  },
+  {
+    spl: 'index=x f IN ("a" "b", "c")',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND f IN ('a', 'b', 'c')",
+    doc: 'tokenizer-in-space-separated',
+    verified: false,
+  },
+  {
+    spl: 'index=x f IN ("a", "b", "c")',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND f IN ('a', 'b', 'c')",
+    doc: 'tokenizer-in-comma-regression',
+    verified: false,
+  },
+
+  // ── where(...) with no space before the paren ─────────────────────
+  {
+    spl: 'index=x | where(staked>0)',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(staked) > 0",
+    doc: 'tokenizer-where-no-space',
+    verified: false,
+  },
+  {
+    spl: 'index=x | where (staked>0)',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(staked) > 0",
+    doc: 'tokenizer-where-space-regression',
+    verified: false,
+  },
+
+  // ── stats: stray comma before the by-clause ───────────────────────
+  {
+    spl: 'index=x | stats count, by host',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'tokenizer-stats-stray-comma',
+    verified: false,
+  },
+  {
+    spl: 'index=x | stats count, avg(bytes) by host',
+    nrql: "FROM Log SELECT count(*), average(bytes) WHERE index = 'x' FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'tokenizer-stats-multi-fn-regression',
+    verified: false,
+  },
+
+  // ── quote-boundary: a closing quote acts as a term separator ──────
+  {
+    spl: 'index=x cs_uri_query !="*Lucky*"cs_uri_query != "*nui*"',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND cs_uri_query NOT LIKE '%Lucky%' AND cs_uri_query NOT LIKE '%nui%'",
+    doc: 'tokenizer-quote-boundary',
+    verified: false,
+  },
+  {
+    spl: 'index="mattbotsummary"$device$',
+    nrql: "FROM Log SELECT * WHERE index = 'mattbotsummary' AND {{device}}",
+    doc: 'tokenizer-quote-boundary-token',
+    verified: false,
+  },
+  {
+    // A closing backtick (end of macro) is a term boundary like a closing quote:
+    // `mymacro`status=200 is the macro followed by a comparison, no space needed.
+    spl: '`mymacro`status=200',
+    nrql: "FROM Log SELECT * WHERE $mymacro AND status = '200' OR numeric(status) = 200",
+    warningFunc: ['macro_translated'],
+    doc: 'tokenizer-quote-boundary-macro',
+    verified: false,
+  },
+  {
+    spl: 'index=x cs_uri_query !="*Lucky*" cs_uri_query != "*nui*"',
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND cs_uri_query NOT LIKE '%Lucky%' AND cs_uri_query NOT LIKE '%nui%'",
+    doc: 'tokenizer-quote-boundary-spaced-regression',
+    verified: false,
+  },
+  {
+    spl: 'index=x foo="a" OR bar="b"',
+    nrql: "FROM Log SELECT * WHERE (index = 'x' AND foo = 'a') OR bar = 'b'",
+    doc: 'tokenizer-quote-boundary-or-regression',
+    verified: false,
+  },
+  {
+    spl: 'index=x (foo="a") | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' AND foo = 'a'",
+    doc: 'tokenizer-quote-boundary-paren-regression',
+    verified: false,
+  },
+
+  // ── quoted field names in field/by lists ──────────────────────────
+  {
+    spl: 'index=x | table loyaltyId, "Datetime Start", "Datetime End"',
+    nrql: "FROM Log SELECT loyaltyId, `Datetime Start`, `Datetime End` WHERE index = 'x'",
+    doc: 'quoted-field-name',
+    verified: false,
+  },
+  {
+    spl: 'index=x | stats count by "Container Name"',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET `Container Name`",
+    warningFunc: ['facet_default_limit'],
+    doc: 'quoted-field-name',
+    verified: false,
+  },
+
+  // ── eval `+` with a string operand → loud unsupported, not a crash ──
+  // SPL `+` is overloaded (numeric add OR string concat). The current eval
+  // pipeline flattens expressions to a string and re-parses them as arithmetic,
+  // which can't represent string concat via `+`, so it must fail loudly.
+  // FIXME: the EvalArith typed-node rearchitecture should translate these to
+  // concat(...) (SPL `+`-concat is identical to `.`-concat). When that lands,
+  // change the expected output to the concat() NRQL and drop eval_not_supported.
+  {
+    spl: 'index=x | eval z = businessDate + " "',
+    unsupportedFunc: ['eval_not_supported'],
+    doc: 'eval-plus-string-unsupported',
+    verified: false,
+  },
+  {
+    spl: 'index=x | eval z = a + " " + b',
+    unsupportedFunc: ['eval_not_supported'],
+    doc: 'eval-plus-string-unsupported',
+    verified: false,
+  },
+  {
+    spl: 'index=x | eval z = f + g',
+    nrql: "FROM Log WITH numeric(f) + numeric(g) AS z SELECT * WHERE index = 'x'",
+    doc: 'eval-plus-arithmetic-regression',
     verified: false,
   },
 ];

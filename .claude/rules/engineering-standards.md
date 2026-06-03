@@ -21,7 +21,7 @@ Standards skills come from the NR Claude plugin marketplace. If `/nr:check-engin
 
 In Claude Code:
 ```
-/plugin marketplace add git@source.<GHE_DOMAIN>:commune/claude-plugin-marketplace.git
+/plugin marketplace add git@<GHE_HOST>:commune/claude-plugin-marketplace.git
 /plugin install nr@claude-plugin-marketplace
 ```
 

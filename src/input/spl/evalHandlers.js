@@ -58,7 +58,7 @@ export function translateWhereExpr(expr, ir) {
   // (BooleanOp, Comparison, etc.), not eval expressions (EvalFunc, etc.)
   // However, where_primary can also contain eval-like function calls
   // and comparisons. We need to handle both formats.
-  const { expr: irExpr, warnings, unsupported } = translateSearchExpr(expr);
+  const { expr: irExpr, warnings, unsupported } = translateSearchExpr(expr, ir);
   ir.warnings.push(...warnings);
   ir.unsupported.push(...unsupported);
   if (irExpr) return irExpr;
@@ -70,6 +70,13 @@ function translateEvalExpr(cmd, ir) {
   if (cmd.rawText) {
     // Try dot-concat: field = expr . expr . ...
     if (tryParseDotConcat(cmd.rawText, ir)) return null;
+    // FIXME: `+`-with-string concat (e.g. `eval z = businessDate + " "`) and other
+    // eval expressions land here as unsupported because eval_expr/eval_term/
+    // eval_factor flatten to a string that buildArithmeticExpr re-parses as
+    // numeric-only arithmetic. The planned EvalArith typed-node rearchitecture
+    // (grammar produces typed nodes, walker handles them directly, no string
+    // round-trip) will let string-operand `+` translate to concat(...). Until
+    // then, loud unsupported is correct — do not silently emit wrong arithmetic.
     ir.unsupported.push(messages.eval_not_supported(cmd.rawText));
     return null;
   }
@@ -421,8 +428,11 @@ function walkEvalFunc(node, ir) {
             ? rawPat.value
             : (walkEvalExpr(rawPat, ir)?.value ?? String(rawPat));
       if (field && patStr) {
-        // Convert SPL wildcards to NRQL: * → %
-        const nrqlPattern = patStr.replace(/\*/g, '%');
+        // SPL `like()` uses `%` as its wildcard, but real-world queries also
+        // pass `*` (search-clause convention). Convert both to `%`. Then
+        // escape `'` so apostrophes in user content don't terminate the NRQL
+        // string literal.
+        const nrqlPattern = patStr.replace(/\*/g, '%').replace(/'/g, "\\'");
         return Like(field, nrqlPattern);
       }
       return null;
