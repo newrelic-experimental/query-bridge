@@ -79,7 +79,7 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 
 ### Tests
 - `test/spl/spl.test.js` — Unit tests + real-world regression suite
-- `test/spl/spl-real-world.json` — 339 real-world SPL queries for regression testing
+- `test/spl/spl-real-world.json` — small SYNTHETIC stub corpus (real-world regression path). The full real customer corpus + its generator and `corpus-diagnostic.mjs` harness live in the private sibling repo `nr-query-bridge-corpus` (kept out of this repo for open-sourcing; run the diagnostic from there)
 - `test/spl/spl-fuzz.test.js` — Property-based fuzz tests (fast-check): combinatorial, corpus, mutation
 - `test/spl/v2-show.test.js` — Quick output viewer: edit queries array, run, see NRQL + warnings
 - `test/ir/` and `test/output/` — IR and emitter unit tests
