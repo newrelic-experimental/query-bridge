@@ -714,7 +714,7 @@ u_atom_base
   = '(' _* e:u_expr _* ')' { return { type: 'EvalParens', inner: e }; }
   / u_func_call
   / eval_string_literal
-  / n:eval_number { return n; }
+  / n:eval_number ![a-zA-Z_] { return n; }
   / f:field_name { return f; }
 
 u_atom_stats_extra
