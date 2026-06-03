@@ -1,14 +1,7 @@
 # yaml-language-server: $schema=https://json.schemastore.org/dependabot-2.0.json
 version: 2
-registries:
-  artifactory:
-    type: npm-registry
-    url: https://artifacts.<GHE_DOMAIN>/artifactory/api/npm/newrelic-js-local/
-    token: ${{secrets.ARTIFACTORY_TOKEN}}
 updates:
   - package-ecosystem: 'npm'
     directory: '/'
-    registries:
-      - artifactory
     schedule:
       interval: 'daily'
