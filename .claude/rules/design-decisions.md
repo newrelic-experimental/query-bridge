@@ -10,7 +10,7 @@ Architectural choices that affect how code should be written and modified.
 
 ## Expression Walking
 - **Walker composition**: `walkExpr(node, ir, resolveFunc)` is the shared core. `walkEvalExpr` uses `resolveEvalFunc` (eval context — string ops, conditionals, multivalue functions), `walkStatsExpr` uses `resolveStatsFunc` (stats context — sum/count/avg are aggregation functions). Same tree walking, different function-call semantics.
-- **Grammar produces AST**: `eval_expr`/`eval_term`/`eval_factor` produce `EvalArith` nodes (not string concatenation). `stats_function` supports bare `eval(expr)` as a top-level alternative.
+- **Eval expression representation (KNOWN DEBT)**: `eval_expr`/`eval_term`/`eval_factor` currently flatten to a string that `buildArithmeticExpr` re-parses — NOT typed `EvalArith` nodes. This string round-trip causes a recurring bug class (dropped string literals, `Identifier(undefined)` crashes) and four divergent partial eval grammars. Planned rearchitecture to one typed eval grammar: `docs/superpowers/specs/2026-06-03-eval-typed-nodes-design.md`. `stats_function` supports bare `eval(expr)` as a top-level alternative.
 - **Stats vs eval `sum()`**: In stats context, `sum(x)` is aggregation (via `resolveStatsFunc`). In eval context, `sum(x)` is multivalue sum on one event (via `resolveEvalFunc`). The walker strategy parameter handles this.
 
 ## EXPAND (mvexpand Translation)
