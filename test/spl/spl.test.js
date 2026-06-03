@@ -3386,29 +3386,45 @@ const cases = [
     verified: false,
   },
 
-  // ── eval `+` with a string operand → loud unsupported, not a crash ──
-  // SPL `+` is overloaded (numeric add OR string concat). The current eval
-  // pipeline flattens expressions to a string and re-parses them as arithmetic,
-  // which can't represent string concat via `+`, so it must fail loudly.
-  // FIXME: the EvalArith typed-node rearchitecture should translate these to
-  // concat(...) (SPL `+`-concat is identical to `.`-concat). When that lands,
-  // change the expected output to the concat() NRQL and drop eval_not_supported.
+  // ── eval `+` with a string operand → now translated via unified ladder ──
+  // SPL `+` is overloaded (numeric add OR string concat). The unified
+  // EvalArith ladder now handles string operands by emitting concat().
   {
     spl: 'index=x | eval z = businessDate + " "',
-    unsupportedFunc: ['eval_not_supported'],
-    doc: 'eval-plus-string-unsupported',
+    nrql: "FROM Log WITH concat(businessDate, ' ') AS z SELECT * WHERE index = 'x'",
+    doc: 'eval-string',
     verified: false,
   },
   {
     spl: 'index=x | eval z = a + " " + b',
-    unsupportedFunc: ['eval_not_supported'],
-    doc: 'eval-plus-string-unsupported',
+    nrql: "FROM Log WITH concat(a, ' ', b) AS z SELECT * WHERE index = 'x'",
+    doc: 'eval-string',
     verified: false,
   },
   {
     spl: 'index=x | eval z = f + g',
     nrql: "FROM Log WITH numeric(f) + numeric(g) AS z SELECT * WHERE index = 'x'",
     doc: 'eval-plus-arithmetic-regression',
+    verified: false,
+  },
+
+  // ── EvalArith: top-level comparison + string-concat (Task 5) ──
+  {
+    spl: '* | eval hi = status >= 400',
+    nrql: 'FROM Log WITH numeric(status) >= 400 AS hi SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  {
+    spl: '* | eval z = businessDate + " "',
+    nrql: "FROM Log WITH concat(businessDate, ' ') AS z SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: '* | eval full = a + " " + b',
+    nrql: "FROM Log WITH concat(a, ' ', b) AS full SELECT *",
+    doc: 'eval-string',
     verified: false,
   },
 ];

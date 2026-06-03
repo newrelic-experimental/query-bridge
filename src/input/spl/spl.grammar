@@ -558,7 +558,7 @@ eval_command
     }
 
 eval_assignment
-  = field:field_name _* '=' _* expr:eval_expr
+  = field:field_name _* '=' _* expr:u_expr
     { return { field: field, expr: expr }; }
 
 eval_expr
