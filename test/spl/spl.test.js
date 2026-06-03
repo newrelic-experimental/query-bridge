@@ -3449,6 +3449,13 @@ const cases = [
   },
 
   // ── EvalArith: eval nested in stats arg (Task 7) ──
+  // FIXME: the inner if(cond, 1, 0) should unwrap to just `cond` for the filter
+  // WHERE — i.e. `filter(count(*), WHERE numeric(status) >= 400)`. Today the
+  // walker emits the whole if() as the predicate (`WHERE if(..., 1, 0)`), which
+  // is dubious NRQL. Unwrapping `if(cond, 1, 0)`/`if(cond, 1, null)` in the
+  // evalFilter consumer (aggregationHandlers.js) is out of scope for the grammar
+  // wiring task; tracked as follow-up. Asserting ACTUAL output so the test guards
+  // against further drift. verified:false — NOT correct, do not promote.
   {
     spl: '* | stats sum(eval(if(status>=400,1,0)))',
     nrql: 'FROM Log SELECT filter(count(*), WHERE if(numeric(status) >= 400, 1, 0))',
