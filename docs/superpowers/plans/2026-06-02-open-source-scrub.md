@@ -296,7 +296,9 @@ Expected: no real secrets; only the intended/none.
 
 ## Phase B — History rewrite (GATED; mirror clone; explicit go-ahead before force-push)
 
-> **DANGER:** Every step here is irreversible and the final push force-updates a shared remote with 11 branches. Do NOT begin without explicit human go-ahead. Work on a throwaway mirror — never the live repo — so the original remains intact until the force-push.
+> **DANGER:** Every step here is irreversible and the final push force-updates a shared remote. Do NOT begin without explicit human go-ahead. Work on a throwaway mirror — never the live repo — so the original remains intact until the force-push.
+
+> **Dry-run validated (2026-06-03).** The full B.1–B.5 sequence was rehearsed on a throwaway mirror (no force-push). Result: corpus purged (0 commits), both customer docs purged (0), every customer identifier → 0 across all history, placeholders confirmed present (`<CUSTOMER_A>`, `itemId` — proving replacement fired, not just deletion), repo 10M → 1.6M, 160 commits intact. The recipe below reflects what actually worked. Three learnings folded in: (a) exclude `opta`/`REDACTED` from replace-text — too-short substrings cause collateral damage, and they're corpus-confined so deletion handles them; (b) add `<GHE_DOMAIN>` (4 history hits) to the replacements; (c) GHE `pull/*` refs persist in the mirror but do NOT follow to a fresh public GitHub repo, so they need no handling for a clean public push.
 
 ### Task B.1: Mirror-clone the repo
 
@@ -316,17 +318,15 @@ Expected: a bare mirror at `../nr-query-bridge-scrub.git` with all refs/branches
 **Files:**
 - Create (transient, NOT committed anywhere): `../replacements.txt`
 
-- [ ] **Step 1: Build `replacements.txt`** with one `real==>placeholder` line per entry in `docs/local/scrub-mappings.yml`. Cover Tier 1 (account id), Tier 3 (field + route names + "<N> users/hr"), the `<CUSTOMER_A>` name + cluster names + the `<prefix>*` field family, vendors, Tier 5 lookups/apps/fields, and the team email. Use `regex:` lines for families (e.g. the prefix). Example shape (substitute real values from the mapping file):
+- [ ] **Step 1: Build `replacements.txt`** with one `real==>placeholder` line per `real:`/`placeholder:` pair in `docs/local/scrub-mappings.yml`. Cover Tier 1 (account id), Tier 3 (field + route names + the "N users/hr" phrase), Tier 5 Customer A (`<CUSTOMER_A>` name + the `<prefix>-*-prod` cluster names + named vendors), Tier 5 Customer B (`<CUSTOMER_B>` name + Splunk host + lookups/apps/fields), and the internal host. filter-repo `--replace-text` does plain substring replacement top-to-bottom, so **order longest-first** within a family (the SKU-field family in the mapping has `Id`/plural variants that must precede the bare stem) or the bare stem half-replaces the longer ones. The mapping file already lists them longest-first with a comment.
 
-```
-<account-id>==><ACCOUNT_ID>
-<real-field>==>userId
-literal:<N> users/hr==><N> users/hr
-<real-customer-name>==><CUSTOMER_A>
-regex:\b<prefix>-[a-z-]+-prod==><CLUSTER>
-```
+  **Exclusions learned in the dry-run — do NOT add these to replacements.txt:**
+  - `opta`, `REDACTED` — too short; plain substring replace would corrupt words like "adoption"/"in front". They appear only inside the corpus (which is deleted wholesale), so no replace rule is needed.
+  - The `<prefix>*` field family (REDACTED, REDACTED, etc.) — corpus-confined; removed by file deletion, confirmed gone in the dry-run without any replace rule.
 
-- [ ] **Step 2: Keep this file outside any repo** (e.g. the parent dir). It contains real values — it must never be committed.
+  Also add the internal-host scrub (4 history hits): `<GHE_DOMAIN>==><GHE_DOMAIN_PLACEHOLDER>` (use the real domain on the left, looked up from the working tree / mapping).
+
+- [ ] **Step 2: Keep this file outside any repo** (e.g. the parent dir). It contains real values — it must never be committed. Delete it after Phase B completes.
 
 ### Task B.3: Drop paths from history
 
@@ -384,7 +384,9 @@ git -C ../nr-query-bridge-scrub.git log --all -S'<GHE_DOMAIN>' --oneline
 ```
 Expected: only known-benign hits (e.g. nr-ai-standards docs explaining the `NRAK-` prefix). Investigate anything unexpected.
 
-- [ ] **Step 4: If ANY check is non-empty, fix and re-run from a fresh mirror.** Add the missed string to `replacements.txt` (or the path to an `--invert-paths`), re-clone the mirror, and re-run B.3–B.5. Do not patch the existing rewritten mirror in place.
+- [ ] **Step 4: If ANY check is non-empty, fix and re-run from a fresh mirror.** Add the missed string to `replacements.txt` (or the path to an `--invert-paths`), `rm -rf` the mirror, re-clone, and re-run B.3–B.5. Do not patch the existing rewritten mirror in place — filter-repo expects a fresh clone.
+
+- [ ] **Step 5 (dry-run only): clean up.** If this is a rehearsal (not the real force-push), `rm -rf ../nr-query-bridge-scrub.git` and `rm -f ../replacements.txt` — the mirror's history and the replacements file both contain real customer values and must not linger.
 
 ### Task B.6: Force-push (FINAL GATE)
 
