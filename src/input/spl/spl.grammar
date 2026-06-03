@@ -640,6 +640,98 @@ eval_number
     { return digits.join('') + (frac || ''); }
 
 /* ============================================================
+   Unified eval expression ladder. ONE definition of the SPL eval
+   expression language, referenced by all four call sites (wired in
+   later tasks). Precedence, tight→loose: parens, unary(-/NOT),
+   * / %, + - ., comparison, AND, OR. Peek-and-extend at every level
+   (NEVER `A op B / A` — see eval_func_arg's comment for the O(3^n)
+   backtracking incident this avoids). The only per-context divergence
+   is u_atom (base field atom vs. stats-wildcard atom).
+   ============================================================ */
+u_expr
+  = u_or
+
+u_or
+  = head:u_and tail:(_* 'OR'i _* r:u_and { return r; })*
+    {
+      var result = head;
+      for (var i = 0; i < tail.length; i++) {
+        result = { type: 'EvalBoolOp', op: 'OR', left: result, right: tail[i] };
+      }
+      return result;
+    }
+
+u_and
+  = head:u_not tail:(_* 'AND'i _* r:u_not { return r; })*
+    {
+      var result = head;
+      for (var i = 0; i < tail.length; i++) {
+        result = { type: 'EvalBoolOp', op: 'AND', left: result, right: tail[i] };
+      }
+      return result;
+    }
+
+u_not
+  = 'NOT'i _+ operand:u_not { return { type: 'EvalNot', operand: operand }; }
+  / u_cmp
+
+u_cmp
+  = left:u_add tail:(_* op:comparison_op _* right:u_add { return { op: op, right: right }; })?
+    {
+      return tail
+        ? { type: 'EvalComparison', op: tail.op, left: left, right: tail.right }
+        : left;
+    }
+
+u_add
+  = head:u_mul tail:(_* op:[+\-.] _* r:u_mul { return { op: op, right: r }; })*
+    {
+      var result = head;
+      for (var i = 0; i < tail.length; i++) {
+        result = { type: 'EvalArith', op: tail[i].op, left: result, right: tail[i].right };
+      }
+      return result;
+    }
+
+u_mul
+  = head:u_unary tail:(_* op:[*/%] _* r:u_unary { return { op: op, right: r }; })*
+    {
+      var result = head;
+      for (var i = 0; i < tail.length; i++) {
+        result = { type: 'EvalArith', op: tail[i].op, left: result, right: tail[i].right };
+      }
+      return result;
+    }
+
+u_unary
+  = '-' _* operand:u_unary { return { type: 'EvalArith', op: '-', left: '0', right: operand }; }
+  / u_atom
+
+u_atom
+  = u_atom_stats_extra
+  / u_atom_base
+
+u_atom_base
+  = '(' _* e:u_expr _* ')' { return { type: 'EvalParens', inner: e }; }
+  / u_func_call
+  / eval_string_literal
+  / n:eval_number { return n; }
+  / f:field_name { return f; }
+
+u_atom_stats_extra
+  = chars:[a-zA-Z0-9_.:{}]* '*' rest:[a-zA-Z0-9_.:{}*]*
+    { return (chars.join('') + '*' + rest.join('')); }
+
+u_func_call
+  = name:function_name '(' _* args:u_func_args _* ')'
+    { return { type: 'EvalFunc', name: name, args: args }; }
+
+u_func_args
+  = first:u_expr rest:(_* ',' _* a:u_expr { return a; })*
+    { return [first].concat(rest); }
+  / '' { return []; }
+
+/* ============================================================
    Rex command: | rex [field=F] "regex" or | rex mode=sed "expr"
    ============================================================ */
 rex_command
