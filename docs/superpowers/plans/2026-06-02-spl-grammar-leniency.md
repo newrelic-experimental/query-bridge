@@ -28,9 +28,16 @@
 
 A reusable script that runs the whole corpus through the translator and reports the error-count + per-command attribution. Used as the regression gate after every later task.
 
+> **Relocated (2026-06-03):** this harness now lives in the private corpus repo at
+> `../nr-query-bridge-corpus/corpus-diagnostic.mjs` (it needs the full real corpus,
+> which can't ship in the public repo). Run it with
+> `node ../nr-query-bridge-corpus/corpus-diagnostic.mjs` from this repo's parent dir.
+> The Task 0 steps below record how it was originally built here; the `npm run diag`
+> alias and `scripts/corpus-diagnostic.mjs` no longer exist in this repo.
+
 **Files:**
-- Create: `scripts/corpus-diagnostic.mjs`
-- Modify: `package.json` (add `diag` script)
+- Create: `scripts/corpus-diagnostic.mjs` (original location — now moved to the corpus repo)
+- Modify: `package.json` (add `diag` script — now removed)
 
 - [ ] **Step 1: Create the diagnostic script**
 
@@ -113,7 +120,7 @@ In `package.json`, add to `"scripts"`:
 
 - [ ] **Step 3: Run it to capture the baseline**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm run diag`
+Run: `ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs`
 Expected: `errors: 292 (15.5%)`, top line of "ERRORS BY ATTRIBUTED COMMAND" is `132  timechart`. Record these numbers — they are the baseline for every later regression gate.
 
 - [ ] **Step 4: Commit**
@@ -239,7 +246,7 @@ Expected: all three new cases PASS. Full suite still green.
 
 - [ ] **Step 8: Regression gate — diagnostic**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm run diag`
+Run: `ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs`
 Expected: `errors` dropped from 292 to ~163 (timechart no longer the top bucket).
 clean/warnings did not drop. No new command appears with MORE failures than
 baseline. If any regression, STOP and investigate before committing.
@@ -357,7 +364,7 @@ Expected: new case PASSES, full suite green.
 
 - [ ] **Step 8: Regression gate**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm run diag`
+Run: `ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs`
 Expected: `top` bucket drops toward 0; errors total drops by ~27; nothing regresses.
 
 - [ ] **Step 9: Lint + types + commit**
@@ -437,7 +444,7 @@ Run: `ASDF_NODEJS_VERSION=24.14.0 npm run test -- spl.test`
 - [ ] **Step 8: Regression gate + lint + types + commit**
 
 ```bash
-ASDF_NODEJS_VERSION=24.14.0 npm run diag    # bin bucket → ~0, errors -~20
+ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs    # bin bucket → ~0, errors -~20
 ASDF_NODEJS_VERSION=24.14.0 npm run lint && ASDF_NODEJS_VERSION=24.14.0 npm run types:check
 git add src/input/spl/spl.grammar src/input/spl/splParser.js src/input/spl/*Handlers.js test/spl/spl.test.js
 ASDF_NODEJS_VERSION=24.14.0 git commit -m "fix: parse bin/bucket as-alias"
@@ -528,7 +535,7 @@ Run: `ASDF_NODEJS_VERSION=24.14.0 npm run test -- spl.test`
 - [ ] **Step 8: Regression gate + lint + types + commit**
 
 ```bash
-ASDF_NODEJS_VERSION=24.14.0 npm run diag    # sort bucket → ~0, errors -~19
+ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs    # sort bucket → ~0, errors -~19
 ASDF_NODEJS_VERSION=24.14.0 npm run lint && ASDF_NODEJS_VERSION=24.14.0 npm run types:check
 git add src/input/spl/spl.grammar src/input/spl/splParser.js src/input/spl/*Handlers.js test/spl/spl.test.js
 ASDF_NODEJS_VERSION=24.14.0 git commit -m "fix: parse sort space-sign, trailing limit, type hints"
@@ -646,7 +653,7 @@ Expected: new cases pass; `count != 5` still emits a `!=` comparison.
 - [ ] **Step 8: Regression gate + lint + types + commit**
 
 ```bash
-ASDF_NODEJS_VERSION=24.14.0 npm run diag    # where bucket → ~0, errors -~18
+ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs    # where bucket → ~0, errors -~18
 ASDF_NODEJS_VERSION=24.14.0 npm run lint && ASDF_NODEJS_VERSION=24.14.0 npm run types:check
 git add src/input/spl/spl.grammar src/input/spl/splParser.js src/input/spl/*.js test/spl/spl.test.js
 ASDF_NODEJS_VERSION=24.14.0 git commit -m "fix: parse where bang-negation, leading-dot decimals, mvcount"
@@ -681,7 +688,7 @@ empty-item tolerance), regenerate parser, `test/spl/spl.test.js`.
 
 - [ ] **Step 1: Re-run diagnostic to get the current long tail**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm run diag`
+Run: `ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs`
 List every remaining `ERRORS BY ATTRIBUTED COMMAND` bucket. These are the targets.
 
 - [ ] **Step 2: Per-construct loop (repeat for each remaining bucket)**
@@ -696,7 +703,7 @@ For each remaining failing construct, in order of frequency:
   f. Run the suite, confirm it passes; confirm no guardrail (rename/eval/where)
      regressed by spot-checking: `node bin/spl2nrql.js 'index=x | rename a AS b c AS d'`
      and `node bin/spl2nrql.js 'index=x | eval a=1, b=2'`.
-  g. Run `npm run diag`; confirm the bucket shrank and nothing regressed.
+  g. Run `node ../nr-query-bridge-corpus/corpus-diagnostic.mjs`; confirm the bucket shrank and nothing regressed.
 
 - [ ] **Step 3: Tokenizer cases — explicit tests**
 
@@ -723,7 +730,7 @@ regression case proving a normal spaced search still parses identically.
 - [ ] **Step 4: Final regression gate + lint + types + commit**
 
 ```bash
-ASDF_NODEJS_VERSION=24.14.0 npm run diag    # errors at new floor; record final number
+ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs    # errors at new floor; record final number
 ASDF_NODEJS_VERSION=24.14.0 npm run test
 ASDF_NODEJS_VERSION=24.14.0 npm run lint && ASDF_NODEJS_VERSION=24.14.0 npm run types:check
 git add src/input/spl/spl.grammar src/input/spl/splParser.js test/spl/spl.test.js
@@ -734,7 +741,7 @@ ASDF_NODEJS_VERSION=24.14.0 git commit -m "fix: tokenizer leniency for separator
 
 ## Final verification (after all tasks)
 
-- [ ] Run `ASDF_NODEJS_VERSION=24.14.0 npm run diag` and compare to the Task 0
+- [ ] Run `ASDF_NODEJS_VERSION=24.14.0 node ../nr-query-bridge-corpus/corpus-diagnostic.mjs` and compare to the Task 0
   baseline. Errors must be substantially down (from 292); clean + warnings up;
   unsupported roughly stable or up (some newly-parsed queries hit real NRQL gaps and
   become honest `unsupported` — that is correct, not a regression).
