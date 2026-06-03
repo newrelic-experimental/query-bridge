@@ -3114,17 +3114,17 @@ const cases = [
   },
   // Gap #2 — FIXME: dedup + timechart should emit nested subquery approach
   // SPL dedup keeps first event per userId (most recent in historical search).
-  // The eval before dedup tags Submit as orders=1; after dedup, only shoppers
+  // The eval before dedup tags Submit as orders=1; after dedup, only users
   // whose last action was Submit retain orders=1. Then eval addtobags tags the rest.
-  // Formula: (shoppers whose last action = Submit) / (last action = AddBag) × 100
+  // Formula: (users whose last action = Submit) / (last action = AddItem) × 100
   //
   // Best-effort NRQL: nested latest(routeName) FACET userId, then filter/count.
-  // Limitations: LIMIT MAX caps at 5K (customer has <N> users/hr),
+  // Limitations: LIMIT MAX caps at 5K (a high-cardinality user field exceeds it),
   // TIMESERIES on outer query produces nulls after first bucket.
   //
   // BLOCKER: `timechart eval(...)` doesn't parse — the grammar only recognizes
   // `name(eval(...))` (e.g., count(eval(if(...)))) but not bare `eval(expr)` as a
-  // top-level stats_function. The customer's `timechart eval((sum(x)*100)/sum(y))`
+  // top-level stats_function. A `timechart eval((sum(x)*100)/sum(y))`
   // uses eval as the top-level expression wrapping arithmetic over aggregation fns.
   //
   // FIX: Add an alternative to `stats_function` in spl.grammar that accepts
@@ -3136,7 +3136,7 @@ const cases = [
   // recognize evalFilter on a bare eval entry and translate the arithmetic.
   {
     skip: true,
-    spl: '(routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as orderCompletionRate span=1m',
+    spl: '(routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as completionRate span=1m',
     nrql: 'FIXME: needs grammar change for timechart eval(), then nested FROM (SELECT latest(routeName) AS lastRoute FACET userId LIMIT MAX) with filter/count formula + warnings',
     doc: 'dedup',
     verified: false,
