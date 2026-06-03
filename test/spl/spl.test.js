@@ -3427,6 +3427,26 @@ const cases = [
     doc: 'eval-string',
     verified: false,
   },
+
+  // ── EvalArith: stats function args via unified ladder (Task 6) ──
+  {
+    spl: '* | stats sum(bytes/1024)',
+    nrql: 'FROM Log SELECT sum(numeric(bytes) / 1024)',
+    doc: 'stats-agg',
+    verified: false,
+  },
+  {
+    spl: '* | stats sum(a*2+b)',
+    nrql: 'FROM Log SELECT sum(numeric(a) * 2 + numeric(b))',
+    doc: 'stats-agg',
+    verified: false,
+  },
+  {
+    spl: '* | stats avg(tcp.*)',
+    nrql: 'FROM Log SELECT average(`tcp.*`)',
+    doc: 'stats-agg',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

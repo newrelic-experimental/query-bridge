@@ -16,6 +16,10 @@ import {
 } from '../../ir/nodes.js';
 import { escapeStringWildcardForNrql } from '../../output/nrql/nrqlEncoding.js';
 import { messages } from '../../messages.js';
+// Circular import — safe because walkEvalExpr is only invoked at runtime (during
+// translation), never at module load. Mirrors evalHandlers.js's import of
+// translateSearchExpr from splToIR.js.
+import { walkEvalExpr } from './evalHandlers.js';
 
 // ── Field name mapping ──────────────────────────────────────
 
@@ -100,22 +104,17 @@ const NO_EQUIV_FUNCS = {
 };
 
 export function mapFunctionArg(a) {
+  // Typed node from the unified ladder → walk to IR.
+  if (a && typeof a === 'object') {
+    return walkEvalExpr(a, { warnings: [], unsupported: [], errors: [] });
+  }
+  // Bare-string atoms the stats wildcard atom emits as strings:
   if (a === '_time') return Identifier('timestamp');
   if (/\{\d*\}/.test(a)) {
     const jpath = a.replace(/\{(\d*)\}/g, (_, n) => (n ? `[${n}]` : '[*]'));
     return Func('jparse', [Identifier('message'), Literal(jpath, 'string')]);
   }
-  // Arithmetic expressions: parse into BinOp tree with numeric() wrappers
-  // Exclude wildcard patterns like "outcome.*" or standalone "*"
-  if (
-    typeof a === 'string' &&
-    /[+\-*/%()]/.test(a) &&
-    /[a-zA-Z]/.test(a) &&
-    /[a-zA-Z0-9_]\s*[+\-*/%]\s*[a-zA-Z0-9_]/.test(a)
-  ) {
-    return buildArithmeticExpr(a);
-  }
-  return Identifier(a);
+  return Identifier(a); // wildcard (`tcp.*`) or plain field — emitter backticks it
 }
 
 export function mapFunction(name, args) {

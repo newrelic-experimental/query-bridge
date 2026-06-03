@@ -133,7 +133,7 @@ function_name
   = chars:[a-zA-Z_0-9]+ { return chars.join('').toLowerCase(); }
 
 function_args
-  = first:function_arg rest:(',' _* arg:function_arg { return arg; })*
+  = first:u_expr rest:(',' _* arg:u_expr { return arg; })*
     { return [first].concat(rest); }
   / '' { return []; }
 
