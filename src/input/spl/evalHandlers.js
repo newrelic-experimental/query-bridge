@@ -588,12 +588,30 @@ function numericize(expr) {
   return expr; // BinOp/Function/etc. already typed — don't double-wrap
 }
 
+// NRQL functions the eval walker emits that return a string value. Drives the
+// `+` concat decision: `lower(a) + b` is concat, not arithmetic. Only functions
+// that UNAMBIGUOUSLY return a string belong here — `if`/`jparse` are
+// type-ambiguous and deliberately excluded (they fall through to arithmetic,
+// the field+field default).
+const STRING_RETURNING_FUNCS = new Set([
+  'concat',
+  'lower',
+  'upper',
+  'substring',
+  'string',
+  'replace',
+  'capture',
+]);
+
 // True when an eval expression is statically known to be a string: a string
-// literal, or a concat() result. Drives the '+' concat-vs-arithmetic decision.
+// literal, a string-returning function call, or a parenthesized string.
+// Drives the '+' concat-vs-arithmetic decision.
 function isStringExpr(expr) {
   if (!expr) return false;
   if (expr.type === 'Literal' && expr.kind === 'string') return true;
-  if (expr.type === 'Function' && expr.name === 'concat') return true;
+  if (expr.type === 'Function' && STRING_RETURNING_FUNCS.has(expr.name)) {
+    return true;
+  }
   return false;
 }
 

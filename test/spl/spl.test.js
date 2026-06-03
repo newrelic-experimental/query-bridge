@@ -3542,6 +3542,26 @@ const cases = [
     doc: 'eval-conditional',
     verified: false,
   },
+  // + with a string-returning function operand → concat (not arithmetic)
+  {
+    spl: '* | eval z = lower(a) + b',
+    nrql: 'FROM Log WITH concat(lower(a), b) AS z SELECT *',
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: '* | eval z = tostring(cost) + suffix',
+    nrql: 'FROM Log WITH concat(string(cost), suffix) AS z SELECT *',
+    doc: 'eval-string',
+    verified: false,
+  },
+  // round()/if() are NOT string-returning → + stays arithmetic
+  {
+    spl: '* | eval r = round(a) + 1',
+    nrql: 'FROM Log WITH round(a) + 1 AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {
