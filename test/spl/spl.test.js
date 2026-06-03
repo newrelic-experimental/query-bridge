@@ -851,6 +851,19 @@ const cases = [
     doc: 'eval-conditional',
     verified: 'human',
   },
+  // ── EvalArith: arithmetic inside function args (Task 4) ──
+  {
+    spl: '* | stats count | eval x = round(total/count, 2)',
+    nrql: 'FROM Log WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT count(*)',
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  {
+    spl: '* | eval x = if(a > b+1, "hi", "lo")',
+    nrql: "FROM Log WITH if(numeric(a) > numeric(b) + 1, 'hi', 'lo') AS x SELECT *",
+    doc: 'eval-conditional',
+    verified: false,
+  },
   // eval upper() → upper()
   {
     spl: '* | eval x=upper(name)',

@@ -590,8 +590,7 @@ eval_factor
   / f:field_name { return f; }
 
 eval_func_call
-  = name:function_name '(' _* args:eval_func_args _* ')'
-    { return { type: 'EvalFunc', name: name, args: args }; }
+  = u_func_call
 
 eval_func_args
   = first:eval_func_arg rest:(_* ',' _* a:eval_func_arg { return a; })*

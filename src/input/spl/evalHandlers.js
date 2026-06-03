@@ -381,13 +381,25 @@ function walkEvalFunc(node, ir) {
       const translated = args.map((a) => walkEvalExpr(a, ir)).filter(Boolean);
       if (translated.length >= 2) {
         const start = translated[1];
+        // Detect negative literal: the unified ladder emits unary minus as
+        // EvalArith(op='-', left='0', right=N) in the AST, which walkEvalExpr
+        // translates to BinOp('-', Literal(0, 'number'), Literal(N, 'number')).
+        // Negative indices are pass-through in both SPL and NRQL (count from end).
+        const isNegativeLiteral =
+          start.type === 'BinOp' &&
+          start.op === '-' &&
+          start.left?.type === 'Literal' &&
+          start.left.kind === 'number' &&
+          start.left.value === 0 &&
+          start.right?.type === 'Literal' &&
+          start.right.kind === 'number';
         if (
           start.type === 'Literal' &&
           start.kind === 'number' &&
           start.value > 0
         ) {
           translated[1] = Literal(start.value - 1, 'number');
-        } else if (start.type !== 'Literal') {
+        } else if (!isNegativeLiteral && start.type !== 'Literal') {
           translated[1] = BinOp('-', start, Literal(1, 'number'));
         }
         // Negative indices pass through unchanged (both SPL and NRQL count from end)
