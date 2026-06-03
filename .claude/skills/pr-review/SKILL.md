@@ -10,7 +10,7 @@ Review the current branch's changes against the universal PR review checklist an
 
 1. **Gather context**: Run `git diff master...HEAD` and `git log master..HEAD --oneline` to understand the full changeset.
 
-2. **Universal checklist** (from `@.claude/rules/nr-ai-standards/pr-review-checklist.md`):
+2. **Universal checklist** (from `@.claude/rules/pr-review-checklist.md`):
    - Security: no secrets, no unverified deps, no injection, inputs validated
    - Testing: new behavior has tests, confirmed tests untouched, test names match contents
    - Code quality: focused changes, no over-engineering, no dead code

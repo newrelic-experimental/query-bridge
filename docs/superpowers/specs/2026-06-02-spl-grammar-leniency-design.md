@@ -199,7 +199,7 @@ Per-commit checklist:
 
 ## Testing standards
 
-- Follow `.claude/rules/nr-ai-standards/llm-test-verification.md`: test names match
+- Follow `.claude/rules/llm-test-verification.md`: test names match
   assertions; exhaustive `warningFunc`/`unsupportedFunc` arrays (list ALL message
   functions that fire).
 - AI-DEV markers added only after a test passes the red-green-refactor cycle.

@@ -285,8 +285,8 @@ Expected: empty. (Customer A's prefix is covered by Step 2's anchored pattern.)
 
 Run:
 ```bash
-git grep -niE "[a-z0-9._%+-]+@(newrelic|datanerd)" -- . ':(exclude)package-lock.json'
-git grep -nE "NRAK-[A-Za-z0-9]|AKIA[0-9A-Z]{8}" -- . ':(exclude)package-lock.json' ':(exclude).claude/nr-ai-standards/*'
+git grep -niE "[a-z0-9._%+-]+@newrelic" -- . ':(exclude)package-lock.json'
+git grep -nE "NRAK-[A-Za-z0-9]|AKIA[0-9A-Z]{8}" -- . ':(exclude)package-lock.json'
 ```
 Expected: no real secrets; only the intended/none.
 
