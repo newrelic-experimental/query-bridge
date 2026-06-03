@@ -161,18 +161,19 @@ Replace the existing `needsNumeric` function (currently lines ~605-611, the raw-
 // numeric() for an ordering comparison. Mirrors the old raw-string heuristic
 // (a non-numeric token with no arithmetic operators = a bare field) but reads
 // the typed node instead of a flattened string.
-//   - bare string that isn't a number  → bare field → true
-//   - a field_name produces a string in the grammar; numbers produce eval_number
+//   - bare string that isn't a number and has no arithmetic chars → bare field → true
+//   - bare string with arithmetic chars (e.g. "(a + b)") → already processed by
+//     buildArithmeticExpr which wraps fields itself → false
 //   - typed nodes (EvalFunc, StringLiteral, EvalArith, EvalParens) → false
 function needsNumeric(node) {
   if (typeof node === 'string') {
-    return !looksLikeNumber(node);
+    return !looksLikeNumber(node) && !/[+\-*/%()]/.test(node);
   }
   return false;
 }
 ```
 
-> **Why this keeps `EvalComparison` identical:** in the current grammar the comparison operands (`eval_simple_arg`) are either a bare field (string), an `eval_number` (string of digits), a `StringLiteral` node, an `EvalFunc` node, or an `EvalParens` node. The old `needsNumeric` returned true only for a non-numeric string with no arithmetic chars — i.e. a bare field. The new form returns true for exactly the same input (non-numeric string), and false for every typed node (which the old form also rejected via its `typeof node === 'string'` guard). Output is unchanged. Once Task 4 wires arithmetic into comparison operands, an `EvalArith` operand correctly returns false (it self-numericizes its own operands).
+> **Why this keeps `EvalComparison` identical (IMPLEMENTED FORM — the arithmetic-char guard is load-bearing):** in the current grammar a comparison operand (`eval_simple_arg`) can be a bare field (string), an `eval_number` (digit string), a `StringLiteral`/`EvalFunc`/`EvalParens` node, **OR a raw parenthesized-arithmetic string like `"(a + b)"`** (the `eval_simple_arg` fallback returns this as a string). The old `needsNumeric` returned true only for a non-numeric string with NO arithmetic chars — so `"(a + b)"` correctly returned false (it was already numeric-wrapped internally by `buildArithmeticExpr`). Dropping the `!/[+\-*/%()]/` guard would double-wrap `"(a + b)"` and break the existing `verified: 'human'` case `* | eval x=if(count > (a + b), "over", "under")` (test line 842, emits `numeric(count) > numeric(a) + numeric(b)`). So the guard MUST stay. Once Tasks 4/5 make the grammar emit typed `EvalArith`/`EvalParens` instead of that raw string, this branch becomes irrelevant (a typed `EvalArith` operand hits the `typeof !== 'string'` path → false anyway), but keeping the guard is harmless and correct in the interim.
 
 - [ ] **Step 3: Add the three thin helpers**
 
