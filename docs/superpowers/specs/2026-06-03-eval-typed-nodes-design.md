@@ -1,196 +1,187 @@
 # Eval Typed-Node Rearchitecture Design
 
-**Goal:** Replace the flat-string round-trip in the SPL `eval` expression pipeline with typed AST nodes, eliminating a class of bugs (dropped string literals, `numeric(+)` garbage, `Identifier(undefined)` crashes) and unlocking query patterns the current split grammar rejects (`round(total/count, 2)`, `status >= 400`, `businessDate + " "`).
+**Goal:** Define the SPL `eval` expression language ONCE as typed AST nodes and reference it from all four contexts where it appears, replacing four divergent partial re-implementations (three of which flatten to strings and re-parse). This eliminates a class of bugs (dropped string literals, `numeric(+)` garbage, `Identifier(undefined)` crashes) and unlocks patterns the current split grammars reject (`round(total/count, 2)`, `status >= 400`, `if(a > b+1, ...)`).
 
 ## Problem
 
-The eval pipeline parses structured expressions, then **flattens them back to strings** and re-parses. `eval_expr`/`eval_term`/`eval_factor` build a flat string via `result + ' ' + op + ' ' + term`; `walkEvalExpr` then regex-detects operators and `buildArithmeticExpr` re-tokenizes and re-parses that string into IR.
+There is **one** SPL eval expression language. It appears in four syntactic contexts. The grammar implements it **four separate times**, each a different partial subset, three of them stringly-typed:
 
-This string round-trip is the root cause of every eval bug we keep hitting:
+| # | Grammar rule | Context | Operators supported | Representation |
+|---|---|---|---|---|
+| 1 | `eval_expr`/`eval_term`/`eval_factor` | top-level `eval x = ...` | arithmetic `+ - * / %` (with precedence) | **flat string** |
+| 2 | `eval_func_arg`/`eval_comparison_arg`/`eval_simple_arg` | function args (`if(...)`, `case(...)`) | comparison, `AND`/`OR`, string literals | **typed nodes** ✓ |
+| 3 | `function_arg` | stats bare args (`sum(bytes/1024)`) | arithmetic + wildcard atoms | **flat string** |
+| 4 | `eval_inner_expr` | stats `fn(eval(...))` | (none — raw text capture) | **raw string** |
 
-- **Dropped string literals.** `buildArithmeticExpr`'s tokenizer regex has no string alternative, so `" "` in `businessDate + " "` vanishes; the parser then reads past end-of-input and emits `Identifier(undefined)`, crashing `smartEscape` in the emitter (89 corpus queries until hardened to loud `unsupported`).
-- **Wrong type inference.** `"a" + "b"` emits `numeric(a) + numeric(b)` — the quotes are stripped, string contents become phantom field identifiers wrapped in `numeric()`.
-- **Leading-dot misclassification** (fixed separately, same root): operand type guessed by regex instead of known from the parse.
+None of the four is complete. The typed one (#2) has comparison/boolean/strings but **no arithmetic**. The arithmetic ones (#1, #3) have **no comparison/boolean/strings**. #4 doesn't parse structure at all — it grabs balanced-paren text and re-parses downstream. They are four copies of one language that each grew a different subset.
 
-The design-decisions doc already *claims* `eval_expr`/`eval_term`/`eval_factor` produce typed `EvalArith` nodes. They do not — `EvalArith` appears nowhere in `src/`. The doc describes the intended destination; the code never got there.
+### The string round-trip is the root cause of the eval bugs
 
-### Two parallel grammars, mutually exclusive in capability
+Contexts #1, #3, #4 flatten structured input back to a string, then re-parse:
 
-The eval grammar has two separate expression chains that don't compose:
+- `eval_expr` builds `result + ' ' + op + ' ' + term`; `walkEvalExpr` regex-detects operators and `buildArithmeticExpr` re-tokenizes and re-parses into IR.
+- `buildArithmeticExpr`'s tokenizer regex has no string alternative, so `" "` in `businessDate + " "` vanishes; the parser reads past end-of-input and emits `Identifier(undefined)`, crashing `smartEscape` in the emitter (89 corpus queries until hardened to loud `unsupported`).
+- `"a" + "b"` emits `numeric(a) + numeric(b)` — quotes stripped, string contents become phantom fields wrapped in `numeric()`.
 
-| Path | Operators | Atoms | Produces |
-|---|---|---|---|
-| `eval_expr`/`eval_term`/`eval_factor` (top-level arithmetic) | `+ - * / %` with precedence | `field_name`, number, parens, func-call | **flat string** |
-| `eval_func_arg`/`eval_comparison_arg`/`eval_simple_arg` (function args, e.g. inside `if`/`case`) | comparison, `AND`/`OR` | + `eval_string_literal` | **typed nodes** (`EvalComparison`, `EvalBoolOp`, `EvalParens`, `StringLiteral`) |
+Because the four grammars don't compose, common SPL is rejected:
 
-Because they're separate, neither composes with the other:
-
-- `round(total/count, 2)` → `unsupported` (func-arg path has no arithmetic)
+- `round(total/count, 2)` → `unsupported` (#2 func-args have no arithmetic)
 - `if(a > b+1, "hi", "lo")` → `unsupported` (arithmetic inside a func arg)
-- `status >= 400` at top level → `unsupported` (arithmetic path has no comparison)
+- `status >= 400` at top level → `unsupported` (#1 arithmetic has no comparison)
 
-These are common SPL patterns rejected purely because arithmetic and comparison/boolean live in grammars that can't nest.
+The design-decisions doc already claims #1 produces typed `EvalArith` nodes. It does not — `EvalArith` appears nowhere in `src/`. The doc describes the intended destination; the code never got there.
 
-### A third flat-string arithmetic path: stats function args
+### Verified ground truth (do not re-litigate)
 
-`buildArithmeticExpr` has a **second caller**: `mapFunctionArg` (`splExprUtils.js`), the stats/aggregation function-argument mapper. The stats `function_arg` grammar (`spl.grammar:140-149`) uses the same flat-string build (`' ' + op + ' ' + right`), so `stats sum(bytes/1024)` works today via the same round-trip and carries the same latent string-crash fragility.
+These were settled by reading primary sources during design; the plan must not regress them:
 
-**Investigation finding — the eval and stats-arg paths are different expression languages sharing an arithmetic core:**
-
-| | Eval | Stats function arg |
-|---|---|---|
-| Arithmetic `+ - * / %` with precedence | yes | yes (precedence recovered in re-parse) |
-| Comparison, `AND`/`OR` | yes | no (`sum(a > b)` isn't a thing) |
-| `.` / `+`-string concat | yes | no |
-| Wildcard atoms (`avg(tcp.*)`) | no (rejected) | **yes** (valid metrics/mstats pattern) |
-| Operand meaning | row-level value | aggregation input |
-
-They overlap only in the arithmetic subset. They funnel through `buildArithmeticExpr` solely because both flatten to strings — not because they're one language.
+- **`+` IS string concatenation in eval.** Splunk's official eval docs (SearchReference → Eval → Operators, line ~1231) state verbatim: *"The plus ( + ) operator accepts two numbers for addition, or two strings for concatenation."* An earlier expert claim that `+`-with-string returns null was **wrong** and is contradicted by both the docs and committed customer usage. `"a" + "b"` → `"ab"`. So `+`-with-string → `concat()` is the CORRECT translation, not a coercion hack.
+- **`.` is dedicated string concat** (docs line 1236): *"The period ( . ) operator concatenates both strings and number. Numbers are concatenated in their string represented form."* `.` coerces; `+` requires the operands' types to drive the choice.
+- **Operator precedence is not formally published by Splunk.** Arithmetic/paren tiers are documented; comparison/`AND`/`OR`/`.` ranking and associativity are observed convention. See the precedence section for what's documented vs. inferred.
+- **`NOT` is a real eval operator** (`NOT isnull(x)`, `NOT (a AND b)`) — binds tighter than `AND`/`OR`. Must be in the ladder.
 
 ## Goals
 
-1. Eval expressions parse into typed AST nodes; no flatten/re-parse round-trip.
-2. Merge eval's two internal sub-grammars (top-level arithmetic + function-args) into one expression ladder with the full SPL precedence (arithmetic + comparison + boolean + concat), so arithmetic-in-functions and comparisons-at-top-level work.
-3. The stats function-arg path stays a **separate grammar** but shares the arithmetic **node type and walker case** — its outer rule keeps wildcard atoms and stays arithmetic-only. It does NOT merge into the eval ladder.
-4. `buildArithmeticExpr` and the string round-trip deleted entirely.
-5. `+`-with-string and `.` translate to `concat()`; `+`-with-numerics stays arithmetic.
-6. No regression: the 32k corpus parse-error count and clean count hold or improve; zero new throws.
+1. Define the eval expression language once as typed AST nodes; no flatten/re-parse round-trip in any context.
+2. Reference the one typed grammar from all four call sites. The only per-context parameter is the **atom set** (stats args additionally allow wildcard atoms like `avg(tcp.*)`).
+3. Full SPL precedence: arithmetic + comparison + boolean (incl. unary `NOT`) + concat, so arithmetic-in-functions and comparisons-at-top-level work.
+4. `buildArithmeticExpr`, `eval_inner_expr`'s text-capture, and the three flat-string builders deleted.
+5. `.` and `+`-with-string → `concat()`; `+`-with-numerics → arithmetic. Type is determined from operands where knowable (string literal, concat result); where unknowable (two bare fields), best-effort with an explicit gotcha (see Risks).
+6. No regression: 32k corpus parse-error and clean counts hold or improve; zero new throws.
 
 ## Non-goals
 
-- Changing NRQL emit semantics for already-working expressions (`if`/`case`/`round`/`coalesce` etc. keep their current output).
-- Supporting SPL operators that don't exist (`XOR`, exponentiation, general `!x` prefix — verified absent by spl-expert).
-- Rearchitecting the search-clause or where-clause grammars (separate concerns).
+- Changing NRQL emit for already-working expressions (`if`/`case`/`round`/`coalesce` keep current output).
+- SPL operators that don't exist in eval: `XOR`, exponentiation (use `pow()`). Verified absent.
+- Rearchitecting search-clause or where-clause grammars (separate concerns), beyond what already shares `walkEvalExpr`.
 
 ## Architecture
 
-### Verified operator precedence (spl-expert, 2026-06-03)
+### Precedence ladder (documented tiers marked; rest is observed convention)
 
-Splunk publishes no formal precedence table. Arithmetic/paren tiers are documented; comparison/AND/OR ordering and associativity are observed convention, corroborated by this repo's existing func-arg grammar. Highest (binds tightest) to lowest:
+Highest (binds tightest) → lowest, all left-associative except unary:
 
-1. Parentheses `( )`
-2. Unary minus `-x` (right-assoc, trivial)
-3. Multiplicative `* / %` (left)
-4. Additive / concat `+ - .` (left)
-5. Comparison `> < >= <= = == != LIKE` (left, non-chaining)
-6. `AND` (left)
-7. `OR` (left)
+1. Parentheses `( )` — documented
+2. Unary `-x` (numeric negation), `NOT x` (boolean) — operators documented; precedence observed
+3. Multiplicative `* / %` — documented tier
+4. Additive `+ -` and concat `.` — `+`/`-` documented; `.` placement observed. **`.` binds at least as tight as `+`/`-`; when mixed, prefer parenthesizing in tests rather than asserting an un-verified grouping.**
+5. Comparison `> < >= <= = == != LIKE` — operators documented; tier observed
+6. `AND` — observed
+7. `OR` — observed
 
-Notes confirmed by spl-expert: `.` is the documented concat operator; `+`-with-string is an undocumented coercion (we translate it to concat anyway since the typed grammar knows operand types). Eval comparison accepts both `=` and `==`. No `XOR`, no exponentiation, no general `!x`.
+`=` and `==` both valid in eval (unlike search's `=` only). No `XOR`, no exponentiation, no general `!x` prefix (only `NOT`).
 
 ### Node types
 
-**One new node** for arithmetic, reused by both eval and stats-arg paths:
-
+**New:**
 ```js
-EvalArith({ op, left, right })   // op ∈ { +, -, *, /, % }
+EvalArith({ op, left, right })   // op ∈ { +, -, *, /, % }; unary minus → EvalArith('-', 0, x)
+EvalNot({ operand })             // boolean NOT
 ```
 
-**Reused existing nodes** (no new types, walker cases unchanged):
+**Reused (walker cases already exist, unchanged):** `EvalComparison{op,left,right}`, `EvalBoolOp{op,left,right}` (AND/OR), `StringLiteral{value}`, `EvalFunc{name,args}`, `EvalParens{inner}`.
 
-- `EvalComparison{op,left,right}` — comparison + dual-check + numeric() wrapping (walker case exists)
-- `EvalBoolOp{op,left,right}` — `AND`/`OR` (walker case exists)
-- `StringLiteral{value}`, `EvalFunc{name,args}`, `EvalParens{inner}` (exist)
+`.`-concat and `+`-with-string concat do not get a node — the grammar/walker route them to `Func('concat', ...)` directly (concat already emits correctly).
 
-Unary minus folds into `EvalArith` as `0 - x` — no new node.
+### One grammar, parameterized atom
 
-### Eval grammar ladder (replaces BOTH old chains)
-
-Lowest → highest precedence, each level peek-and-extend (the non-backtracking shape — the grammar comments record a prior exponential-backtracking incident from the naive `A op B / A` form, which MUST NOT be reintroduced):
+The unified ladder (seeded from the existing typed #2 chain, with the arithmetic tier added):
 
 ```
-eval_expr           = eval_or
-eval_or             = eval_and        (_* 'OR'  _* eval_and)*       → EvalBoolOp
-eval_and            = eval_comparison (_* 'AND' _* eval_comparison)* → EvalBoolOp
-eval_comparison     = eval_additive   (_* cmp_op _* eval_additive)?  → EvalComparison (non-chaining)
-eval_additive       = eval_multiplicative (_* ('+' / '-' / '.') _* eval_multiplicative)* → EvalArith / concat marker
-eval_multiplicative = eval_unary      (_* ('*' / '/' / '%') _* eval_unary)* → EvalArith
-eval_unary          = '-' eval_atom { 0 - x }  /  eval_atom
-eval_atom           = '(' eval_expr ')' { EvalParens } / eval_func_call / eval_string_literal / eval_number / field_name
+eval_expr(atom)        = eval_or(atom)
+eval_or(atom)          = eval_and(atom)        (_* 'OR'  _* eval_and(atom))*        → EvalBoolOp
+eval_and(atom)         = eval_not(atom)        (_* 'AND' _* eval_not(atom))*        → EvalBoolOp
+eval_not(atom)         = 'NOT'i _+ eval_not(atom) { EvalNot }  /  eval_comparison(atom)
+eval_comparison(atom)  = eval_additive(atom)   (_* cmp_op _* eval_additive(atom))?  → EvalComparison (non-chaining)
+eval_additive(atom)    = eval_multiplicative(atom) (_* ('+' / '-' / '.') _* eval_multiplicative(atom))*  → EvalArith or concat
+eval_multiplicative(atom) = eval_unary(atom)   (_* ('*' / '/' / '%') _* eval_unary(atom))*  → EvalArith
+eval_unary(atom)       = '-' eval_unary(atom) { EvalArith('-',0,x) }  /  atom
+eval_atom_base         = '(' eval_expr(eval_atom_base) ')' { EvalParens } / eval_func_call / eval_string_literal / eval_number / field_name
+eval_atom_stats        = '(' eval_expr(eval_atom_stats) ')' / eval_func_call / eval_string_literal / eval_number / wildcard_field
 ```
 
-`eval_func_call`'s args become `eval_expr` (was the separate `eval_func_arg` chain), so `round(total/count, 2)` and `if(a > b+1, ...)` parse. The `.` operator carries a marker so the walker routes it to concat.
+PEG can't truly parameterize a rule, so in practice this is **one shared ladder rule chain** plus **two atom rules** (`eval_atom_base`, `eval_atom_stats`); the ladder's bottom (`eval_unary`) references a single `eval_atom` that is the ordered choice `eval_atom_stats_extras? / eval_atom_base`. Implementation detail — the plan picks the exact PEG encoding. The invariant: **one ladder, atom is the only divergence.**
 
-### Stats function-arg grammar (shares the arithmetic NODE, not the rule)
+Each level peek-and-extend (NOT `A op B / A`) — the grammar comments record a prior O(3^n) backtracking incident from the naive form; it MUST NOT be reintroduced.
 
-`function_arg` keeps its own rule (wildcard atoms `[a-zA-Z0-9_.*\\:{}]+`, arithmetic-only, no comparison/boolean) but is rewritten to emit `EvalArith` nodes directly instead of a flat string:
-
-```
-function_arg = eval_string_literal
-             / func_arg_additive
-             / func_arg_atom
-func_arg_additive       = func_arg_multiplicative (_* ('+' / '-') _* func_arg_multiplicative)+ → EvalArith
-func_arg_multiplicative = func_arg_atom (_* ('*' / '/' / '%') _* func_arg_atom)* → EvalArith
-func_arg_atom           = '(' function_arg ')' / wildcard-or-field-chars
-```
-
-Note: stats args keep their wildcard atom (`avg(tcp.*)`) — that's the divergence point that keeps the grammars separate. No comparison/boolean tier (you don't write `sum(a > b)`).
-
-### Walker: one new arithmetic case, shared by both paths
+### Walker: two new cases, rest reused
 
 ```js
 case 'EvalArith': {
   const left = walkEvalExpr(node.left, ir);
   const right = walkEvalExpr(node.right, ir);
-  if (!left || !right) return null;          // loud failure, no half-built trees
-  if (node.op === '+' && (isStringExpr(left) || isStringExpr(right)))
-    return Func('concat', flattenConcat(left, right));
-  return BinOp(node.op, numericize(left), numericize(right));
+  if (!left || !right) return null;            // loud failure
+  return BinOp(node.op, numericize(left), numericize(right));  // %→mod() handled by emitter
+}
+case 'EvalNot': {
+  const x = walkEvalExpr(node.operand, ir);
+  return x ? Not(x) : null;
 }
 ```
 
-Comparison (`EvalComparison`) and boolean (`EvalBoolOp`) reuse their existing walker cases unchanged. The `.` operator produces a concat directly in the grammar action (or an `EvalArith` with `op:'.'` that the walker maps to concat) — design detail deferred to the plan.
+Concat (`.` and string-`+`) is produced as `Func('concat', flattenConcat(...))` in the grammar action / additive walker branch, not as an `EvalArith` node. `EvalComparison`, `EvalBoolOp`, `EvalParens`, `EvalFunc`, `StringLiteral` cases stay unchanged.
+
+### Four call sites point at the one grammar
+
+1. **`eval_assignment`** (top-level): `expr:eval_expr(base atom)`. Replaces `eval_expr`/`eval_term`/`eval_factor`.
+2. **`eval_func_call` args**: args become `eval_expr(base atom)`. Replaces the `eval_func_arg`/`eval_comparison_arg`/`eval_simple_arg` chain — this is the seed, now with arithmetic.
+3. **`function_arg`** (stats bare): `eval_expr(stats atom)` — same ladder, wildcard atom. Replaces the flat-string builder; `mapFunctionArg` consumes typed nodes.
+4. **`stats fn(eval(...))`** (`eval_inner_expr`): the inner `eval(...)` body becomes `eval_expr(base atom)` instead of raw text capture. The existing `evalFilter` → `filter(count(*), WHERE ...)` emit consumes the typed tree.
 
 ### Helpers — verified existence (checked against src/ 2026-06-03)
 
-| Helper | Status | Notes |
-|---|---|---|
-| `DualCheck`, `buildExprComparison` | **exist** | reused via existing `EvalComparison` case |
-| comparison numeric() + dual-check dispatch | **exists** | the `EvalComparison` walker case already does this; reused, not rewritten |
-| `Func('concat', ...)` emission | **exists** | `tryParseDotConcat` already builds concat nodes |
-| `Like` pattern (`*`→`%`) | **exists** | splToIR:236, evalHandlers:435 |
-| `needsNumeric` | **exists, MUST be rewritten** | currently tests raw strings (`typeof node==='string'` + regex) — the flat-string representation being deleted. Rewrite to test typed nodes: is it a bare field (`Identifier`/`Field`) vs `Literal`/`EvalFunc`. |
-| `numericize(expr)` | **new (thin)** | wraps the rewritten `needsNumeric`; bare field → `numeric(field)`, else passthrough |
-| `isStringExpr(expr)` | **new (thin)** | `expr.type==='Literal' && expr.kind==='string'`, or a concat `Func` |
-| `flattenConcat(left,right)` | **new (thin)** | merge nested concats so `a.b.c` → `concat(a,b,c)` |
+| Helper | Status |
+|---|---|
+| `DualCheck`, `buildExprComparison`, comparison numeric()+dual-check dispatch | exist (in `EvalComparison` case) — reused |
+| `Func('concat', ...)`, `Not(...)`, `Like` `*`→`%` | exist — reused |
+| `needsNumeric` | exists, **MUST be rewritten** from raw-string/regex form to typed-node form (is operand a bare field?) |
+| `numericize(expr)` | new (thin) — wraps rewritten `needsNumeric` |
+| `isStringExpr(expr)` | new (thin) — `Literal kind 'string'` or concat `Func`; drives `+`→concat |
+| `flattenConcat(left,right)` | new (thin) — merge nested concats → `concat(a,b,c)` |
 
-Net new code: 1 node type (`EvalArith`), 1 walker case, 3 thin helpers, 1 rewritten helper. Everything comparison/boolean/dual-check/function-related is reused.
+Net new: 2 node types (`EvalArith`, `EvalNot`), 2 walker cases, 3 thin helpers, 1 rewritten helper.
 
 ## Migration strategy
 
-Incremental, gated by the 32k corpus (`nr-query-bridge-corpus/enrich-corpus.mjs`) after every step. The public `spl-real-world.json` is a synthetic stub post-open-sourcing; the corpus repo is the scale regression guard. Synthetic-only test cases go in the public `spl.test.js` (no customer data).
+Incremental, gated by the 32k corpus (`nr-query-bridge-corpus/enrich-corpus.mjs`) after every step. The public `spl-real-world.json` is a synthetic stub post-open-sourcing; the corpus repo is the scale regression guard. Synthetic-only test cases (no customer data) go in the public `spl.test.js`.
 
-1. **Add `EvalArith` node + walker case** alongside existing code (no grammar change). Dead code; full suite stays green. Add `numericize`/`isStringExpr`/`flattenConcat` helpers and the rewritten typed `needsNumeric`, used only by the new case.
-2. **Rewrite the eval grammar ladder** to emit typed nodes; `eval_func_call` args become `eval_expr`. Rebuild parser. The old `eval_func_arg`/`eval_comparison_arg`/`eval_simple_arg` chain is removed in the same step (the new ladder subsumes it).
-3. **Rewrite the stats `function_arg` grammar** to emit `EvalArith` (keeping wildcard atoms). Point `mapFunctionArg` at the typed walker.
-4. **Delete `buildArithmeticExpr`**, its tokenizer, the regex-detection branch (`walkEvalExpr` ~line 182), and the flat-string `needsNumeric`.
-5. **Re-enrich the corpus after each step.** Parse errors and throws must not rise; clean must not fall. The FIXME'd `+`-string cases should flip from `unsupported` to clean (`concat()`). Any clean→error or new throw stops work for investigation.
+1. **Add nodes + walker cases** (`EvalArith`, `EvalNot`) and helpers (`numericize`, `isStringExpr`, `flattenConcat`, rewritten typed `needsNumeric`) alongside existing code. Dead until the grammar emits them; full suite stays green.
+2. **Build the unified ladder** in the grammar (seed from the existing typed #2 chain; add arithmetic, unary `NOT`, concat routing, two atom variants). Don't wire call sites yet — add it as new rules.
+3. **Wire call site #2** (`eval_func_call` args → unified ladder). Removes the old `eval_func_arg` chain. Re-enrich; `round(total/count,2)`, `if(a>b+1,...)` should flip to clean.
+4. **Wire call site #1** (top-level `eval_assignment`). Removes `eval_expr`/`eval_term`/`eval_factor`. Re-enrich; `status>=400`, `businessDate + " "`→concat should flip to clean.
+5. **Wire call site #3** (stats `function_arg`, stats atom). `mapFunctionArg` consumes typed nodes. Re-enrich; `avg(tcp.*)` must still emit `average(\`tcp.*\`)`.
+6. **Wire call site #4** (stats `fn(eval(...))` inner → unified ladder, base atom). Removes `eval_inner_expr` text-capture.
+7. **Delete** `buildArithmeticExpr`, its tokenizer, the regex-detection branch in `walkEvalExpr`, and the old flat-string `needsNumeric`. Nothing should reference them.
 
-Each step is a separate commit. Steps 1–2 are the bulk; 3 can be its own commit; 4 is cleanup once nothing references the old path.
+Each step is a separate commit gated by: corpus parse-errors and throws must not rise; clean must not fall; no command bucket regresses. Any clean→error or new throw stops work.
 
 ## Testing
 
-Synthetic `verified: false` cases (humans promote later):
+Synthetic `verified: false` cases (humans promote later). Assert the ACTUAL emitted NRQL string (capture via `node bin/spl2nrql.js`), not SPL-grouping notation.
 
-- **Precedence:** `a*2+b` → `(a*2)+b`; `(a+b)*c`; `a*2 > b AND c < 3` → `((a*2)>b) AND (c<3)`
+- **Precedence:** `a*2+b`, `(a+b)*c`, `a*2 > b AND c < 3`
 - **Arithmetic in function:** `round(total/count, 2)`, `if(a > b+1, "hi", "lo")`
 - **Comparison at top level:** `status >= 400`
-- **Concat:** `businessDate + " "` → `concat(...)`; `a + " " + b`; `.`-concat regression (`a . b . c`)
-- **Dual-check regression:** `status=500` (eval context) keeps `status='500' OR numeric(status)=500`
-- **Stats arithmetic:** `sum(bytes/1024)`, `sum(a*2+b)` (precedence), `avg(tcp.*)` (wildcard atom preserved)
-- **Existing eval suite** is the primary regression guard: every `if`/`case`/`round`/`coalesce`/`substr`/`replace` test must stay green (their nodes and walker cases are unchanged).
-
-Red-green discipline: write each case, confirm it fails (or crashes) on the current code, implement, confirm green. The leading-dot and `+`-string cases already have failing/`unsupported` cases committed — convert them to expected `concat()`/arithmetic output as the steps land.
+- **Unary NOT:** `if(NOT isnull(x), 1, 0)`, `NOT (a AND b)`
+- **Concat (`.` and `+`):** `a . " " . b`; `businessDate + " "` → `concat(businessDate, ' ')`; `a + " " + b`
+- **`+` numeric stays arithmetic:** `f + g` → `numeric(f) + numeric(g)`
+- **Modulo:** `a % b` → `mod(...)` (emitter rewrites `%`; assert the `mod()` output, not infix `%`)
+- **Dual-check regression:** `eval` `status=500` keeps `status='500' OR numeric(status)=500`
+- **Stats:** `sum(bytes/1024)`, `sum(a*2+b)` (precedence), `avg(tcp.*)` (wildcard atom), `sum(eval(if(status>=400,1,0)))` (eval nested in stats arg)
+- **`==` mapping:** `if(x==1,...)` → `=`
+- **Existing eval suite** is the primary regression guard: every `if`/`case`/`round`/`coalesce`/`substr`/`replace` test must stay green (nodes/walker cases unchanged).
 
 ## Risks
 
-- **Hottest expression path.** Every eval and stats-agg query flows through this. The corpus gate after each step is non-negotiable.
-- **Exponential backtracking.** The peek-and-extend ladder shape is mandatory; the naive `A op B / A` form caused an O(3^n) blowup before (recorded in grammar comments). The plan must use the proven structure.
-- **`needsNumeric` rewrite blast radius.** It's called from the existing `EvalComparison` case. Rewriting it to typed-node form must keep that case's output identical — covered by the existing comparison tests.
-- **Stats wildcard atoms.** `avg(tcp.*)` must keep emitting `average(\`tcp.*\`)`. The stats grammar's atom class (`*`, `\`) differs from eval's; the rewrite must preserve it. Explicit regression case.
-- **`=` vs `==`.** Eval accepts both; the comparison rule must map `==` → `=` (existing `EvalComparison` case already does).
+- **Hottest expression path.** Every eval and stats-agg query flows through this. Corpus gate after each step is non-negotiable.
+- **Exponential backtracking.** Peek-and-extend ladder is mandatory; the naive `A op B / A` form caused O(3^n) blowup before (grammar comments). Plan must use the proven structure.
+- **`+`-with-string-FIELD (not literal) is undecidable at translate time.** `field1 + field2` where both hold strings can't be typed statically — `isStringExpr` only knows literals/concat results. It will emit `numeric(field1) + numeric(field2)` (numeric add). This is the same undecidability the old code had, not a new regression, but the rearchitecture does NOT fully solve it. Document it; add an explicit test pinning the (imperfect) behavior so it's a conscious choice, not a silent bug. A future runtime-type approach is out of scope.
+- **`needsNumeric` rewrite blast radius.** Called from the existing `EvalComparison` case; rewriting to typed-node form must keep that case's output identical (existing comparison tests cover it).
+- **Stats wildcard atoms.** `avg(tcp.*)` must keep emitting `average(\`tcp.*\`)`; the stats atom's char class (`*`, `\`) differs from base. Explicit regression case.
+- **PEG rule "parameterization".** PEG has no real rule parameters; the "one ladder, two atoms" invariant is encoded via an ordered-choice atom rule. If that proves awkward, the fallback is two near-identical ladders sharing the walker — acceptable, since the duplication-elimination win is mostly in the walker/nodes, not the grammar rules. Plan decides.
 
 ## Open questions
 
-- **`.`-concat node representation:** emit `concat` directly in the grammar action, or an `EvalArith{op:'.'}` the walker maps? Deferred to the plan; leaning grammar-action since `.` is unambiguously concat (no numeric meaning).
-- **`LIKE` as eval operator vs `like()` function:** spl-expert notes both exist; the `like()` function already works. Whether to add `LIKE` as an infix operator in the ladder is low-priority — defer unless the corpus shows demand.
+- **`.`-concat node vs. grammar-action concat:** emit `Func('concat')` in the additive grammar action, or carry an `EvalArith{op:'.'}` the walker maps? Leaning grammar-action since `.` is unambiguously concat. Plan decides.
+- **`LIKE` as an infix eval operator:** spl-expert confirms it's real (not only `like()`). Adding it to the comparison tier is low-cost; include if the corpus shows demand, else defer.
+- **`IN` inside eval** (`if(status IN (400,500), ...)`): spl-expert flagged it exists. Out of scope for this spec unless corpus demand is high; note for a follow-up.
