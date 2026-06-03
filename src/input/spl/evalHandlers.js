@@ -188,8 +188,11 @@ export function walkEvalExpr(node, ir) {
       return walkEvalFunc({ name: node.name, args: node.args }, ir);
 
     default:
-      // Unknown node type — treat as bare string
-      return Identifier(String(node));
+      // Unknown typed node — loud failure rather than emitting
+      // Identifier('[object Object]'). Reachable only if a new grammar node
+      // type is added without a matching walker case.
+      ir.unsupported.push(messages.eval_not_supported(JSON.stringify(node)));
+      return null;
   }
 }
 
