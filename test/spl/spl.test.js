@@ -3462,6 +3462,86 @@ const cases = [
     doc: 'stats-agg',
     verified: false,
   },
+
+  // ── Unified ladder edge cases (Task 8) ──
+  // Asserted against ACTUAL emitter output (captured via bin/spl2nrql.js).
+  // Precedence: * binds tighter than +
+  {
+    spl: '* | eval r = a*2+b',
+    nrql: 'FROM Log WITH numeric(a) * 2 + numeric(b) AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // Precedence: parens override
+  {
+    spl: '* | eval r = (a+b)*c',
+    nrql: 'FROM Log WITH (numeric(a) + numeric(b)) * numeric(c) AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // Mixed arithmetic + comparison + boolean
+  {
+    spl: '* | eval r = if(a*2 > b AND c < 3, "y", "n")',
+    nrql: "FROM Log WITH if(numeric(a) * 2 > numeric(b) AND numeric(c) < 3, 'y', 'n') AS r SELECT *",
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // Unary NOT around a function
+  {
+    spl: '* | eval r = if(NOT isnull(x), 1, 0)',
+    nrql: 'FROM Log WITH if(x IS NOT NULL, 1, 0) AS r SELECT *',
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // Unary NOT around a parenthesized boolean
+  {
+    spl: '* | eval r = if(NOT (a AND b), 1, 0)',
+    nrql: 'FROM Log WITH if(NOT (a AND b), 1, 0) AS r SELECT *',
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // Concat via dot
+  {
+    spl: '* | eval r = a . " " . b',
+    nrql: "FROM Log WITH concat(a, ' ', b) AS r SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  // + with numeric literal stays arithmetic
+  {
+    spl: '* | eval r = field + 5',
+    nrql: 'FROM Log WITH numeric(field) + 5 AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // + of two bare fields → arithmetic (corpus default: field+field is numeric)
+  {
+    spl: '* | eval r = f + g',
+    nrql: 'FROM Log WITH numeric(f) + numeric(g) AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // Modulo → mod() (emitter rewrites %)
+  {
+    spl: '* | eval r = a % b',
+    nrql: 'FROM Log WITH mod(numeric(a), numeric(b)) AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // == maps to = (with dual-check on numeric value)
+  {
+    spl: '* | eval r = if(x==1, "y", "n")',
+    nrql: "FROM Log WITH if(x = '1' OR numeric(x) = 1, 'y', 'n') AS r SELECT *",
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // Dual-check regression: eval equality with numeric value
+  {
+    spl: '* | eval r = if(status=500, 1, 0)',
+    nrql: "FROM Log WITH if(status = '500' OR numeric(status) = 500, 1, 0) AS r SELECT *",
+    doc: 'eval-conditional',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {
