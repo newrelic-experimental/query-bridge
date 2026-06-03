@@ -16,6 +16,10 @@ import {
 } from '../../ir/nodes.js';
 import { escapeStringWildcardForNrql } from '../../output/nrql/nrqlEncoding.js';
 import { messages } from '../../messages.js';
+// Circular import — safe because walkEvalExpr is only invoked at runtime (during
+// translation), never at module load. Mirrors evalHandlers.js's import of
+// translateSearchExpr from splToIR.js.
+import { walkEvalExpr } from './evalHandlers.js';
 
 // ── Field name mapping ──────────────────────────────────────
 
@@ -100,22 +104,17 @@ const NO_EQUIV_FUNCS = {
 };
 
 export function mapFunctionArg(a) {
+  // Typed node from the unified ladder → walk to IR.
+  if (a && typeof a === 'object') {
+    return walkEvalExpr(a, { warnings: [], unsupported: [], errors: [] });
+  }
+  // Bare-string atoms the stats wildcard atom emits as strings:
   if (a === '_time') return Identifier('timestamp');
   if (/\{\d*\}/.test(a)) {
     const jpath = a.replace(/\{(\d*)\}/g, (_, n) => (n ? `[${n}]` : '[*]'));
     return Func('jparse', [Identifier('message'), Literal(jpath, 'string')]);
   }
-  // Arithmetic expressions: parse into BinOp tree with numeric() wrappers
-  // Exclude wildcard patterns like "outcome.*" or standalone "*"
-  if (
-    typeof a === 'string' &&
-    /[+\-*/%()]/.test(a) &&
-    /[a-zA-Z]/.test(a) &&
-    /[a-zA-Z0-9_]\s*[+\-*/%]\s*[a-zA-Z0-9_]/.test(a)
-  ) {
-    return buildArithmeticExpr(a);
-  }
-  return Identifier(a);
+  return Identifier(a); // wildcard (`tcp.*`) or plain field — emitter backticks it
 }
 
 export function mapFunction(name, args) {
@@ -229,93 +228,6 @@ export function isNumeric(value) {
 
 export function looksLikeNumber(value) {
   return /^-?\d+(\.\d+)?$/.test(String(value));
-}
-
-// ── Arithmetic expression parsing ───────────────────────────
-
-/**
- * Parse a bare arithmetic expression string like "bytes / 1024" or
- * "(totalFailure / totalCalls) * 100" into an IR tree.
- * Wraps field references in numeric() since SPL auto-coerces strings to numbers.
- * Handles operator precedence (* / % before + -) and parenthesized groups.
- */
-export function buildArithmeticExpr(exprStr) {
-  const tokens = exprStr.match(
-    /[a-zA-Z_][a-zA-Z0-9_.\-:{}]*|\d+(?:\.\d+)?|[+\-*/%]|\(|\)/g,
-  );
-  if (!tokens || tokens.length === 0) return Identifier(exprStr);
-
-  let pos = 0;
-
-  function peek() {
-    return tokens[pos];
-  }
-  function advance() {
-    return tokens[pos++];
-  }
-
-  // additive: multiplicative (('+' | '-') multiplicative)*
-  function parseAdditive() {
-    let left = parseMultiplicative();
-    if (left === null) return null;
-    while (pos < tokens.length && (peek() === '+' || peek() === '-')) {
-      const op = advance();
-      const right = parseMultiplicative();
-      if (right === null) return null;
-      left = BinOp(op, left, right);
-    }
-    return left;
-  }
-
-  // multiplicative: atom (('*' | '/' | '%') atom)*
-  function parseMultiplicative() {
-    let left = parseAtom();
-    if (left === null) return null;
-    while (
-      pos < tokens.length &&
-      (peek() === '*' || peek() === '/' || peek() === '%')
-    ) {
-      const op = advance();
-      const right = parseAtom();
-      if (right === null) return null;
-      left = BinOp(op, left, right);
-    }
-    return left;
-  }
-
-  // atom: '(' additive ')' | number | field
-  function parseAtom() {
-    const token = peek();
-    // An operator or end-of-input where an atom is expected means the expression
-    // isn't well-formed arithmetic — fail loudly (return null) rather than emit a
-    // bogus Identifier(undefined) that crashes the emitter downstream.
-    const isOperator =
-      token === '+' ||
-      token === '-' ||
-      token === '*' ||
-      token === '/' ||
-      token === '%';
-    if (token === undefined || isOperator) {
-      return null;
-    }
-    if (token === '(') {
-      advance(); // consume '('
-      const inner = parseAdditive();
-      if (peek() === ')') advance(); // consume ')'
-      return inner;
-    }
-    advance();
-    if (looksLikeNumber(token)) {
-      return Literal(Number(token), 'number');
-    }
-    const field = token === '_time' ? 'timestamp' : token;
-    return Func('numeric', [Identifier(field)]);
-  }
-
-  const result = parseAdditive();
-  // A malformed expression returns the bare string as an identifier rather than a
-  // half-built tree with undefined operands.
-  return result === null ? Identifier(exprStr) : result;
 }
 
 // ── Tree utilities ──────────────────────────────────────────

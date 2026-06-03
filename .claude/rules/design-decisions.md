@@ -10,7 +10,7 @@ Architectural choices that affect how code should be written and modified.
 
 ## Expression Walking
 - **Walker composition**: `walkExpr(node, ir, resolveFunc)` is the shared core. `walkEvalExpr` uses `resolveEvalFunc` (eval context — string ops, conditionals, multivalue functions), `walkStatsExpr` uses `resolveStatsFunc` (stats context — sum/count/avg are aggregation functions). Same tree walking, different function-call semantics.
-- **Grammar produces AST**: `eval_expr`/`eval_term`/`eval_factor` produce `EvalArith` nodes (not string concatenation). `stats_function` supports bare `eval(expr)` as a top-level alternative.
+- **Eval expression representation (SHIPPED)**: One unified typed ladder (`u_expr` and below in `spl.grammar`). All four call sites — eval func args, top-level eval assignment, stats function args, and stats `fn(eval(...))` inner — reference `u_expr` directly. The grammar produces typed `EvalArith`/`EvalBoolOp`/`EvalComparison`/`EvalNot` nodes; `walkEvalExpr` handles them in a switch. No flat-string round-trip; `buildArithmeticExpr` and `tryParseDotConcat` deleted. The `u_atom_stats_extra` rule handles stats wildcard tokens (`count(*)`, `app.*`) with a `![0-9]` guard to prevent `a*2` from being swallowed as a wildcard.
 - **Stats vs eval `sum()`**: In stats context, `sum(x)` is aggregation (via `resolveStatsFunc`). In eval context, `sum(x)` is multivalue sum on one event (via `resolveEvalFunc`). The walker strategy parameter handles this.
 
 ## EXPAND (mvexpand Translation)

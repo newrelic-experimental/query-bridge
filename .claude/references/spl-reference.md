@@ -293,7 +293,7 @@ These are non-obvious SPL behaviors that cause silent bugs if a translator gets 
 - **`search` does substring match, `where` does exact match.** `| search foo=bar` ≈ `LIKE '%bar%'`. `| where foo="bar"` = exact. Don't translate both as `=`.
 - **`stats` resets the field set.** After `| stats count by host`, only `count` and `host` exist. Prior fields are gone.
 - **`rex` default field is `_raw`**, not `message`. `| rex "(?<val>\w+)"` extracts from `_raw`. In NRQL, map to `capture(message, ...)` only if log text is in `message`.
-- **`eval` string concat uses `.` operator**, not `+`: `eval x = a . " " . b` → NRQL `concat(a, ' ', b)`.
+- **`eval` concat: both `.` and `+` concatenate strings.** `.` is dedicated concat (always string, coerces numbers). `+` adds two numbers OR concatenates two strings, decided per-row at runtime (Splunk docs, SearchReference→Eval→Operators — verified 2026-06-03). `eval x = a . " " . b` and `eval x = a + " " + b` both → `concat(a, ' ', b)`. For `field + field` with no literal operand the type is undecidable statically; corpus shows it's ~always numeric, so default to arithmetic.
 - **`dedup sortby` changes which row is kept.** `| dedup host sortby -duration` keeps highest duration per host. Ignoring `sortby` silently changes results.
 - **`$var$` = dashboard template variables** — must pass through, not parse as syntax error.
 - **`TERM()` = indexer hint** — strip it entirely. Not a function.

@@ -19,9 +19,7 @@ import {
   DualCheck,
 } from '../../ir/nodes.js';
 import {
-  isNumeric,
   looksLikeNumber,
-  buildArithmeticExpr,
   exprReferencesField,
   wrapAsSubquery,
 } from './splExprUtils.js';
@@ -68,15 +66,8 @@ export function translateWhereExpr(expr, ir) {
 
 function translateEvalExpr(cmd, ir) {
   if (cmd.rawText) {
-    // Try dot-concat: field = expr . expr . ...
-    if (tryParseDotConcat(cmd.rawText, ir)) return null;
-    // FIXME: `+`-with-string concat (e.g. `eval z = businessDate + " "`) and other
-    // eval expressions land here as unsupported because eval_expr/eval_term/
-    // eval_factor flatten to a string that buildArithmeticExpr re-parses as
-    // numeric-only arithmetic. The planned EvalArith typed-node rearchitecture
-    // (grammar produces typed nodes, walker handles them directly, no string
-    // round-trip) will let string-operand `+` translate to concat(...). Until
-    // then, loud unsupported is correct — do not silently emit wrong arithmetic.
+    // Safety net: eval bodies the ladder still can't parse (e.g. LIKE/IN-in-eval,
+    // known follow-ups) emit loud unsupported rather than silently wrong results.
     ir.unsupported.push(messages.eval_not_supported(cmd.rawText));
     return null;
   }
@@ -105,34 +96,6 @@ function translateEvalExpr(cmd, ir) {
   return null;
 }
 
-/**
- * Try to parse a rawText eval as dot-concat: field = expr . expr . ...
- * SPL uses `.` (with spaces) as string concatenation operator.
- * Returns null if the rawText doesn't match this pattern.
- */
-function tryParseDotConcat(rawText, ir) {
-  // Match: field = stuff . stuff [. stuff ...]
-  const eqIdx = rawText.indexOf('=');
-  if (eqIdx < 0) return null;
-  const field = rawText.slice(0, eqIdx).trim();
-  const rhs = rawText.slice(eqIdx + 1).trim();
-  // Split on ` . ` (space-dot-space) to distinguish from field.name dots
-  const parts = rhs.split(/\s+\.\s+/);
-  if (parts.length < 2) return null;
-  const concatArgs = parts.map((p) => {
-    const trimmed = p.trim();
-    // Quoted string
-    const strMatch = trimmed.match(/^"(.*)"$|^'(.*)'$/);
-    if (strMatch) return Literal(strMatch[1] || strMatch[2] || '', 'string');
-    // Number
-    if (looksLikeNumber(trimmed)) return Literal(Number(trimmed), 'number');
-    // Field name
-    return Identifier(trimmed === '_time' ? 'timestamp' : trimmed);
-  });
-  ir.bindings.push(Binding(field, Func('concat', concatArgs)));
-  return true; // signal success; bindings added directly
-}
-
 // ── Eval expression walker ──────────────────────────────────
 
 /**
@@ -142,46 +105,13 @@ function tryParseDotConcat(rawText, ir) {
 export function walkEvalExpr(node, ir) {
   if (!node) return null;
 
-  // Bare string — could be field name, number, comparison, or arithmetic expression
+  // Bare string is now ONLY a leaf field name or numeric-literal token from the
+  // grammar (field_name / eval_number / wildcard atom). All operators,
+  // comparisons, and arithmetic arrive as typed nodes (EvalArith/EvalComparison/
+  // EvalBoolOp/EvalNot).
   if (typeof node === 'string') {
     if (looksLikeNumber(node)) return Literal(Number(node), 'number');
     if (node === '_time') return Identifier('timestamp');
-    // Comparison operators in raw strings (from eval_inner_expr): status>=400, EventCode=4648
-    const cmpMatch = node.match(
-      /^([a-zA-Z_][\w.]*)\s*(>=|<=|!=|>|<|==|=)\s*(.+)$/,
-    );
-    if (cmpMatch) {
-      const [, field, rawOp, rawValue] = cmpMatch;
-      const op = rawOp === '==' ? '=' : rawOp;
-      const fieldId = Identifier(field === '_time' ? 'timestamp' : field);
-      // Strip surrounding quotes from value if present
-      const value =
-        (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-        (rawValue.startsWith("'") && rawValue.endsWith("'"))
-          ? rawValue.slice(1, -1)
-          : rawValue;
-      if (isNumeric(value)) {
-        if (op === '=' || op === '!=') {
-          const strCmp = BinOp(op, fieldId, Literal(value, 'string'));
-          const numCmp = BinOp(
-            op,
-            Func('numeric', [fieldId]),
-            Literal(Number(value), 'number'),
-          );
-          return BinOp(op === '=' ? 'OR' : 'AND', strCmp, numCmp);
-        }
-        return BinOp(
-          op,
-          Func('numeric', [fieldId]),
-          Literal(Number(value), 'number'),
-        );
-      }
-      return BinOp(op, fieldId, Literal(value, 'string'));
-    }
-    // If the string contains arithmetic operators, parse it into a BinOp tree
-    if (/[+\-*/%]/.test(node) && /[a-zA-Z]/.test(node)) {
-      return buildArithmeticExpr(node);
-    }
     return Identifier(node);
   }
 
@@ -226,6 +156,30 @@ export function walkEvalExpr(node, ir) {
       return BinOp(node.op, left, right);
     }
 
+    case 'EvalArith': {
+      // op ∈ { +, -, *, /, %, . }. The grammar emits a single EvalArith for all
+      // additive/multiplicative operators; this case decides arithmetic vs concat:
+      //   '.'                         → always concat
+      //   '+' with a string operand   → concat (one quoted/concat side forces it)
+      //   '+' with no string operand  → arithmetic (corpus: field+field is numeric)
+      //   '-', '*', '/', '%'          → arithmetic ('%' emitted as mod() downstream)
+      const left = walkEvalExpr(node.left, ir);
+      const right = walkEvalExpr(node.right, ir);
+      if (!left || !right) return null; // loud failure
+      const isConcat =
+        node.op === '.' ||
+        (node.op === '+' && (isStringExpr(left) || isStringExpr(right)));
+      if (isConcat) {
+        return flattenConcat(left, right);
+      }
+      return BinOp(node.op, numericize(left), numericize(right));
+    }
+
+    case 'EvalNot': {
+      const operand = walkEvalExpr(node.operand, ir);
+      return operand ? Not(operand) : null;
+    }
+
     case 'EvalParens':
       return walkEvalExpr(node.inner, ir);
 
@@ -234,8 +188,11 @@ export function walkEvalExpr(node, ir) {
       return walkEvalFunc({ name: node.name, args: node.args }, ir);
 
     default:
-      // Unknown node type — treat as bare string
-      return Identifier(String(node));
+      // Unknown typed node — loud failure rather than emitting
+      // Identifier('[object Object]'). Reachable only if a new grammar node
+      // type is added without a matching walker case.
+      ir.unsupported.push(messages.eval_not_supported(JSON.stringify(node)));
+      return null;
   }
 }
 
@@ -357,13 +314,25 @@ function walkEvalFunc(node, ir) {
       const translated = args.map((a) => walkEvalExpr(a, ir)).filter(Boolean);
       if (translated.length >= 2) {
         const start = translated[1];
+        // Detect negative literal: the unified ladder emits unary minus as
+        // EvalArith(op='-', left='0', right=N) in the AST, which walkEvalExpr
+        // translates to BinOp('-', Literal(0, 'number'), Literal(N, 'number')).
+        // Negative indices are pass-through in both SPL and NRQL (count from end).
+        const isNegativeLiteral =
+          start.type === 'BinOp' &&
+          start.op === '-' &&
+          start.left?.type === 'Literal' &&
+          start.left.kind === 'number' &&
+          start.left.value === 0 &&
+          start.right?.type === 'Literal' &&
+          start.right.kind === 'number';
         if (
           start.type === 'Literal' &&
           start.kind === 'number' &&
           start.value > 0
         ) {
           translated[1] = Literal(start.value - 1, 'number');
-        } else if (start.type !== 'Literal') {
+        } else if (!isNegativeLiteral && start.type !== 'Literal') {
           translated[1] = BinOp('-', start, Literal(1, 'number'));
         }
         // Negative indices pass through unchanged (both SPL and NRQL count from end)
@@ -602,12 +571,65 @@ function walkEvalFunc(node, ir) {
 
 // ── Internal helpers ────────────────────────────────────────
 
+// True when an EVAL AST NODE is a bare field reference that must be wrapped in
+// numeric() for an ordering comparison.
+//   - bare string that isn't a number → bare field name leaf from grammar → true
+//   - typed nodes (EvalFunc, StringLiteral, EvalArith, EvalParens) → false
 function needsNumeric(node) {
-  return (
-    typeof node === 'string' &&
-    !looksLikeNumber(node) &&
-    !/[+\-*/%()]/.test(node)
-  );
+  if (typeof node === 'string') {
+    return !looksLikeNumber(node) && !/[+\-*/%()]/.test(node);
+  }
+  return false;
+}
+
+// Wrap a bare-field IR expression in numeric() for arithmetic context.
+// Numbers, functions, and already-wrapped expressions pass through unchanged.
+function numericize(expr) {
+  if (!expr) return expr;
+  if (expr.type === 'Literal' && expr.kind === 'number') return expr;
+  if (expr.type === 'Identifier') return Func('numeric', [expr]);
+  return expr; // BinOp/Function/etc. already typed — don't double-wrap
+}
+
+// NRQL functions the eval walker emits that return a string value. Drives the
+// `+` concat decision: `lower(a) + b` is concat, not arithmetic. Only functions
+// that UNAMBIGUOUSLY return a string belong here — `if`/`jparse` are
+// type-ambiguous and deliberately excluded (they fall through to arithmetic,
+// the field+field default).
+const STRING_RETURNING_FUNCS = new Set([
+  'concat',
+  'lower',
+  'upper',
+  'substring',
+  'string',
+  'replace',
+  'capture',
+]);
+
+// True when an eval expression is statically known to be a string: a string
+// literal, a string-returning function call, or a parenthesized string.
+// Drives the '+' concat-vs-arithmetic decision.
+function isStringExpr(expr) {
+  if (!expr) return false;
+  if (expr.type === 'Literal' && expr.kind === 'string') return true;
+  if (expr.type === 'Function' && STRING_RETURNING_FUNCS.has(expr.name)) {
+    return true;
+  }
+  return false;
+}
+
+// Merge nested concats so `a . b . c` emits concat(a, b, c) not
+// concat(concat(a, b), c). Each side is already a walked IR expression.
+function flattenConcat(left, right) {
+  const flat = [];
+  for (const side of [left, right]) {
+    if (side && side.type === 'Function' && side.name === 'concat') {
+      flat.push(...side.args);
+    } else {
+      flat.push(side);
+    }
+  }
+  return Func('concat', flat);
 }
 
 function isTrueCondition(node) {

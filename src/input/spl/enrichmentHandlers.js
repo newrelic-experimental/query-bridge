@@ -13,7 +13,7 @@ import {
   Wildcard,
   JoinClause,
 } from '../../ir/nodes.js';
-import { walkEvalExpr } from './evalHandlers.js';
+import { translateWhereExpr } from './evalHandlers.js';
 // Circular import — safe because translateAstToIR is only called at runtime
 import { translateAstToIR } from './splToIR.js';
 import * as parser from './splParser.js';
@@ -199,7 +199,7 @@ export function handleInputlookup(cmd, ir) {
   ir.dataSource = { type: 'Lookup', name: cmd.table };
   ir.warnings.push(messages.lookup_upload_reminder(cmd.table));
   if (cmd.where) {
-    const whereExpr = walkEvalExpr(cmd.where, ir);
+    const whereExpr = translateWhereExpr(cmd.where, ir);
     if (whereExpr) {
       ir.where.push(whereExpr);
     }

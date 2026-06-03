@@ -851,6 +851,19 @@ const cases = [
     doc: 'eval-conditional',
     verified: 'human',
   },
+  // ── EvalArith: arithmetic inside function args (Task 4) ──
+  {
+    spl: '* | stats count | eval x = round(total/count, 2)',
+    nrql: 'FROM Log WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT count(*)',
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  {
+    spl: '* | eval x = if(a > b+1, "hi", "lo")',
+    nrql: "FROM Log WITH if(numeric(a) > numeric(b) + 1, 'hi', 'lo') AS x SELECT *",
+    doc: 'eval-conditional',
+    verified: false,
+  },
   // eval upper() → upper()
   {
     spl: '* | eval x=upper(name)',
@@ -3373,29 +3386,180 @@ const cases = [
     verified: false,
   },
 
-  // ── eval `+` with a string operand → loud unsupported, not a crash ──
-  // SPL `+` is overloaded (numeric add OR string concat). The current eval
-  // pipeline flattens expressions to a string and re-parses them as arithmetic,
-  // which can't represent string concat via `+`, so it must fail loudly.
-  // FIXME: the EvalArith typed-node rearchitecture should translate these to
-  // concat(...) (SPL `+`-concat is identical to `.`-concat). When that lands,
-  // change the expected output to the concat() NRQL and drop eval_not_supported.
+  // ── eval `+` with a string operand → now translated via unified ladder ──
+  // SPL `+` is overloaded (numeric add OR string concat). The unified
+  // EvalArith ladder now handles string operands by emitting concat().
   {
     spl: 'index=x | eval z = businessDate + " "',
-    unsupportedFunc: ['eval_not_supported'],
-    doc: 'eval-plus-string-unsupported',
+    nrql: "FROM Log WITH concat(businessDate, ' ') AS z SELECT * WHERE index = 'x'",
+    doc: 'eval-string',
     verified: false,
   },
   {
     spl: 'index=x | eval z = a + " " + b',
-    unsupportedFunc: ['eval_not_supported'],
-    doc: 'eval-plus-string-unsupported',
+    nrql: "FROM Log WITH concat(a, ' ', b) AS z SELECT * WHERE index = 'x'",
+    doc: 'eval-string',
     verified: false,
   },
   {
     spl: 'index=x | eval z = f + g',
     nrql: "FROM Log WITH numeric(f) + numeric(g) AS z SELECT * WHERE index = 'x'",
     doc: 'eval-plus-arithmetic-regression',
+    verified: false,
+  },
+
+  // ── EvalArith: top-level comparison + string-concat (Task 5) ──
+  {
+    spl: '* | eval hi = status >= 400',
+    nrql: 'FROM Log WITH numeric(status) >= 400 AS hi SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  {
+    spl: '* | eval z = businessDate + " "',
+    nrql: "FROM Log WITH concat(businessDate, ' ') AS z SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: '* | eval full = a + " " + b',
+    nrql: "FROM Log WITH concat(a, ' ', b) AS full SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+
+  // ── EvalArith: stats function args via unified ladder (Task 6) ──
+  {
+    spl: '* | stats sum(bytes/1024)',
+    nrql: 'FROM Log SELECT sum(numeric(bytes) / 1024)',
+    doc: 'stats-agg',
+    verified: false,
+  },
+  {
+    spl: '* | stats sum(a*2+b)',
+    nrql: 'FROM Log SELECT sum(numeric(a) * 2 + numeric(b))',
+    doc: 'stats-agg',
+    verified: false,
+  },
+  {
+    spl: '* | stats avg(tcp.*)',
+    nrql: 'FROM Log SELECT average(`tcp.*`)',
+    doc: 'stats-agg',
+    verified: false,
+  },
+
+  // ── EvalArith: eval nested in stats arg (Task 7) ──
+  // FIXME: the inner if(cond, 1, 0) should unwrap to just `cond` for the filter
+  // WHERE — i.e. `filter(count(*), WHERE numeric(status) >= 400)`. Today the
+  // walker emits the whole if() as the predicate (`WHERE if(..., 1, 0)`), which
+  // is dubious NRQL. Unwrapping `if(cond, 1, 0)`/`if(cond, 1, null)` in the
+  // evalFilter consumer (aggregationHandlers.js) is out of scope for the grammar
+  // wiring task; tracked as follow-up. Asserting ACTUAL output so the test guards
+  // against further drift. verified:false — NOT correct, do not promote.
+  {
+    spl: '* | stats sum(eval(if(status>=400,1,0)))',
+    nrql: 'FROM Log SELECT filter(count(*), WHERE if(numeric(status) >= 400, 1, 0))',
+    doc: 'stats-agg',
+    verified: false,
+  },
+
+  // ── Unified ladder edge cases (Task 8) ──
+  // Asserted against ACTUAL emitter output (captured via bin/spl2nrql.js).
+  // Precedence: * binds tighter than +
+  {
+    spl: '* | eval r = a*2+b',
+    nrql: 'FROM Log WITH numeric(a) * 2 + numeric(b) AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // Precedence: parens override
+  {
+    spl: '* | eval r = (a+b)*c',
+    nrql: 'FROM Log WITH (numeric(a) + numeric(b)) * numeric(c) AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // Mixed arithmetic + comparison + boolean
+  {
+    spl: '* | eval r = if(a*2 > b AND c < 3, "y", "n")',
+    nrql: "FROM Log WITH if(numeric(a) * 2 > numeric(b) AND numeric(c) < 3, 'y', 'n') AS r SELECT *",
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // Unary NOT around a function
+  {
+    spl: '* | eval r = if(NOT isnull(x), 1, 0)',
+    nrql: 'FROM Log WITH if(x IS NOT NULL, 1, 0) AS r SELECT *',
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // Unary NOT around a parenthesized boolean
+  {
+    spl: '* | eval r = if(NOT (a AND b), 1, 0)',
+    nrql: 'FROM Log WITH if(NOT (a AND b), 1, 0) AS r SELECT *',
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // Concat via dot
+  {
+    spl: '* | eval r = a . " " . b',
+    nrql: "FROM Log WITH concat(a, ' ', b) AS r SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  // + with numeric literal stays arithmetic
+  {
+    spl: '* | eval r = field + 5',
+    nrql: 'FROM Log WITH numeric(field) + 5 AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // + of two bare fields → arithmetic (corpus default: field+field is numeric)
+  {
+    spl: '* | eval r = f + g',
+    nrql: 'FROM Log WITH numeric(f) + numeric(g) AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // Modulo → mod() (emitter rewrites %)
+  {
+    spl: '* | eval r = a % b',
+    nrql: 'FROM Log WITH mod(numeric(a), numeric(b)) AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // == maps to = (with dual-check on numeric value)
+  {
+    spl: '* | eval r = if(x==1, "y", "n")',
+    nrql: "FROM Log WITH if(x = '1' OR numeric(x) = 1, 'y', 'n') AS r SELECT *",
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // Dual-check regression: eval equality with numeric value
+  {
+    spl: '* | eval r = if(status=500, 1, 0)',
+    nrql: "FROM Log WITH if(status = '500' OR numeric(status) = 500, 1, 0) AS r SELECT *",
+    doc: 'eval-conditional',
+    verified: false,
+  },
+  // + with a string-returning function operand → concat (not arithmetic)
+  {
+    spl: '* | eval z = lower(a) + b',
+    nrql: 'FROM Log WITH concat(lower(a), b) AS z SELECT *',
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: '* | eval z = tostring(cost) + suffix',
+    nrql: 'FROM Log WITH concat(string(cost), suffix) AS z SELECT *',
+    doc: 'eval-string',
+    verified: false,
+  },
+  // round()/if() are NOT string-returning → + stays arithmetic
+  {
+    spl: '* | eval r = round(a) + 1',
+    nrql: 'FROM Log WITH round(a) + 1 AS r SELECT *',
+    doc: 'fields-eval-arithmetic',
     verified: false,
   },
 ];

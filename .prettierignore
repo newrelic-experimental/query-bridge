@@ -1,4 +1,5 @@
 src/input/spl/splParser.js
+test/spl/spl-real-world.json
 node_modules/
 dist/
 tmp/

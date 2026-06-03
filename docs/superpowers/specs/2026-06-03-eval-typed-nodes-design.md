@@ -31,14 +31,25 @@ Because the four grammars don't compose, common SPL is rejected:
 
 The design-decisions doc already claims #1 produces typed `EvalArith` nodes. It does not — `EvalArith` appears nowhere in `src/`. The doc describes the intended destination; the code never got there.
 
-### Verified ground truth (do not re-litigate)
+### Findings grounded in primary sources
 
-These were settled by reading primary sources during design; the plan must not regress them:
+These were checked against primary sources during design (Splunk docs, the 32k corpus). They're the best evidence we have, with sources cited so you can re-verify — not articles of faith. If implementation surfaces a contradiction, re-check the source rather than forcing the code to match this section. (This session reached its right answers precisely by re-checking confident-but-wrong claims.)
 
 - **`+` IS string concatenation in eval.** Splunk's official eval docs (SearchReference → Eval → Operators, line ~1231) state verbatim: *"The plus ( + ) operator accepts two numbers for addition, or two strings for concatenation."* An earlier expert claim that `+`-with-string returns null was **wrong** and is contradicted by both the docs and committed customer usage. `"a" + "b"` → `"ab"`. So `+`-with-string → `concat()` is the CORRECT translation, not a coercion hack.
 - **`.` is dedicated string concat** (docs line 1236): *"The period ( . ) operator concatenates both strings and number. Numbers are concatenated in their string represented form."* `.` coerces; `+` requires the operands' types to drive the choice.
 - **Operator precedence is not formally published by Splunk.** Arithmetic/paren tiers are documented; comparison/`AND`/`OR`/`.` ranking and associativity are observed convention. See the precedence section for what's documented vs. inferred.
 - **`NOT` is a real eval operator** (`NOT isnull(x)`, `NOT (a AND b)`) — binds tighter than `AND`/`OR`. Must be in the ladder.
+
+### Expected payoff (32k corpus, measured 2026-06-03)
+
+This is an **unsupported→clean** play, not an error→clean play — measuring it by parse errors undersells it:
+
+- eval appears in **9,373 queries (29% of corpus)**; only ~7% of them translate cleanly today (646 clean / 1,321 warning / 5,984 unsupported / 1,422 error).
+- Eval is the *first* failing construct in only **93 of 2,624 parse errors (3.5%)** — small on the error axis.
+- But **1,926 eval queries are `unsupported` specifically with "eval expression not supported"** — the exact message the flat-string round-trip emits when it can't represent an expression. The typed grammar directly targets these (arithmetic-in-functions, comparisons-at-top-level, concat). Plus secondary buckets: `eval function in()` (48) and arithmetic inside `strftime`/`strptime` cases.
+- **Realistic target: a large fraction of those ~1,926 flip to clean.** Not all — some have chained blockers elsewhere in the pipeline (`makeresults`, `rest`, `transaction`). Even half (~1,000) dwarfs any single fix done so far. The plan's success metric is **`eval expression not supported` count dropping**, measured per step.
+
+Caveat on the corpus: it's two customers' query styles, not Splunk-at-large. The `field + field`→numeric default and the relative frequencies are evidence, not law. Hold the specific counts loosely; the direction (eval-expression unsupported is the dominant fixable bucket) is robust.
 
 ## Goals
 
@@ -47,7 +58,7 @@ These were settled by reading primary sources during design; the plan must not r
 3. Full SPL precedence: arithmetic + comparison + boolean (incl. unary `NOT`) + concat, so arithmetic-in-functions and comparisons-at-top-level work.
 4. `buildArithmeticExpr`, `eval_inner_expr`'s text-capture, and the three flat-string builders deleted.
 5. `.` and `+`-with-string → `concat()`; `+`-with-numerics → arithmetic. Type is determined from operands where knowable (string literal, concat result); where unknowable (two bare fields), best-effort with an explicit gotcha (see Risks).
-6. No regression: 32k corpus parse-error and clean counts hold or improve; zero new throws.
+6. Primary success metric: the corpus `eval expression not supported` count (1,926 today) drops substantially; clean count rises. No regression: parse-error count holds or improves; zero new throws.
 
 ## Non-goals
 
@@ -166,7 +177,7 @@ Incremental, gated by the 32k corpus (`nr-query-bridge-corpus/enrich-corpus.mjs`
 6. **Wire call site #4** (stats `fn(eval(...))` inner → unified ladder, base atom). Removes `eval_inner_expr` text-capture.
 7. **Delete** `buildArithmeticExpr`, its tokenizer, the regex-detection branch in `walkEvalExpr`, and the old flat-string `needsNumeric`. Nothing should reference them.
 
-Each step is a separate commit gated by: corpus parse-errors and throws must not rise; clean must not fall; no command bucket regresses. Any clean→error or new throw stops work.
+Each step is a separate commit gated by: `eval expression not supported` count should fall (the primary metric); parse-errors and throws must not rise; clean must not fall; no command bucket regresses. Any clean→error/unsupported regression or new throw stops work. Track the `eval expression not supported` count before/after each step — it's the number that proves the rearchitecture is working.
 
 ## Testing
 
@@ -195,5 +206,6 @@ Synthetic `verified: false` cases (humans promote later). Assert the ACTUAL emit
 ## Open questions
 
 - **`.`-concat node vs. grammar-action concat:** emit `Func('concat')` in the additive grammar action, or carry an `EvalArith{op:'.'}` the walker maps? Leaning grammar-action since `.` is unambiguously concat. Plan decides.
-- **`LIKE` as an infix eval operator:** spl-expert confirms it's real (not only `like()`). Adding it to the comparison tier is low-cost; include if the corpus shows demand, else defer.
-- **`IN` inside eval** (`if(status IN (400,500), ...)`): spl-expert flagged it exists. Out of scope for this spec unless corpus demand is high; note for a follow-up.
+- **`LIKE` as an infix eval operator:** spl-expert confirms it's real (not only `like()`). Adding it to the comparison tier is low-cost; include if the corpus shows demand, else defer. **FOLLOW-UP (deferred 2026-06-03):** Task 7 confirmed real corpus demand — `count(eval(message like "%...%"))` now hard-errors at the ladder (it silently dropped the `like` before, emitting `WHERE numeric(message)`). Add infix `LIKE` to `u_cmp` in a follow-up.
+- **`IN` inside eval** (`if(status IN (400,500), ...)`): spl-expert flagged it exists. Out of scope for this spec unless corpus demand is high; note for a follow-up. **FOLLOW-UP (deferred 2026-06-03):** Task 7 confirmed demand — `count(eval(status IN (500,502,503,504)))` now hard-errors at the ladder (silently mistranslated before). Add an `IN` form to the eval ladder in a follow-up.
+- **`if(cond, 1, 0)` filter unwrap (deferred 2026-06-03):** `sum(eval(if(status>=400,1,0)))` emits `filter(count(*), WHERE if(numeric(status) >= 400, 1, 0))`. The inner `if(cond,1,0)`/`if(cond,1,null)` should unwrap to just `cond` so the WHERE is a plain predicate. Small consumer fix in `aggregationHandlers.js` evalFilter path; FIXME marked in the Task 7 test (`* | stats sum(eval(if(status>=400,1,0)))`, verified:false).
