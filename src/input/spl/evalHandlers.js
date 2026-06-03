@@ -19,9 +19,7 @@ import {
   DualCheck,
 } from '../../ir/nodes.js';
 import {
-  isNumeric,
   looksLikeNumber,
-  buildArithmeticExpr,
   exprReferencesField,
   wrapAsSubquery,
 } from './splExprUtils.js';
@@ -68,15 +66,8 @@ export function translateWhereExpr(expr, ir) {
 
 function translateEvalExpr(cmd, ir) {
   if (cmd.rawText) {
-    // Try dot-concat: field = expr . expr . ...
-    if (tryParseDotConcat(cmd.rawText, ir)) return null;
-    // FIXME: `+`-with-string concat (e.g. `eval z = businessDate + " "`) and other
-    // eval expressions land here as unsupported because eval_expr/eval_term/
-    // eval_factor flatten to a string that buildArithmeticExpr re-parses as
-    // numeric-only arithmetic. The planned EvalArith typed-node rearchitecture
-    // (grammar produces typed nodes, walker handles them directly, no string
-    // round-trip) will let string-operand `+` translate to concat(...). Until
-    // then, loud unsupported is correct — do not silently emit wrong arithmetic.
+    // Safety net: eval bodies the ladder still can't parse (e.g. LIKE/IN-in-eval,
+    // known follow-ups) emit loud unsupported rather than silently wrong results.
     ir.unsupported.push(messages.eval_not_supported(cmd.rawText));
     return null;
   }
@@ -105,34 +96,6 @@ function translateEvalExpr(cmd, ir) {
   return null;
 }
 
-/**
- * Try to parse a rawText eval as dot-concat: field = expr . expr . ...
- * SPL uses `.` (with spaces) as string concatenation operator.
- * Returns null if the rawText doesn't match this pattern.
- */
-function tryParseDotConcat(rawText, ir) {
-  // Match: field = stuff . stuff [. stuff ...]
-  const eqIdx = rawText.indexOf('=');
-  if (eqIdx < 0) return null;
-  const field = rawText.slice(0, eqIdx).trim();
-  const rhs = rawText.slice(eqIdx + 1).trim();
-  // Split on ` . ` (space-dot-space) to distinguish from field.name dots
-  const parts = rhs.split(/\s+\.\s+/);
-  if (parts.length < 2) return null;
-  const concatArgs = parts.map((p) => {
-    const trimmed = p.trim();
-    // Quoted string
-    const strMatch = trimmed.match(/^"(.*)"$|^'(.*)'$/);
-    if (strMatch) return Literal(strMatch[1] || strMatch[2] || '', 'string');
-    // Number
-    if (looksLikeNumber(trimmed)) return Literal(Number(trimmed), 'number');
-    // Field name
-    return Identifier(trimmed === '_time' ? 'timestamp' : trimmed);
-  });
-  ir.bindings.push(Binding(field, Func('concat', concatArgs)));
-  return true; // signal success; bindings added directly
-}
-
 // ── Eval expression walker ──────────────────────────────────
 
 /**
@@ -142,46 +105,13 @@ function tryParseDotConcat(rawText, ir) {
 export function walkEvalExpr(node, ir) {
   if (!node) return null;
 
-  // Bare string — could be field name, number, comparison, or arithmetic expression
+  // Bare string is now ONLY a leaf field name or numeric-literal token from the
+  // grammar (field_name / eval_number / wildcard atom). All operators,
+  // comparisons, and arithmetic arrive as typed nodes (EvalArith/EvalComparison/
+  // EvalBoolOp/EvalNot).
   if (typeof node === 'string') {
     if (looksLikeNumber(node)) return Literal(Number(node), 'number');
     if (node === '_time') return Identifier('timestamp');
-    // Comparison operators in raw strings (from eval_inner_expr): status>=400, EventCode=4648
-    const cmpMatch = node.match(
-      /^([a-zA-Z_][\w.]*)\s*(>=|<=|!=|>|<|==|=)\s*(.+)$/,
-    );
-    if (cmpMatch) {
-      const [, field, rawOp, rawValue] = cmpMatch;
-      const op = rawOp === '==' ? '=' : rawOp;
-      const fieldId = Identifier(field === '_time' ? 'timestamp' : field);
-      // Strip surrounding quotes from value if present
-      const value =
-        (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-        (rawValue.startsWith("'") && rawValue.endsWith("'"))
-          ? rawValue.slice(1, -1)
-          : rawValue;
-      if (isNumeric(value)) {
-        if (op === '=' || op === '!=') {
-          const strCmp = BinOp(op, fieldId, Literal(value, 'string'));
-          const numCmp = BinOp(
-            op,
-            Func('numeric', [fieldId]),
-            Literal(Number(value), 'number'),
-          );
-          return BinOp(op === '=' ? 'OR' : 'AND', strCmp, numCmp);
-        }
-        return BinOp(
-          op,
-          Func('numeric', [fieldId]),
-          Literal(Number(value), 'number'),
-        );
-      }
-      return BinOp(op, fieldId, Literal(value, 'string'));
-    }
-    // If the string contains arithmetic operators, parse it into a BinOp tree
-    if (/[+\-*/%]/.test(node) && /[a-zA-Z]/.test(node)) {
-      return buildArithmeticExpr(node);
-    }
     return Identifier(node);
   }
 
@@ -639,12 +569,8 @@ function walkEvalFunc(node, ir) {
 // ── Internal helpers ────────────────────────────────────────
 
 // True when an EVAL AST NODE is a bare field reference that must be wrapped in
-// numeric() for an ordering comparison. Mirrors the old raw-string heuristic
-// (a non-numeric token with no arithmetic operators = a bare field) but reads
-// the typed node instead of a flattened string.
-//   - bare string that isn't a number and has no arithmetic chars → bare field → true
-//   - bare string with arithmetic chars (e.g. "(a + b)") → already processed by
-//     buildArithmeticExpr which wraps fields itself → false
+// numeric() for an ordering comparison.
+//   - bare string that isn't a number → bare field name leaf from grammar → true
 //   - typed nodes (EvalFunc, StringLiteral, EvalArith, EvalParens) → false
 function needsNumeric(node) {
   if (typeof node === 'string') {

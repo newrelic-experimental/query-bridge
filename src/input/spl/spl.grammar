@@ -122,13 +122,6 @@ stats_function
       return { name: 'count', args: [], alias: alias };
     }
 
-eval_inner_expr
-  = parts:eval_inner_part+ { return parts.join(''); }
-
-eval_inner_part
-  = '(' inner:eval_inner_expr ')' { return '(' + inner + ')'; }
-  / chars:[^()]+ { return chars.join(''); }
-
 function_name
   = chars:[a-zA-Z_0-9]+ { return chars.join('').toLowerCase(); }
 
@@ -136,17 +129,6 @@ function_args
   = first:u_expr rest:(',' _* arg:u_expr { return arg; })*
     { return [first].concat(rest); }
   / '' { return []; }
-
-function_arg
-  = '"' chars:double_string_char* '"' { return chars.join(''); }
-  / "'" chars:single_string_char* "'" { return chars.join(''); }
-  / head:func_arg_atom tail:(_* op:[+\-*/%] _* right:func_arg_atom { return ' ' + op + ' ' + right; })+
-    { return head + tail.join(''); }
-  / func_arg_atom
-
-func_arg_atom
-  = '(' _* expr:function_arg _* ')' { return '(' + expr + ')'; }
-  / chars:[a-zA-Z0-9_.*\\:{}]+ { return chars.join(''); }
 
 as_clause
   = _+ 'as'i _+ '"' alias:double_string_char* '"' { return alias.join(''); }
@@ -561,75 +543,6 @@ eval_assignment
   = field:field_name _* '=' _* expr:u_expr
     { return { field: field, expr: expr }; }
 
-eval_expr
-  = head:eval_term tail:(_* op:[+\-] _* t:eval_term { return { op: op, term: t }; })*
-    {
-      if (tail.length === 0) return head;
-      var result = head;
-      for (var i = 0; i < tail.length; i++) {
-        result = result + ' ' + tail[i].op + ' ' + tail[i].term;
-      }
-      return result;
-    }
-
-eval_term
-  = head:eval_factor tail:(_* op:[*/%] _* f:eval_factor { return { op: op, factor: f }; })*
-    {
-      if (tail.length === 0) return head;
-      var result = head;
-      for (var i = 0; i < tail.length; i++) {
-        result = result + ' ' + tail[i].op + ' ' + tail[i].factor;
-      }
-      return result;
-    }
-
-eval_factor
-  = '(' _* e:eval_expr _* ')' { return '(' + e + ')'; }
-  / n:eval_number { return n; }
-  / eval_func_call
-  / f:field_name { return f; }
-
-eval_func_call
-  = u_func_call
-
-eval_func_args
-  = first:eval_func_arg rest:(_* ',' _* a:eval_func_arg { return a; })*
-    { return [first].concat(rest); }
-  / '' { return []; }
-
-// Left-factored: parse the inner form once, then peek for an extension.
-// The previous form (`A op B / A`) caused catastrophic backtracking on
-// deeply-nested if(...) expressions because each level fully recursed
-// through its arguments before falling back to the shorter alternative,
-// producing O(3^n) parse paths. The peek-and-extend form is O(n).
-eval_func_arg
-  = left:eval_comparison_arg tail:(_* op:eval_bool_op _* right:eval_func_arg { return { op: op, right: right }; })?
-    {
-      return tail
-        ? { type: 'EvalBoolOp', op: tail.op, left: left, right: tail.right }
-        : left;
-    }
-
-eval_comparison_arg
-  = left:eval_simple_arg tail:(_* op:comparison_op _* right:eval_simple_arg { return { op: op, right: right }; })?
-    {
-      return tail
-        ? { type: 'EvalComparison', op: tail.op, left: left, right: tail.right }
-        : left;
-    }
-
-eval_bool_op
-  = 'AND'i { return 'AND'; }
-  / 'OR'i { return 'OR'; }
-
-eval_simple_arg
-  = eval_func_call
-  / eval_string_literal
-  / '(' _* a:eval_func_arg _* ')' { return { type: 'EvalParens', inner: a }; }
-  / '(' _* e:eval_expr _* ')' { return '(' + e + ')'; }
-  / n:eval_number { return n; }
-  / f:field_name { return f; }
-
 eval_string_literal
   = '"' chars:double_string_char* '"' { return { type: 'StringLiteral', value: chars.join('') }; }
   / "'" chars:single_string_char* "'" { return { type: 'StringLiteral', value: chars.join('') }; }
@@ -640,12 +553,10 @@ eval_number
 
 /* ============================================================
    Unified eval expression ladder. ONE definition of the SPL eval
-   expression language, referenced by all four call sites (wired in
-   later tasks). Precedence, tight→loose: parens, unary(-/NOT),
-   * / %, + - ., comparison, AND, OR. Peek-and-extend at every level
-   (NEVER `A op B / A` — see eval_func_arg's comment for the O(3^n)
-   backtracking incident this avoids). The only per-context divergence
-   is u_atom (base field atom vs. stats-wildcard atom).
+   expression language, referenced by all four call sites. Precedence,
+   tight→loose: parens, unary(-/NOT), * / %, + - ., comparison, AND, OR.
+   Peek-and-extend at every level to avoid O(3^n) backtracking. The only
+   per-context divergence is u_atom (base field atom vs. stats-wildcard atom).
    ============================================================ */
 u_expr
   = u_or
@@ -718,7 +629,7 @@ u_atom_base
   / f:field_name { return f; }
 
 u_atom_stats_extra
-  = chars:[a-zA-Z0-9_.:{}]* '*' rest:[a-zA-Z0-9_.:{}*]*
+  = chars:[a-zA-Z0-9_.:{}]* '*' ![0-9] rest:[a-zA-Z0-9_.:{}*]*
     { return (chars.join('') + '*' + rest.join('')); }
 
 u_func_call
@@ -874,11 +785,11 @@ lookup_output
    Inputlookup command: | inputlookup [append=true] tablename
    ============================================================ */
 inputlookup_command
-  = 'inputlookup'i _+ 'append='i [a-zA-Z]+ _+ table:field_name _+ 'where'i _+ condition:rest_of_command
+  = 'inputlookup'i _+ 'append='i [a-zA-Z]+ _+ table:field_name _+ 'where'i _+ condition:where_expression
     {
       return { type: 'InputlookupCommand', table: table, append: true, where: condition };
     }
-  / 'inputlookup'i _+ table:field_name _+ 'where'i _+ condition:rest_of_command
+  / 'inputlookup'i _+ table:field_name _+ 'where'i _+ condition:where_expression
     {
       return { type: 'InputlookupCommand', table: table, append: false, where: condition };
     }
