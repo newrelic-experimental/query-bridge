@@ -163,15 +163,24 @@ by_field_list
 // A by-field is a field name NOT immediately followed by '=' (which would make it
 // a command option like limit=N / useother=false, not a grouping field).
 by_field_item
-  = name:field_name !(_* '=') { return name; }
+  = name:quotable_field_name !(_* '=') { return name; }
 
 field_list
-  = (',' _*)? first:field_name rest:((_* ',' _* / _+) name:field_name { return name; })* (_* ',')?
+  = (',' _*)? first:quotable_field_name rest:((_* ',' _* / _+) name:quotable_field_name { return name; })* (_* ',')?
     { return [first].concat(rest); }
 
 field_name
   = '*' { return '*'; }
   / chars:[a-zA-Z0-9_.\-:{}]+ { return chars.join(''); }
+
+// A field name that may be double-quoted — Splunk allows quoting field names that
+// contain spaces or other special chars (`table "Full message"`, `stats count by
+// "Container Name"`). Used only in list/by contexts where a quote means a field
+// name, NOT in eval/where/search contexts where a quote means a string literal.
+// Returns the inner text; the emitter backticks names that need it.
+quotable_field_name
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / field_name
 
 /* ============================================================
    Timechart command: | timechart [span=X] fn() [by field]

@@ -3357,6 +3357,47 @@ const cases = [
     doc: 'tokenizer-quote-boundary-paren-regression',
     verified: false,
   },
+
+  // ── quoted field names in field/by lists ──────────────────────────
+  {
+    spl: 'index=x | table loyaltyId, "Datetime Start", "Datetime End"',
+    nrql: "FROM Log SELECT loyaltyId, `Datetime Start`, `Datetime End` WHERE index = 'x'",
+    doc: 'quoted-field-name',
+    verified: false,
+  },
+  {
+    spl: 'index=x | stats count by "Container Name"',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET `Container Name`",
+    warningFunc: ['facet_default_limit'],
+    doc: 'quoted-field-name',
+    verified: false,
+  },
+
+  // ── eval `+` with a string operand → loud unsupported, not a crash ──
+  // SPL `+` is overloaded (numeric add OR string concat). The current eval
+  // pipeline flattens expressions to a string and re-parses them as arithmetic,
+  // which can't represent string concat via `+`, so it must fail loudly.
+  // FIXME: the EvalArith typed-node rearchitecture should translate these to
+  // concat(...) (SPL `+`-concat is identical to `.`-concat). When that lands,
+  // change the expected output to the concat() NRQL and drop eval_not_supported.
+  {
+    spl: 'index=x | eval z = businessDate + " "',
+    unsupportedFunc: ['eval_not_supported'],
+    doc: 'eval-plus-string-unsupported',
+    verified: false,
+  },
+  {
+    spl: 'index=x | eval z = a + " " + b',
+    unsupportedFunc: ['eval_not_supported'],
+    doc: 'eval-plus-string-unsupported',
+    verified: false,
+  },
+  {
+    spl: 'index=x | eval z = f + g',
+    nrql: "FROM Log WITH numeric(f) + numeric(g) AS z SELECT * WHERE index = 'x'",
+    doc: 'eval-plus-arithmetic-regression',
+    verified: false,
+  },
 ];
 
 describe('translateSplToNrql', () => {

@@ -70,6 +70,13 @@ function translateEvalExpr(cmd, ir) {
   if (cmd.rawText) {
     // Try dot-concat: field = expr . expr . ...
     if (tryParseDotConcat(cmd.rawText, ir)) return null;
+    // FIXME: `+`-with-string concat (e.g. `eval z = businessDate + " "`) and other
+    // eval expressions land here as unsupported because eval_expr/eval_term/
+    // eval_factor flatten to a string that buildArithmeticExpr re-parses as
+    // numeric-only arithmetic. The planned EvalArith typed-node rearchitecture
+    // (grammar produces typed nodes, walker handles them directly, no string
+    // round-trip) will let string-operand `+` translate to concat(...). Until
+    // then, loud unsupported is correct — do not silently emit wrong arithmetic.
     ir.unsupported.push(messages.eval_not_supported(cmd.rawText));
     return null;
   }
