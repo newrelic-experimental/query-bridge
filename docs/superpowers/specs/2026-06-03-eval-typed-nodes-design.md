@@ -83,6 +83,19 @@ EvalNot({ operand })             // boolean NOT
 
 `.`-concat and `+`-with-string concat do not get a node — the grammar/walker route them to `Func('concat', ...)` directly (concat already emits correctly).
 
+### How `+` chooses concat vs. arithmetic
+
+Splunk decides per-row at runtime (`+` adds numbers, concatenates strings). We decide statically from operand types — which quotes and numeric literals resolve in three of four cases:
+
+| Expression | Decision | Reason |
+|---|---|---|
+| `"a" + "b"` | concat | both quoted → strings |
+| `field + " "` | concat | one quoted operand forces string context |
+| `field + 5` | arithmetic | numeric literal operand |
+| `field1 + field2` | **arithmetic** | no literal; type unknowable statically |
+
+The last row is the only undecidable case. Corpus evidence settles the default: of 340 `field + field` occurrences in the 32k corpus, all observed are numeric (counts, sizes, costs — `published_count + rejected_count`, `ddas_unit_cost + SmartStore_unit_cost`). String-field concatenation in real SPL uses `.`, not `+`. So `field + field` → `numeric(f) + numeric(g)` is the evidence-backed correct default, not a reluctant compromise. `isStringExpr` returns true only for a string literal or a `concat(...)` result — exactly the quote-resolvable cases.
+
 ### One grammar, parameterized atom
 
 The unified ladder (seeded from the existing typed #2 chain, with the arithmetic tier added):
@@ -175,7 +188,6 @@ Synthetic `verified: false` cases (humans promote later). Assert the ACTUAL emit
 
 - **Hottest expression path.** Every eval and stats-agg query flows through this. Corpus gate after each step is non-negotiable.
 - **Exponential backtracking.** Peek-and-extend ladder is mandatory; the naive `A op B / A` form caused O(3^n) blowup before (grammar comments). Plan must use the proven structure.
-- **`+`-with-string-FIELD (not literal) is undecidable at translate time.** `field1 + field2` where both hold strings can't be typed statically — `isStringExpr` only knows literals/concat results. It will emit `numeric(field1) + numeric(field2)` (numeric add). This is the same undecidability the old code had, not a new regression, but the rearchitecture does NOT fully solve it. Document it; add an explicit test pinning the (imperfect) behavior so it's a conscious choice, not a silent bug. A future runtime-type approach is out of scope.
 - **`needsNumeric` rewrite blast radius.** Called from the existing `EvalComparison` case; rewriting to typed-node form must keep that case's output identical (existing comparison tests cover it).
 - **Stats wildcard atoms.** `avg(tcp.*)` must keep emitting `average(\`tcp.*\`)`; the stats atom's char class (`*`, `\`) differs from base. Explicit regression case.
 - **PEG rule "parameterization".** PEG has no real rule parameters; the "one ladder, two atoms" invariant is encoded via an ordered-choice atom rule. If that proves awkward, the fallback is two near-identical ladders sharing the walker — acceptable, since the duplication-elimination win is mostly in the walker/nodes, not the grammar rules. Plan decides.
