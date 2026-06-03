@@ -46,4 +46,16 @@ export default [
       },
     },
   },
+  {
+    files: ['docs/playground/**/*.js'],
+    languageOptions: {
+      globals: {
+        document: 'readonly',
+        window: 'readonly',
+        location: 'readonly',
+        clearTimeout: 'readonly',
+        setTimeout: 'readonly',
+      },
+    },
+  },
 ];
