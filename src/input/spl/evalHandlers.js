@@ -226,6 +226,30 @@ export function walkEvalExpr(node, ir) {
       return BinOp(node.op, left, right);
     }
 
+    case 'EvalArith': {
+      // op ∈ { +, -, *, /, %, . }. The grammar emits a single EvalArith for all
+      // additive/multiplicative operators; this case decides arithmetic vs concat:
+      //   '.'                         → always concat
+      //   '+' with a string operand   → concat (one quoted/concat side forces it)
+      //   '+' with no string operand  → arithmetic (corpus: field+field is numeric)
+      //   '-', '*', '/', '%'          → arithmetic ('%' emitted as mod() downstream)
+      const left = walkEvalExpr(node.left, ir);
+      const right = walkEvalExpr(node.right, ir);
+      if (!left || !right) return null; // loud failure
+      const isConcat =
+        node.op === '.' ||
+        (node.op === '+' && (isStringExpr(left) || isStringExpr(right)));
+      if (isConcat) {
+        return flattenConcat(left, right);
+      }
+      return BinOp(node.op, numericize(left), numericize(right));
+    }
+
+    case 'EvalNot': {
+      const operand = walkEvalExpr(node.operand, ir);
+      return operand ? Not(operand) : null;
+    }
+
     case 'EvalParens':
       return walkEvalExpr(node.inner, ir);
 
@@ -602,12 +626,51 @@ function walkEvalFunc(node, ir) {
 
 // ── Internal helpers ────────────────────────────────────────
 
+// True when an EVAL AST NODE is a bare field reference that must be wrapped in
+// numeric() for an ordering comparison. Mirrors the old raw-string heuristic
+// (a non-numeric token with no arithmetic operators = a bare field) but reads
+// the typed node instead of a flattened string.
+//   - bare string that isn't a number and has no arithmetic chars → bare field → true
+//   - bare string with arithmetic chars (e.g. "(a + b)") → already processed by
+//     buildArithmeticExpr which wraps fields itself → false
+//   - typed nodes (EvalFunc, StringLiteral, EvalArith, EvalParens) → false
 function needsNumeric(node) {
-  return (
-    typeof node === 'string' &&
-    !looksLikeNumber(node) &&
-    !/[+\-*/%()]/.test(node)
-  );
+  if (typeof node === 'string') {
+    return !looksLikeNumber(node) && !/[+\-*/%()]/.test(node);
+  }
+  return false;
+}
+
+// Wrap a bare-field IR expression in numeric() for arithmetic context.
+// Numbers, functions, and already-wrapped expressions pass through unchanged.
+function numericize(expr) {
+  if (!expr) return expr;
+  if (expr.type === 'Literal' && expr.kind === 'number') return expr;
+  if (expr.type === 'Identifier') return Func('numeric', [expr]);
+  return expr; // BinOp/Function/etc. already typed — don't double-wrap
+}
+
+// True when an eval expression is statically known to be a string: a string
+// literal, or a concat() result. Drives the '+' concat-vs-arithmetic decision.
+function isStringExpr(expr) {
+  if (!expr) return false;
+  if (expr.type === 'Literal' && expr.kind === 'string') return true;
+  if (expr.type === 'Function' && expr.name === 'concat') return true;
+  return false;
+}
+
+// Merge nested concats so `a . b . c` emits concat(a, b, c) not
+// concat(concat(a, b), c). Each side is already a walked IR expression.
+function flattenConcat(left, right) {
+  const flat = [];
+  for (const side of [left, right]) {
+    if (side && side.type === 'Function' && side.name === 'concat') {
+      flat.push(...side.args);
+    } else {
+      flat.push(side);
+    }
+  }
+  return Func('concat', flat);
 }
 
 function isTrueCondition(node) {
