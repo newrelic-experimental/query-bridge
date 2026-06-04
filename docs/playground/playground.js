@@ -115,13 +115,26 @@ function init() {
   const rows = document.getElementById('rows');
   const rail = document.getElementById('rail-items');
 
-  // Examples rail — clicking appends a pre-filled row.
+  // Examples rail — clicking loads the example into the first (top) row and
+  // re-translates it, rather than appending a new row. If no row exists yet
+  // (all removed), create one.
   for (const { label, spl } of EXAMPLES) {
     const btn = document.createElement('button');
     btn.className = 'rail-item';
     btn.textContent = label;
     btn.addEventListener('click', () => {
-      rows.appendChild(createRow(spl));
+      const firstInput = rows.querySelector('.row-input');
+      if (!firstInput) {
+        rows.appendChild(createRow(spl));
+        return;
+      }
+      firstInput.value = spl;
+      // Trigger an immediate translation via the row's Submit button (which
+      // cancels any pending debounce and re-renders the output).
+      firstInput
+        .closest('.row')
+        .querySelector('.row-submit')
+        .click();
     });
     rail.appendChild(btn);
   }
