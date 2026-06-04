@@ -1,0 +1,18 @@
+identity:
+  owning_team: Logging
+  project_name: nr-query-bridge
+
+slack_channel: logging-notifications
+
+# This is a publishable npm library, not a deployed service — build/test only.
+deploy_mechanism: none
+
+build:
+  environment:
+    # Node 24 on the approved base-ubuntu:24.04 image (no approved base-node:24).
+    dockerfile: Dockerfile.gc
+  build_artifact:
+    # Lint, typecheck, and the full vitest suite. Mirrors the local checks.
+    command: npm ci && npm run lint && npm run types:check && npm test
+  # Run the build_artifact command on pull requests (defaults true; explicit here).
+  build_pull_requests: true
