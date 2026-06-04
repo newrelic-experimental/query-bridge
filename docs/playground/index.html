@@ -151,6 +151,17 @@
         <button id="add-line" class="add-line">+ Add line</button>
       </main>
     </div>
+    <!-- Classic (non-module) guard: runs even when the module below fails to
+         load. Browsers block ES module imports over file://, which would
+         otherwise leave a blank page with only a console error. -->
+    <script>
+      if (location.protocol === 'file:') {
+        var b = document.getElementById('banner');
+        b.style.display = 'block';
+        b.textContent =
+          'This page must be served, not opened directly. From the repo root run `npx serve` (or `python3 -m http.server`) and open /docs/playground/.';
+      }
+    </script>
     <script type="module" src="./playground.js"></script>
   </body>
 </html>

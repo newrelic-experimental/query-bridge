@@ -109,15 +109,9 @@ function createRow(initialSpl = '') {
 }
 
 function init() {
-  // file:// guard — ESM imports are blocked over file://, so the page would
-  // otherwise be silently blank.
-  if (location.protocol === 'file:') {
-    const banner = document.getElementById('banner');
-    banner.style.display = 'block';
-    banner.textContent =
-      'This page must be served, not opened directly. From the repo root run `npx serve` (or `python3 -m http.server`) and open /docs/playground/.';
-  }
-
+  // Note: the file:// "must be served" banner is handled by an inline classic
+  // script in index.html — it must run even when this module fails to load,
+  // which is exactly the file:// case (ES module imports are blocked there).
   const rows = document.getElementById('rows');
   const rail = document.getElementById('rail-items');
 
