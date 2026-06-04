@@ -363,6 +363,48 @@ SPL:  * | eval kb = bytes / 1024 | rename kb as kilobytes
 NRQL: FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *
 🟡 NRQL rename keeps original field names alongside aliases
 ```
+
+```
+❓ Not confirmed
+SPL:  * | eval hi = status >= 400
+NRQL: FROM Log WITH numeric(status) >= 400 AS hi SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = a*2+b
+NRQL: FROM Log WITH numeric(a) * 2 + numeric(b) AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = (a+b)*c
+NRQL: FROM Log WITH (numeric(a) + numeric(b)) * numeric(c) AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = field + 5
+NRQL: FROM Log WITH numeric(field) + 5 AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = f + g
+NRQL: FROM Log WITH numeric(f) + numeric(g) AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = a % b
+NRQL: FROM Log WITH mod(numeric(a), numeric(b)) AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = round(a) + 1
+NRQL: FROM Log WITH round(a) + 1 AS r SELECT *
+```
 <!-- /spl-cases -->
 
 ## `eventstats` — Supported
@@ -1807,6 +1849,18 @@ NRQL: FROM Log WITH if(numeric(skuCount) > numeric(FCQuantity), 'yes', 'no') AS 
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | stats count | eval x = round(total/count, 2)
+NRQL: FROM Log WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT count(*)
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval x = if(a > b+1, "hi", "lo")
+NRQL: FROM Log WITH if(numeric(a) > numeric(b) + 1, 'hi', 'lo') AS x SELECT *
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | eval x=if(isnull(field), "missing", field)
 NRQL: FROM Log WITH if(field IS NULL, 'missing', field) AS x SELECT *
@@ -1840,6 +1894,36 @@ NRQL: FROM Log WITH if(numeric(a) > 0, 'yes') AS x SELECT *
 ✅ Confirmed by human
 SPL:  * | eval x=case("only")
 NRQL: FROM Log WITH 'only' AS x SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = if(a*2 > b AND c < 3, "y", "n")
+NRQL: FROM Log WITH if(numeric(a) * 2 > numeric(b) AND numeric(c) < 3, 'y', 'n') AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = if(NOT isnull(x), 1, 0)
+NRQL: FROM Log WITH if(x IS NOT NULL, 1, 0) AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = if(NOT (a AND b), 1, 0)
+NRQL: FROM Log WITH if(NOT (a AND b), 1, 0) AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = if(x==1, "y", "n")
+NRQL: FROM Log WITH if(x = '1' OR numeric(x) = 1, 'y', 'n') AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = if(status=500, 1, 0)
+NRQL: FROM Log WITH if(status = '500' OR numeric(status) = 500, 1, 0) AS r SELECT *
 ```
 <!-- /spl-cases -->
 
@@ -1932,6 +2016,48 @@ NRQL: FROM Log WITH replace(uri, 'https://old.com/api?key=val', 'https://new.com
 ✅ Confirmed by human
 SPL:  * | eval x=replace(uri, "/path/to+file", "/path/to_file")
 NRQL: FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  index=x | eval z = businessDate + " "
+NRQL: FROM Log WITH concat(businessDate, ' ') AS z SELECT * WHERE index = 'x'
+```
+
+```
+❓ Not confirmed
+SPL:  index=x | eval z = a + " " + b
+NRQL: FROM Log WITH concat(a, ' ', b) AS z SELECT * WHERE index = 'x'
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval z = businessDate + " "
+NRQL: FROM Log WITH concat(businessDate, ' ') AS z SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval full = a + " " + b
+NRQL: FROM Log WITH concat(a, ' ', b) AS full SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval r = a . " " . b
+NRQL: FROM Log WITH concat(a, ' ', b) AS r SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval z = lower(a) + b
+NRQL: FROM Log WITH concat(lower(a), b) AS z SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval z = tostring(cost) + suffix
+NRQL: FROM Log WITH concat(string(cost), suffix) AS z SELECT *
 ```
 
 ```
