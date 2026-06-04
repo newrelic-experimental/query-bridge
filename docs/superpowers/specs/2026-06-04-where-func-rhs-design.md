@@ -75,12 +75,13 @@ where_comparison
 When a `Comparison` node has `rhsFunc`:
 
 **Path 1 — time-window.** `LHS field is _time` AND `rhsFunc.name` is `relative_time` or `now`:
-- `now()` → offset string `"now"`.
-- `relative_time(now(), "<offset>")` → confirm arg0 is a `now()` call; extract arg1 string `"<offset>"`. If arg0 is NOT `now()` (a field or absolute anchor) → `unsupported` (FIXME: support later).
-- Run the offset through `parseSplTime(offset)` → `{ nrql, warning }`.
-- Operator → clause: `>` / `>=` → `ir.since = nrql`; `<` / `<=` → `ir.until = nrql`.
-- `=` / `!=` → `unsupported` (FIXME: point-in-time equality is figure-out-able later).
-- Push `parseSplTime`'s warning if present (this is where snap-approximation surfaces).
+- `relative_time(now(), "<offset>")` → confirm arg0 is a `now()` call; extract arg1 string `"<offset>"`. If arg0 is NOT `now()` (a field or absolute anchor) → `unsupported` (FIXME: support later — `relative_time(field, ...)` is a per-event, row-wise expression that cannot become a static SINCE/UNTIL bound; confirmed by spl-expert review 2026-06-04).
+- Operator → clause: `_time > t` is a LOWER bound → `ir.since`; `_time < t` is an UPPER bound → `ir.until`. (`>=`/`<=` map the same way; the SPL-strict vs NRQL-inclusive boundary difference is sub-second on `_time` and immaterial. Confirmed by spl-expert.)
+- Run the offset through `parseSplTime(offset)` → `{ nrql, warning }`, set `ir.since` or `ir.until` accordingly. Push `parseSplTime`'s warning if present (this is where snap-approximation surfaces).
+- **`now()` as the RHS (`_time op now()`):**
+  - `_time < now()` / `_time <= now()` → `ir.until = 'now'` (upper bound at present; this is the normal "everything up to now" and is fine).
+  - `_time > now()` / `_time >= now()` → `unsupported`. A lower bound at/after the present instant matches no historical events; emitting a clean `SINCE now` would HIDE that the query returns nothing (silent-wrong). Fail loud instead. (spl-expert review 2026-06-04 flagged the original `SINCE now` candidate as a defect. FIXME: a future "matches no events" handling could be friendlier than bare unsupported.)
+  - `_time = now()` / `!= now()` → `unsupported` (FIXME: point-in-time equality is figure-out-able later).
 - If `ir.since`/`ir.until` was ALREADY set (e.g. by `earliest=`/`latest=` or a prior `where _time`) → push a warning that multiple time constraints collapsed (last-writer-wins).
 - Emit NO `BinOp` — the constraint is a clause, not a WHERE term. Return null (the handler adds nothing to `ir.where`).
 
@@ -111,19 +112,20 @@ When a `Comparison` node has `value` (no `rhsFunc`) → existing code path, unto
 
 Net new: ~1 grammar alternative, one `rhsFunc` branch in the `Comparison` walker (2 sub-paths), a few message-catalog entries. No new IR nodes, no emitter change, no `parseSplTime` change.
 
-## Deferred gaps (all loud `unsupported` now, FIXME-tracked)
+## Deferred gaps (FIXME-tracked)
 
-1. `relative_time(<non-now> anchor, ...)` — field/absolute-timestamp anchor.
-2. Non-`_time` field vs `now()`/`relative_time` (Path 2a) — pending any inline NRQL relative-time form.
-3. `_time = now()` / `!= now()` — point-in-time equality.
-4. `where _time` snap-to-time — currently inherits `parseSplTime` approximate-and-warn; should become loud-unsupported to match the project's fail-loud principle, and unified with the `earliest`/`latest` snap policy.
+1. `relative_time(<non-now> anchor, ...)` — field/absolute-timestamp anchor → `unsupported`. spl-expert confirms this is a per-event row-wise value, not a static window bound, so SINCE/UNTIL can never represent it. Permanent unless a per-event mechanism appears.
+2. Non-`_time` field vs `now()`/`relative_time` (Path 2a) → `unsupported`. Pending any inline NRQL relative-time form (none exists today; verified).
+3. `_time = now()` / `!= now()` and `_time >/>= now()` (future lower bound) → `unsupported`. Point-in-time / future-bound cases that match no historical events.
+4. `where _time` snap-to-time (`@d`, `@w`, `@h`) — currently inherits `parseSplTime` approximate-and-warn. **spl-expert (2026-06-04) sharpened this: `-1d@d` means "start of yesterday" (calendar midnight), and dropping `@d` shifts the bound LATER by up to 24h, GROWING the window to include events the SPL excludes — a real defect, not a forced approximation. NRQL CAN express the calendar boundary** (e.g. `UNTIL '<date> 00:00:00'` or day-phrase clauses), so the eventual fix is to emit the snapped boundary, not to drop it. Deferred per project decision; should become loud-unsupported in the interim and unified with the `earliest`/`latest` snap policy.
+5. Two-sided / fixed-range `where _time >= X AND _time < Y` — spl-expert notes this is a common dashboard idiom for fixed windows. This spec covers only one-sided comparisons; a two-sided pair should map to SINCE X UNTIL Y. Deferred.
 
 ## Testing
 
 Synthetic `verified: false` cases (humans promote). Assert ACTUAL emitted NRQL (capture via `bin/spl2nrql.js`). Validate emitted `SINCE`/`UNTIL` NRQL compiles via MCP (≤6h windows on `FROM Log`).
 
-- **Time-window:** `where _time > relative_time(now(), "-7d")` → `... SINCE 7 days ago`; `where _time < relative_time(now(), "-1d")` → `... UNTIL 1 day ago`; `where _time >= now()` → `... SINCE now` (capture exact); snap `where _time < relative_time(now(), "-1d@d")` → `UNTIL 1 day ago` + snap warning.
-- **Time-window unsupported:** `where _time = now()` → unsupported (FIXME #3); `where _time > relative_time(eventField, "-1d")` → unsupported (FIXME #1).
+- **Time-window (valid):** `where _time > relative_time(now(), "-7d")` → `... SINCE 7 days ago`; `where _time < relative_time(now(), "-1d")` → `... UNTIL 1 day ago`; `where _time < now()` → `... UNTIL now` (capture exact); snap `where _time < relative_time(now(), "-1d@d")` → `UNTIL 1 day ago` + snap warning.
+- **Time-window unsupported:** `where _time >= now()` / `where _time > now()` → unsupported (future lower bound matches nothing — FIXME #3); `where _time = now()` → unsupported (FIXME #3); `where _time > relative_time(eventField, "-1d")` → unsupported (FIXME #1).
 - **General BinOp (2b):** `where bytes > round(total/100, 2)`; `where x < pow(2, n)`; `where y > mvzip(a,b)` → unsupported (walkEvalExpr loud-fail).
 - **Non-_time relative-time (2a):** `where created < now()` → unsupported (FIXME #2).
 - **Conflict:** `where _time > relative_time(now(), "-7d")` in a query that also has `earliest=...` → warning that time constraints collapsed.
