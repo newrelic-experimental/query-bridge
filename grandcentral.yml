@@ -1,6 +1,7 @@
+project_name: nr-query-bridge
+
 identity:
   owning_team: Logging
-  project_name: nr-query-bridge
 
 slack_channel: logging-notifications
 
