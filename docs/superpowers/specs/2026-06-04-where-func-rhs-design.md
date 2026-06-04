@@ -27,6 +27,9 @@ Relative-time filtering in NRQL has exactly ONE mechanism: the `SINCE`/`UNTIL` c
 | `FROM Log SELECT count(*) WHERE timestamp < (now() - 86400000)` | FAILURE — `Not supported: BinOp SUBTRACT ... now` |
 | `FROM Log SELECT count(*) WHERE created < now() SINCE 7 days ago` | FAILURE — `now()` still rejected inline |
 | `FROM Transaction SELECT count(*) SINCE 7 days ago` | SUCCESS (count returned) |
+| `FROM Transaction SELECT count(*) SINCE now` | FAILURE — `start time must be before its end time` (so `_time >= now()` can't even emit a valid clean clause) |
+| `FROM Transaction SELECT count(*) SINCE 6 hours ago UNTIL 1 hour ago` | SUCCESS — two-sided window valid (supports deferred gap #5) |
+| `FROM Transaction SELECT count(*) UNTIL now SINCE 2 hours ago` | SUCCESS — `_time < now()` → `UNTIL now` valid; SINCE/UNTIL order-independent |
 
 So `now()` is rejected inline everywhere in WHERE (bare, `numeric()`-wrapped, epoch arithmetic, even with a SINCE present), and `N days ago` is not a valid inline RHS value. `SINCE`/`UNTIL` is the only path. This is why `_time` comparisons MUST become `SINCE`/`UNTIL` and why any relative-time comparison that can't map to those clauses is `unsupported`, not a `BinOp`. (Note: validate NRQL against `FROM Log` with windows ≤ 6h — larger Log windows time out on volume, which looks like an error but isn't a syntax failure.)
 
