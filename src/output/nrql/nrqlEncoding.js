@@ -52,14 +52,30 @@ function escapeWith(metacharacters, value) {
   return escaped;
 }
 
+/**
+ * Backtick-escape an attribute name for safe use in NRQL.
+ * @param {string} attributeName
+ * @returns {string}
+ */
 const escapeAttributeNameForNrql = (attributeName) =>
   escapeWith(attributeNameMetacharacters, attributeName);
 
+/**
+ * Single-quote-escape a string literal for safe use in NRQL.
+ * Non-string input is returned unchanged.
+ * @param {string} string
+ * @returns {string}
+ */
 const escapeStringLiteralForNrql = (string) => {
   if (typeof string !== 'string') return string;
   return escapeWith(stringLiteralMetacharacters, string);
 };
 
+/**
+ * Percent-escape a string for use as a NRQL LIKE wildcard pattern.
+ * @param {string} string
+ * @returns {string}
+ */
 const escapeStringWildcardForNrql = (string) =>
   escapeWith(stringWildcardMetacharacters, string);
 

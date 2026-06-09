@@ -28,6 +28,13 @@ const SNAP_ONLY_MAP = {
 const TIME_REGEX = /^(-?)(\d+)(s|m|h|d|w|mon|y)(@[a-z]+)?$/i;
 const SNAP_ONLY_REGEX = /^@([a-z]+)$/i;
 
+/**
+ * Parse an SPL relative-time string (e.g. `-24h`, `-7d@d`) into NRQL.
+ *
+ * @param {string} timeStr - The SPL time modifier.
+ * @returns {{ nrql: string | null, warning: string | null }} The NRQL time
+ *   expression (or null if unparseable) and an optional advisory warning.
+ */
 export function parseSplTime(timeStr) {
   if (!timeStr) return { nrql: null, warning: null };
 

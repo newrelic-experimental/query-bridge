@@ -9,6 +9,25 @@ import { translateAstToIR } from './input/spl/splToIR.js';
 import { emitQuery } from './output/nrql/irToNrql.js';
 import { optimize } from './ir/optimize.js';
 
+/**
+ * The result of translating an SPL query to NRQL.
+ *
+ * When `unsupported` or `errors` is non-empty, `nrql` is an empty string —
+ * the translator emits no NRQL rather than risk returning a wrong query.
+ *
+ * @typedef {object} TranslateResult
+ * @property {string} nrql - The translated NRQL query, or '' if untranslatable.
+ * @property {string[]} warnings - Precision-loss / advisory notes; NRQL is still valid.
+ * @property {string[]} unsupported - Reasons a construct has no NRQL equivalent.
+ * @property {string[]} errors - Parse or translation errors.
+ */
+
+/**
+ * Translate a Splunk SPL query into New Relic NRQL.
+ *
+ * @param {string} spl - The SPL query string.
+ * @returns {TranslateResult} The NRQL plus any warnings/unsupported/errors.
+ */
 export function translateSplToNrql(spl) {
   if (!spl || !spl.trim()) {
     return {

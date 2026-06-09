@@ -12,6 +12,13 @@ import {
 
 // ── Expression emission ──────────────────────────────────────
 
+/**
+ * Emit a single IR expression node as an NRQL expression string.
+ *
+ * @param {import('../../ir/nodes.js').IRNode | null | undefined} node - An IR
+ *   expression node (from `src/ir/nodes.js` constructors).
+ * @returns {string} The NRQL expression, or '' for a nullish node.
+ */
 export function emitExpr(node) {
   if (!node) return '';
 
@@ -209,6 +216,12 @@ function emitBinOp(node) {
 
 // ── Query emission ───────────────────────────────────────────
 
+/**
+ * Emit a top-level IR query node (e.g. SelectQuery) as a full NRQL string.
+ *
+ * @param {import('../../ir/nodes.js').IRNode} node - A query-level IR node.
+ * @returns {string} The complete NRQL query.
+ */
 export function emitQuery(node) {
   switch (node.type) {
     case 'SelectQuery':

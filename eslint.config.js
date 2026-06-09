@@ -9,6 +9,7 @@ export default [
       'dist/',
       'tmp/',
       'coverage/',
+      'types/',
     ],
   },
   js.configs.recommended,
