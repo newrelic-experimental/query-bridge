@@ -1032,7 +1032,7 @@ function assertInvariants(spl) {
   try {
     r = translateSplToNrql(spl);
   } catch (e) {
-    throw new Error(`Translator threw on: ${spl}\n${e.message}`);
+    throw new Error(`Translator threw on: ${spl}\n${e.message}`, { cause: e });
   }
 
   // Shape invariants
@@ -1245,6 +1245,7 @@ describe('mutation-based fuzzing', () => {
         } catch (e) {
           throw new Error(
             `Translator threw on mutated query:\n  ${spl}\n  ${e.message}`,
+            { cause: e },
           );
         }
         expect(typeof r.nrql).toBe('string');
