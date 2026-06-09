@@ -6,6 +6,15 @@
  * but language-neutral — can emit to NRQL, Trino SQL, or other targets.
  */
 
+/**
+ * Base shape of every IR node: a plain object with a `type` discriminator.
+ * Specific constructors below add their own fields. Field values are `any`
+ * because the IR is an untyped JS tree internally; the discriminant `type`
+ * is the stable contract.
+ *
+ * @typedef {{ type: string, [key: string]: any }} IRNode
+ */
+
 // ── Expression nodes ──────────────────────────────────────────
 
 export const Identifier = (name) => ({ type: 'Identifier', name });
