@@ -1,5 +1,7 @@
 # Where-Clause Function-RHS Design
 
+> **⚠️ SUPERSEDED (2026-06-10) by `docs/superpowers/specs/2026-06-10-where-comparison-rhs-design.md`.** Expert review + MCP validation showed the comparison RHS is a full eval expression (field / arithmetic / function — all accepted by NRQL), not just a function call. The successor reframes the RHS as the existing `u_expr` ladder. This file is kept for the discovery trail; do not implement from it.
+
 **Goal:** Let SPL `where` comparisons carry a function call on the right-hand side — `where _time < relative_time(now(), "-1d")` and `where bytes > round(total/100, 2)` — which today fail to parse. Translate the `_time`-vs-relative-time family to NRQL `SINCE`/`UNTIL`, and ordinary `field op func(...)` to a `BinOp`. Everything without a valid NRQL form fails loud (`unsupported`), never emits non-compiling NRQL.
 
 ## Problem
