@@ -3303,6 +3303,18 @@ const cases = [
     doc: 'where-comparison-rhs',
     verified: false,
   },
+  {
+    spl: 'index=web | where _time < relative_time(now(), "-1d")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 24 hours ago UNTIL 1 day ago",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where _time < now()',
+    nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 24 hours ago UNTIL now",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
 
   // ── tokenizer leniency: empty list items, IN space-separation ─────
   {

@@ -74,6 +74,9 @@ export function translateWhereExpr(expr, ir) {
     ir.since = '24 hours ago';
   }
   if (irExpr) return irExpr;
+  // If translateSearchExpr consumed the expression as a time constraint
+  // (since/until), there is no WHERE term to emit. Skip the eval fallback.
+  if (since || until) return null;
   // Fallback: try eval expression walker for eval-style where expressions
   return walkEvalExpr(expr, ir);
 }

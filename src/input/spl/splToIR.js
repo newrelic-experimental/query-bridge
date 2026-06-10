@@ -180,6 +180,74 @@ export function translateSearchExpr(node, ir) {
         if (node.rhsExpr) {
           const op = node.operator;
           const field = node.field;
+          const rhs = node.rhsExpr;
+          // Path 1: time-window. `_time` vs relative_time()/now() → SINCE/UNTIL.
+          const isFunc =
+            rhs && typeof rhs === 'object' && rhs.type === 'EvalFunc';
+          const fnName = isFunc ? rhs.name.toLowerCase() : null;
+          if (
+            field === '_time' &&
+            (fnName === 'relative_time' || fnName === 'now')
+          ) {
+            const isLower = op === '>' || op === '>=';
+            const isUpper = op === '<' || op === '<=';
+
+            // now() RHS
+            if (fnName === 'now') {
+              if (isUpper) {
+                if (since || until) {
+                  warnings.push(messages.where_time_constraints_collapsed());
+                }
+                until = 'now';
+                return null;
+              }
+              if (isLower) {
+                unsupported.push(
+                  messages.where_time_future_bound_unsupported(),
+                );
+              } else {
+                unsupported.push(messages.where_time_point_unsupported());
+              }
+              return null;
+            }
+
+            // relative_time(now(), "<offset>")
+            const [anchor, offsetNode] = rhs.args;
+            const anchorIsNow =
+              anchor &&
+              typeof anchor === 'object' &&
+              anchor.type === 'EvalFunc' &&
+              anchor.name.toLowerCase() === 'now';
+            const offset =
+              offsetNode &&
+              typeof offsetNode === 'object' &&
+              offsetNode.type === 'StringLiteral'
+                ? offsetNode.value
+                : null;
+            if (!anchorIsNow || offset === null) {
+              unsupported.push(
+                messages.where_relative_time_nonliteral_unsupported(),
+              );
+              return null;
+            }
+            const { nrql, warning } = parseSplTime(offset);
+            if (warning) warnings.push(warning);
+            if (!nrql) {
+              unsupported.push(
+                messages.where_relative_time_nonliteral_unsupported(),
+              );
+              return null;
+            }
+            if ((isLower && since) || (isUpper && until)) {
+              warnings.push(messages.where_time_constraints_collapsed());
+            }
+            if (isLower) since = nrql;
+            else if (isUpper) until = nrql;
+            else {
+              unsupported.push(messages.where_time_point_unsupported());
+            }
+            return null;
+          }
           // Reversed operands: `.25 > count` — left is a numeric literal, not
           // a field. The eval walker's looksLikeNumber misses leading-decimal
           // literals like `.25`, so handle this sub-case before delegating.

@@ -238,6 +238,22 @@ export const messages = {
   inputlookup_where_warning: () =>
     'inputlookup WHERE condition translated as-is; verify field names match the lookup table schema',
 
+  // SPL: `| where _time >= now()`
+  where_time_future_bound_unsupported: () =>
+    'where _time >= now() (lower bound at/after present) matches no historical events; NRQL SINCE now does not compile',
+
+  // SPL: `| where _time = now()`
+  where_time_point_unsupported: () =>
+    'where _time = now() (point-in-time, matches nothing) / != now() (degenerate no-op) has no NRQL SINCE/UNTIL equivalent',
+
+  // SPL: `| where _time > relative_time(eventField, "-1d")`
+  where_relative_time_nonliteral_unsupported: () =>
+    'relative_time() with a non-now() anchor is a per-event value, not a static SINCE/UNTIL bound',
+
+  // SPL: `| where _time > relative_time(now(), "-7d")` when earliest=/latest= already set
+  where_time_constraints_collapsed: () =>
+    'multiple time constraints collapsed into one SINCE/UNTIL (last-writer-wins)',
+
   // ── splExprUtils mapFunction warnings ────────────────────────────
 
   // SPL: `* | stats stdevp(latency) by host`
