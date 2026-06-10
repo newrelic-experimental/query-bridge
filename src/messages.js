@@ -258,6 +258,10 @@ export const messages = {
   where_time_constraints_collapsed: () =>
     'multiple time constraints collapsed into one SINCE/UNTIL (last-writer-wins)',
 
+  // SPL: `index=web | where bytes > jparse(payload, "size")`
+  where_rhs_func_not_row_wise: (name) =>
+    `${name}() is not supported on a comparison right-hand side; NRQL does not implement it in the row-wise evaluator`,
+
   // ── splExprUtils mapFunction warnings ────────────────────────────
 
   // SPL: `* | stats stdevp(latency) by host`

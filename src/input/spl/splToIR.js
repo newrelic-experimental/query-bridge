@@ -65,6 +65,50 @@ import {
   handleEventstats,
 } from './aggregationHandlers.js';
 
+// NRQL functions NOT implemented in the row-wise (per-event) evaluator. They
+// compile in some aggregation contexts but fail `Not supported: Call <fn>` on a
+// WHERE comparison RHS. Verified via MCP 2026-06-10.
+const ROW_WISE_UNIMPLEMENTED = new Set([
+  'jparse',
+  'convert',
+  'cidrAddress',
+  'toTimestamp',
+  'toDatetime',
+  'decode',
+  'encode',
+  'mapKeys',
+  'mapValues',
+  'lookup',
+  'blob',
+]);
+
+// Find the first unimplemented-on-RHS function name anywhere in a SPL AST
+// expression node, or null if none. SPL AST functions use type 'EvalFunc' or
+// 'FunctionCall' with a 'name' field. Recurses into args and binary sides.
+function findUnimplementedRhsFuncInAst(node) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.type === 'EvalFunc' || node.type === 'FunctionCall') {
+    const name = typeof node.name === 'string' ? node.name.toLowerCase() : '';
+    if (ROW_WISE_UNIMPLEMENTED.has(name)) return name;
+    for (const a of node.args || []) {
+      const hit = findUnimplementedRhsFuncInAst(a);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  for (const key of ['left', 'right', 'operand', 'inner', 'value']) {
+    if (node[key]) {
+      const hit = findUnimplementedRhsFuncInAst(node[key]);
+      if (hit) return hit;
+    }
+  }
+  for (const a of node.args || []) {
+    const hit = findUnimplementedRhsFuncInAst(a);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /**
  * Main entry: translate a parsed SPL AST into an IR query plan.
  */
@@ -279,6 +323,14 @@ export function translateSearchExpr(node, ir) {
             left: field === '_time' ? '_time' : field,
             right: node.rhsExpr,
           };
+          // Gate: reject RHS expressions containing functions NRQL can't
+          // evaluate row-wise (would emit non-compiling NRQL). Check the SPL
+          // AST before walking so only one unsupported message fires.
+          const badFn = findUnimplementedRhsFuncInAst(node.rhsExpr);
+          if (badFn) {
+            unsupported.push(messages.where_rhs_func_not_row_wise(badFn));
+            return null;
+          }
           const expr = walkEvalExpr(cmpNode, ir);
           if (!expr) return null; // walker already pushed unsupported
           return expr;

@@ -3321,6 +3321,12 @@ const cases = [
     doc: 'where-comparison-rhs',
     verified: false,
   },
+  {
+    spl: 'index=web | where bytes > jparse(payload, "size")',
+    unsupportedFunc: ['where_rhs_func_not_row_wise'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
 
   // ── tokenizer leniency: empty list items, IN space-separation ─────
   {
