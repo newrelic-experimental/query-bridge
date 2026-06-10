@@ -3328,6 +3328,81 @@ const cases = [
     verified: false,
   },
 
+  // ── where-comparison-rhs regression cases ──────────────────────────
+  {
+    // plain numeric value: lone literal on RHS, clean output, no messages
+    spl: 'index=web status > 200',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(status) > 200",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // bare field RHS: `foo` is treated as an identifier (string value in NRQL)
+    spl: 'index=web | where status = foo',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND status = foo",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // function on LHS (where_func_comparison rule): mvcount → length, fires eval_length_warning
+    spl: 'index=web | where mvcount(tags) > 1',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(length(tags)) > 1",
+    warningFunc: ['eval_length_warning'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // outer AND is NOT swallowed by the u_add RHS rule
+    spl: 'index=web | where a > b AND c < d',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(a) > numeric(b) AND numeric(c) < numeric(d)",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // subsearch re-parse: `[ search in_bytes > out_bytes ]`
+    // NOTE: subsearch path does NOT apply the new RHS rule — out_bytes is treated
+    // as a string literal ('out_bytes'), not a numeric field reference. This is a
+    // known gap: the subsearch re-parse does not use the where-comparison-rhs grammar
+    // path. Captured as-is; do not change to mask the gap.
+    spl: 'index=web [ search in_bytes > out_bytes ]',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND in_bytes > 'out_bytes'",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+
+  // ── where-comparison-rhs unsupported cases ─────────────────────────
+  {
+    spl: 'index=web | where _time >= now()',
+    unsupportedFunc: ['where_time_future_bound_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where _time = now()',
+    unsupportedFunc: ['where_time_point_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where _time > relative_time(eventField, "-1d")',
+    unsupportedFunc: ['where_relative_time_nonliteral_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+
+  // ── where-comparison-rhs collapsed-constraint warning ──────────────
+  {
+    // Two lower-bound constraints in same where → collapse warning (last-writer-wins)
+    // NOTE: earliest=+where in separate pipeline stages does NOT trigger this warning
+    // because each stage runs translateSearchExpr with a fresh local `since` variable.
+    // The collapse only fires when two _time constraints appear in the same expression.
+    spl: 'index=web | where _time > relative_time(now(), "-7d") AND _time > relative_time(now(), "-1d")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 1 day ago",
+    warningFunc: ['where_time_constraints_collapsed'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+
   // ── tokenizer leniency: empty list items, IN space-separation ─────
   {
     spl: 'index=x | table, _time, host',
