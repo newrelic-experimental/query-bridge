@@ -3337,7 +3337,9 @@ const cases = [
     verified: false,
   },
   {
-    // bare field RHS: `foo` is treated as an identifier (string value in NRQL)
+    // bare field RHS: in where/eval an UNQUOTED rhs is a FIELD NAME (Splunk
+    // docs), so `status = foo` is a field-to-field comparison → NRQL `status = foo`
+    // (an attribute reference), NOT the string 'foo'. Quoting it would be wrong.
     spl: 'index=web | where status = foo',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND status = foo",
     doc: 'where-comparison-rhs',
@@ -3359,13 +3361,31 @@ const cases = [
     verified: false,
   },
   {
-    // subsearch re-parse: `[ search in_bytes > out_bytes ]`
-    // NOTE: subsearch path does NOT apply the new RHS rule — out_bytes is treated
-    // as a string literal ('out_bytes'), not a numeric field reference. This is a
-    // known gap: the subsearch re-parse does not use the where-comparison-rhs grammar
-    // path. Captured as-is; do not change to mask the gap.
+    // subsearch with a `search`-COMMAND comparison: `in_bytes > out_bytes` is a
+    // search term, not a where pipe, so it correctly does NOT get the new RHS rule
+    // (search treats an unquoted RHS as a string — see spl-reference). This is the
+    // expected search-vs-where distinction, not a gap. Captured as-is.
     spl: 'index=web [ search in_bytes > out_bytes ]',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND in_bytes > 'out_bytes'",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // subsearch with a `| where` PIPE: the re-parse DOES apply the new RHS rule
+    // (the subsearch body is re-parsed through the same grammar). Proves the
+    // spec's "reaches inside subsearches" claim for where pipes specifically.
+    spl: 'index=web [ search index=x | where in_bytes > out_bytes ]',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND index = 'x' AND numeric(in_bytes) > numeric(out_bytes)",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // reversed-operand (numeric literal LHS) with a row-wise-unimplemented fn on
+    // the RHS: NOT caught by the Task 6 gate (that gates the main Path 2b), but
+    // still fails LOUD via the eval walker's own unknown-function handling — no
+    // non-compiling NRQL leaks. Locks in the safe behavior.
+    spl: 'index=web | where 0.25 > jparse(payload, "x")',
+    unsupportedFunc: ['eval_func_unsupported'],
     doc: 'where-comparison-rhs',
     verified: false,
   },
