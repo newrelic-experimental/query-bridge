@@ -287,6 +287,10 @@ where_comparison
     {
       return { type: 'Comparison', field: field, operator: 'like', value: value };
     }
+  / field:field_name _* op:comparison_op _* rhs:u_add
+    {
+      return { type: 'Comparison', field: field, operator: op, rhsExpr: rhs };
+    }
   / field:field_name _* op:comparison_op _* value:where_value
     {
       return { type: 'Comparison', field: field, operator: op, value: value };

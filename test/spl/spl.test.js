@@ -3279,6 +3279,12 @@ const cases = [
     doc: 'where-bang-regression',
     verified: false,
   },
+  {
+    spl: 'index=web | where in_bytes > out_bytes',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(in_bytes) > numeric(out_bytes)",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
 
   // ── tokenizer leniency: empty list items, IN space-separation ─────
   {
