@@ -3285,6 +3285,18 @@ const cases = [
     doc: 'where-comparison-rhs',
     verified: false,
   },
+  {
+    spl: 'index=web | where a > b + 1',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(a) > numeric(b) + 1",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where bytes > round(total / 100, 2)',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(bytes) > round(numeric(total) / 100, 0.01)",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
 
   // ── tokenizer leniency: empty list items, IN space-separation ─────
   {

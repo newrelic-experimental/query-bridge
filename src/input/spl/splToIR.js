@@ -175,6 +175,41 @@ export function translateSearchExpr(node, ir) {
       }
 
       case 'Comparison': {
+        // New typed-node RHS (grammar `field op u_add`). Branch before the
+        // legacy flat-`value` path, which assumes `value` is a string.
+        if (node.rhsExpr) {
+          const op = node.operator;
+          const field = node.field;
+          // Reversed operands: `.25 > count` — left is a numeric literal, not
+          // a field. The eval walker's looksLikeNumber misses leading-decimal
+          // literals like `.25`, so handle this sub-case before delegating.
+          const leftLooksNumeric = /^-?(\d+\.\d+|\.\d+|\d+)$/.test(field);
+          if (leftLooksNumeric) {
+            const numLit = RawNrql(field);
+            const right = walkEvalExpr(node.rhsExpr, ir);
+            if (!right) return null;
+            const numRight =
+              op === '=' || op === '!='
+                ? right
+                : right.type === 'Identifier'
+                  ? Func('numeric', [right])
+                  : right;
+            return BinOp(op, numLit, numRight);
+          }
+          // Path 2b: general expression RHS → BinOp via the eval walker.
+          // walkEvalExpr handles numeric coercion + loud failure; reuse its
+          // EvalComparison semantics by building an EvalComparison and walking it.
+          const cmpNode = {
+            type: 'EvalComparison',
+            op,
+            left: field === '_time' ? '_time' : field,
+            right: node.rhsExpr,
+          };
+          const expr = walkEvalExpr(cmpNode, ir);
+          if (!expr) return null; // walker already pushed unsupported
+          return expr;
+        }
+
         let { field, value, operator: op } = node;
 
         // Reversed operands: `.25 > count` parses `.25` into the field slot and
