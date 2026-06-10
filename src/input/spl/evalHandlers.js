@@ -77,6 +77,10 @@ export function translateWhereExpr(expr, ir) {
   // If translateSearchExpr consumed the expression as a time constraint
   // (since/until), there is no WHERE term to emit. Skip the eval fallback.
   if (since || until) return null;
+  // If translateSearchExpr already emitted unsupported messages for this
+  // expression (e.g. Path 2a: non-_time vs now()), don't re-walk through
+  // the eval fallback — that would fire a second, spurious unsupported.
+  if (unsupported.length > 0) return null;
   // Fallback: try eval expression walker for eval-style where expressions
   return walkEvalExpr(expr, ir);
 }

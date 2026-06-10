@@ -248,6 +248,12 @@ export function translateSearchExpr(node, ir) {
             }
             return null;
           }
+          // Path 2a: non-_time field vs now()/relative_time → unsupported.
+          // (Path 1 already returned for _time; here field !== '_time'.)
+          if (fnName === 'now' || fnName === 'relative_time') {
+            unsupported.push(messages.where_nontime_relative_unsupported());
+            return null;
+          }
           // Reversed operands: `.25 > count` — left is a numeric literal, not
           // a field. The eval walker's looksLikeNumber misses leading-decimal
           // literals like `.25`, so handle this sub-case before delegating.

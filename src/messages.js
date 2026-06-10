@@ -250,6 +250,10 @@ export const messages = {
   where_relative_time_nonliteral_unsupported: () =>
     'relative_time() with a non-now() anchor is a per-event value, not a static SINCE/UNTIL bound',
 
+  // SPL: `| where created < now()`
+  where_nontime_relative_unsupported: () =>
+    'comparison of a non-_time field against now()/relative_time() has no NRQL equivalent (now() is rejected in WHERE)',
+
   // SPL: `| where _time > relative_time(now(), "-7d")` when earliest=/latest= already set
   where_time_constraints_collapsed: () =>
     'multiple time constraints collapsed into one SINCE/UNTIL (last-writer-wins)',

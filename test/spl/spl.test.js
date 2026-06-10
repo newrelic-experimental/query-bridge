@@ -3315,6 +3315,12 @@ const cases = [
     doc: 'where-comparison-rhs',
     verified: false,
   },
+  {
+    spl: 'index=web | where created < now()',
+    unsupportedFunc: ['where_nontime_relative_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
 
   // ── tokenizer leniency: empty list items, IN space-separation ─────
   {
