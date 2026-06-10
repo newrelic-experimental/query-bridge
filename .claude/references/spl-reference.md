@@ -269,7 +269,7 @@ Groups events into transactions based on field values and time constraints.
 
 **Conditionals**: `if(cond, true, false)`, `case(cond1, val1, cond2, val2, ...)`, `coalesce(field1, field2, ...)`, `nullif(field1, field2)`, `validate(cond1, msg1, cond2, msg2, ...)`
 
-**String**: `lower(str)`, `upper(str)`, `len(str)`, `substr(str, start, len)`, `replace(str, regex, replacement)`, `trim(str)`, `ltrim(str)`, `rtrim(str)`, `split(str, delim)`, `urldecode(str)`, `urlencode(str)`, `printf(fmt, args...)`
+**String**: `lower(str)`, `upper(str)`, `len(str)`, `substr(str, start, len)` (**1-based** start, SQLite semantics; negative start counts from end — NRQL `substring` is 0-based, so SPL start `N` → NRQL `N-1`), `replace(str, regex, replacement)`, `trim(str)`, `ltrim(str)`, `rtrim(str)`, `split(str, delim)`, `urldecode(str)`, `urlencode(str)`, `printf(fmt, args...)`
 
 **Type conversion**: `tonumber(str [, base])`, `tostring(val [, format])`, `typeof(val)`
 
