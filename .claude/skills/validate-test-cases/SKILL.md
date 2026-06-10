@@ -48,6 +48,8 @@ Ask the NRQL expert to:
 
 **Key principle:** The NRQL doesn't need to be a literal translation. It needs to answer the same question the SPL user was asking.
 
+**Before flagging any translation as a defect, check whether it's settled behavior.** `grep` `test/spl/spl.test.js` for the construct and look for a `verified: 'human'` case, and check the relevant `src/input/spl/*Handlers.js` for a deliberate mapping. If a human already approved it (or a handler maps it on purpose), it is NOT a defect — it's intended. This catches the recurring failure mode of applying a SQL/boolean prior to NRQL's un-SQL-like semantics (e.g. `OR` value-coalesces; `WITH`/`FACET` alias rules) and crying bug on a correct mapping. When the divergence rests on NRQL behavior you're inferring rather than know, confirm with the live compiler (`execute_nrql_query`); if the NR MCP is disconnected, two agents agreeing on docs is corroboration, not proof — record the verdict as pending, don't assert it as fact.
+
 #### Step 3: NRQL Validation (Opus subagent)
 
 Dispatch an Agent (model: opus, subagent_type: general-purpose) that invokes the `nrql-validation` skill (or reads `.claude/skills/nrql-validation/SKILL.md`).
