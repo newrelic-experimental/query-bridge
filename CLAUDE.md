@@ -20,6 +20,7 @@ Requires Node 24: `ASDF_NODEJS_VERSION=24.14.0 <command>`
 
 ```
 npm run test                    # unit tests (vitest)
+npm run test -- spl             # filter to matching files (Vitest positional; NOT Jest --testPathPattern)
 npm run lint                    # ESLint
 npm run lint:fix                # ESLint with auto-fix
 npm run format                  # Prettier write
