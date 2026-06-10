@@ -3297,6 +3297,12 @@ const cases = [
     doc: 'where-comparison-rhs',
     verified: false,
   },
+  {
+    spl: 'index=web | where _time > relative_time(now(), "-7d")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 7 days ago",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
 
   // ── tokenizer leniency: empty list items, IN space-separation ─────
   {

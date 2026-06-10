@@ -56,9 +56,23 @@ export function translateWhereExpr(expr, ir) {
   // (BooleanOp, Comparison, etc.), not eval expressions (EvalFunc, etc.)
   // However, where_primary can also contain eval-like function calls
   // and comparisons. We need to handle both formats.
-  const { expr: irExpr, warnings, unsupported } = translateSearchExpr(expr, ir);
+  const {
+    expr: irExpr,
+    warnings,
+    unsupported,
+    since,
+    until,
+  } = translateSearchExpr(expr, ir);
   ir.warnings.push(...warnings);
   ir.unsupported.push(...unsupported);
+  // A `where _time ...` constraint becomes a SINCE/UNTIL clause, not a WHERE
+  // term. translateSearchExpr surfaces it as since/until; copy to ir here
+  // (the leading-search caller does the same).
+  if (since) ir.since = since;
+  if (until) ir.until = until;
+  if (until && !since && !ir.since) {
+    ir.since = '24 hours ago';
+  }
   if (irExpr) return irExpr;
   // Fallback: try eval expression walker for eval-style where expressions
   return walkEvalExpr(expr, ir);
