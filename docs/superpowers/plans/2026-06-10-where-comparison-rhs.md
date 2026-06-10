@@ -810,6 +810,22 @@ Durable record of every deviation from the written plan, edge case, and finding 
 - `8e0ae42` Task 5 — Path 2a non-_time relative-time → unsupported (+ message key, + evalHandlers fallback guard #2)
 - `f699035` Task 6 — gate row-wise-unimplemented funcs on RHS (AST-pre-walk)
 - `f846304` Task 7 — regression + unsupported test coverage
+- `11fce3e` Task 7 follow-up — where-in-subsearch re-parse proof + reversed-operand loud-fail lock-in (+ comment fix on status=foo)
+- `4aa009e` docs — mark findings #6/#7 resolved
+
+### Task 8 — verification gate (PASSED, 2026-06-10)
+- **lint:** clean. **types:check (tsc --noEmit):** clean. **Full test suite:** 678 passed, 6 skipped, 0 failures (7 files).
+- **Corpus gate (32436 queries, before `4c6a832` vs after `4aa009e`, identical corpus):**
+
+  | bucket | pre | post | delta |
+  |---|---|---|---|
+  | clean | 11413 | 11417 | +4 (did NOT regress) |
+  | warningsOnly | 10481 | 10486 | +5 |
+  | unsupported | 7937 | 7984 | +47 (intended loud-failures) |
+  | errors (parse) | 2605 | 2549 | **−56** (parse errors fell) |
+  | thrown | 0 | 0 | **0** (invariant holds) |
+
+  Math reconciles: −56 parse errors → +4 clean, +5 warningsOnly, +47 unsupported. Every formerly-erroring query moved to a BETTER terminal state; none regressed. The `where`-attributed error bucket dropped to 36 (spec cited ~196 `relative_time(` errors pre-feature). Loud-failure increase (+47 unsupported) is the feature correctly converting non-`_time` relative-time, row-wise-unimplemented funcs, and future-bound `_time` into honest `unsupported` rather than parse-error or silent-wrong. Gate PASSES on all plan criteria: parse-errors fall, clean does not fall, no bucket regresses, threw stays 0.
 
 ### Deviations from the written plan (all verified sound unless flagged OPEN)
 1. **Task 1 narrowed (user decision).** Plan routed ALL RHS (incl. lone literals) through `rhsExpr`; that broke 21 existing literal-RHS cases (`u_add` matches numbers/strings too). User chose to NARROW: a `&{}` semantic predicate backtracks lone numbers (`/^[0-9]/` plain string) and lone `StringLiteral` objects to the unchanged `where_value` path. Only non-literal RHS (field/func/arith/parens) routes through `rhsExpr`. Preserves every existing literal contract by construction.
