@@ -9,7 +9,7 @@ These replace conflicting guidance from the universal testing standards (`.claud
 
 - **Test runner:** Vitest (native ESM, `npm run test`)
 - **Test location:** `test/` mirroring `src/` structure
-- **Test style:** Data-driven `cases` arrays with fields: `spl`, `nrql`, `errorIncludes`, `warningIncludes`, `unsupportedIncludes`, `doc`, `verified`, `skip`
+- **Test style:** Data-driven `cases` arrays with fields: `spl`, `nrql`, `errorIncludes`, `warningFunc`, `unsupportedFunc`, `doc`, `verified`, `skip` (note: `warningIncludes`/`unsupportedIncludes` are NOT implemented by the runner — use the `*Func` message-key arrays)
 - **Verification levels:** `false` → `'llm'` → `'human'`. Only humans can promote to `'human'`.
 - **Message assertions:** `warningFunc` / `unsupportedFunc` arrays must list ALL message functions that fire (exhaustive, not partial)
 - **Fuzz testing:** fast-check property-based tests in `test/spl/spl-fuzz.test.js`
