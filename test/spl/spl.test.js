@@ -3001,7 +3001,7 @@ const cases = [
     spl: '* | dedup userId | stats count by routeName',
     nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) FACET routeName LIMIT MAX',
     warningFunc: ['dedup_facet_warning', 'dedup_limit_max_cap'],
-    doc: 'dedup',
+    doc: 'results-dedup',
     verified: 'llm',
   },
   // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
@@ -3013,7 +3013,7 @@ const cases = [
       'dedup_limit_max_cap',
       'dedup_timeseries_warning',
     ],
-    doc: 'timechart',
+    doc: 'reports-timechart',
     verified: 'llm',
   },
   // Gap #7 — >5 rex commands: warn about capture() limit
@@ -3021,7 +3021,7 @@ const cases = [
     spl: '* | rex field=f1 "(?<a>\\w+)" | rex field=f2 "(?<b>\\w+)" | rex field=f3 "(?<c>\\w+)" | rex field=f4 "(?<d>\\w+)" | rex field=f5 "(?<e>\\w+)" | rex field=f6 "(?<f>\\w+)"',
     nrql: "FROM Log WITH capture(f1, r'.*(?P<a>\\w+).*') AS (a), capture(f2, r'.*(?P<b>\\w+).*') AS (b), capture(f3, r'.*(?P<c>\\w+).*') AS (c), capture(f4, r'.*(?P<d>\\w+).*') AS (d), capture(f5, r'.*(?P<e>\\w+).*') AS (e), capture(f6, r'.*(?P<f>\\w+).*') AS (f) SELECT *",
     warningFunc: ['rex_capture_limit'],
-    doc: 'rex',
+    doc: 'fields-rex',
     verified: 'llm',
   },
   // Gap #13 — split() multi-char delimiter
@@ -3029,7 +3029,7 @@ const cases = [
     spl: '* | eval parts = split(field, "},{")',
     nrql: "FROM Log WITH split(field, '},{') AS parts SELECT *",
     warningFunc: ['split_multi_char_delimiter'],
-    doc: 'eval',
+    doc: 'fields-eval-arithmetic',
     verified: 'llm',
   },
   // Gap #3 — cascading mvexpand
@@ -3037,28 +3037,28 @@ const cases = [
     spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels',
     warningFunc: ['spath_json_only'],
     unsupportedFunc: ['mvexpand_unsupported', 'mvexpand_cascading'],
-    doc: 'mvexpand',
+    doc: 'unsupported-mvexpand',
     verified: 'llm',
   },
   // Gap #5 — mvzip unsupported
   {
     spl: '* | eval paired = mvzip(nodes, skus)',
     unsupportedFunc: ['mvzip_unsupported'],
-    doc: 'eval',
+    doc: 'fields-eval-arithmetic',
     verified: 'llm',
   },
   // Gap #22 — streamstats
   {
     spl: '* | streamstats count as row_num',
     unsupportedFunc: ['streamstats_unsupported'],
-    doc: 'streamstats',
+    doc: 'reports-streamstats',
     verified: 'llm',
   },
   // Gap #10 — kvparse / extract
   {
     spl: '* | extract',
     unsupportedFunc: ['kvparse_unsupported'],
-    doc: 'extract',
+    doc: 'fields-extract',
     verified: 'llm',
   },
   // Gap #15 — list() order not preserved
@@ -3066,7 +3066,7 @@ const cases = [
     spl: '* | stats list(eventType) by orderId',
     nrql: 'FROM Log SELECT uniques(eventType) FACET orderId',
     warningFunc: ['list_order_warning', 'facet_default_limit'],
-    doc: 'stats',
+    doc: 'reports-stats',
     verified: 'llm',
   },
   // Gap #4 — cross-expand field matching (two mvexpands on different fields)
@@ -3074,7 +3074,7 @@ const cases = [
     spl: '* | spath input=_raw output=validation path=validations{} | mvexpand validation | spath input=_raw output=sku_data path=items{} | mvexpand sku_data',
     warningFunc: ['spath_json_only'],
     unsupportedFunc: ['mvexpand_unsupported', 'mvexpand_cascading'],
-    doc: 'mvexpand',
+    doc: 'unsupported-mvexpand',
     verified: 'llm',
   },
   // Gap #12 — FACET default 10 warning
@@ -3082,7 +3082,7 @@ const cases = [
     spl: '* | stats count by host',
     nrql: 'FROM Log SELECT count(*) FACET host',
     warningFunc: ['facet_default_limit'],
-    doc: 'stats',
+    doc: 'reports-stats',
     verified: 'llm',
   },
   // Gap #16 — append workaround hint
@@ -3096,7 +3096,7 @@ const cases = [
   {
     spl: '* | eval combined = coalesce(msg, message)',
     nrql: 'FROM Log WITH (msg OR message) AS combined SELECT *',
-    doc: 'eval',
+    doc: 'fields-eval-arithmetic',
     verified: 'llm',
   },
   // Gap #18 — multi-column ORDER BY (already covered by sort_single_field)
@@ -3104,7 +3104,7 @@ const cases = [
     spl: '* | sort host, -duration',
     nrql: 'FROM Log SELECT * ORDER BY host ASC',
     warningFunc: ['sort_single_field'],
-    doc: 'sort',
+    doc: 'results-sort',
     verified: 'llm',
   },
 
@@ -3122,7 +3122,7 @@ const cases = [
     skip: true,
     spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels | spath input=channels path=Name output=channelName',
     nrql: 'FIXME: should emit nested FROM with EXPAND at each level',
-    doc: 'mvexpand',
+    doc: 'unsupported-mvexpand',
     verified: false,
   },
   // Gap #2 — FIXME: dedup + timechart should emit nested subquery approach
@@ -3151,7 +3151,7 @@ const cases = [
     skip: true,
     spl: '(routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as completionRate span=1m',
     nrql: 'FIXME: needs grammar change for timechart eval(), then nested FROM (SELECT latest(routeName) AS lastRoute FACET userId LIMIT MAX) with filter/count formula + warnings',
-    doc: 'dedup',
+    doc: 'results-dedup',
     verified: false,
   },
 
@@ -3165,7 +3165,7 @@ const cases = [
     skip: true,
     spl: '* | stats count by validations{}.code',
     nrql: "FROM Log SELECT count(val) EXPAND jparse(validations) AS val FACET getField(val, 'code') LIMIT MAX",
-    doc: 'stats',
+    doc: 'reports-stats',
     verified: false,
   },
 
@@ -3177,7 +3177,7 @@ const cases = [
     skip: true,
     spl: '* | eval last = mvindex(result, -1)',
     unsupportedFunc: ['mvindex_last_element'],
-    doc: 'eval',
+    doc: 'fields-eval-arithmetic',
     verified: false,
   },
 
@@ -3305,13 +3305,14 @@ const cases = [
   },
   {
     spl: 'index=web | where _time < relative_time(now(), "-1d")',
-    nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 24 hours ago UNTIL 1 day ago",
+    unsupportedFunc: ['where_time_past_upper_bound_unsupported'],
     doc: 'where-comparison-rhs',
     verified: false,
   },
   {
     spl: 'index=web | where _time < now()',
-    nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 24 hours ago UNTIL now",
+    nrql: "FROM Log SELECT * WHERE index = 'web'",
+    warningFunc: ['where_time_tautology_dropped'],
     doc: 'where-comparison-rhs',
     verified: false,
   },
@@ -3896,15 +3897,37 @@ afterAll(() => {
     return match;
   });
 
-  // Warn (don't error) about tags with no sentinel — these are in table sections
+  // AI-DEV: This check MUST throw, not warn. A doc: tag with no sentinel AND no
+  // spl-table-tags declaration is documentation rot — the tag points at a section
+  // that does not exist. Do NOT downgrade this throw back to console.warn (or add
+  // a blanket skip) without explicit human permission: a warning is how this
+  // rotted to ~40 orphans before. Every doc: tag MUST either (a) have a
+  // <!-- spl-cases: TAG --> / <!-- spl-table: TAG --> sentinel, or (b) be listed
+  // in the <!-- spl-table-tags: ... --> directive (parser-leniency / regression
+  // groupings that intentionally have no generated section). Fix the cause:
+  // add a sentinel, add the tag to spl-table-tags, or delete the dead tag.
+  const tableTagsMatch = doc.match(/<!-- spl-table-tags: ([^>]+?) -->/);
+  const declaredTableTags = new Set(
+    tableTagsMatch
+      ? tableTagsMatch[1]
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [],
+  );
   const orphanedTags = [];
   const docTags = new Set(Object.keys(groups));
   for (const tag of docTags) {
-    if (!foundTags.has(tag)) orphanedTags.push(tag);
+    if (!foundTags.has(tag) && !declaredTableTags.has(tag)) {
+      orphanedTags.push(tag);
+    }
   }
   if (orphanedTags.length > 0) {
-    console.warn(
-      `Doc tags with no sentinel in SPL_TO_NRQL.md (in tables): ${orphanedTags.join(', ')}`,
+    throw new Error(
+      `Doc tag(s) with no <!-- spl-cases/spl-table --> sentinel and not in ` +
+        `<!-- spl-table-tags --> in SPL_TO_NRQL.md: ${orphanedTags.join(', ')}. ` +
+        `Add a sentinel section, add the tag to the spl-table-tags directive, ` +
+        `or remove the dead doc: tag from its test case(s).`,
     );
   }
 
