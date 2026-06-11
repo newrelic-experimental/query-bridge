@@ -9,6 +9,7 @@ export default [
       'dist/',
       'tmp/',
       'coverage/',
+      'types/',
     ],
   },
   js.configs.recommended,
@@ -43,6 +44,18 @@ export default [
         beforeAll: 'readonly',
         afterAll: 'readonly',
         vi: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['docs/playground/**/*.js'],
+    languageOptions: {
+      globals: {
+        document: 'readonly',
+        window: 'readonly',
+        location: 'readonly',
+        clearTimeout: 'readonly',
+        setTimeout: 'readonly',
       },
     },
   },

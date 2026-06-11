@@ -2,6 +2,12 @@
  * nr-query-bridge — Multi-language query translator.
  */
 
+/**
+ * Re-exported public types.
+ * @typedef {import('./translate.js').TranslateResult} TranslateResult
+ * @typedef {import('./ir/nodes.js').IRNode} IRNode
+ */
+
 // SPL → NRQL translator
 export { translateSplToNrql } from './translate.js';
 

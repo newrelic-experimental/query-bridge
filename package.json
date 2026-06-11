@@ -4,15 +4,20 @@
   "type": "module",
   "description": "Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino",
   "main": "src/index.js",
+  "types": "types/src/index.d.ts",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./types/src/index.d.ts",
+      "import": "./src/index.js"
+    }
   },
   "bin": {
     "spl2nrql": "./bin/spl2nrql.js"
   },
   "files": [
     "src/",
-    "bin/"
+    "bin/",
+    "types/"
   ],
   "engines": {
     "node": ">=20"
@@ -30,9 +35,10 @@
     "name": "Logging Team"
   },
   "scripts": {
-    "prepublishOnly": "npm test",
+    "prepublishOnly": "npm test && npm run build:types",
     "test": "vitest run",
     "build:parsers": "peggy -o src/input/spl/splParser.js --format es src/input/spl/spl.grammar",
+    "build:types": "tsc --declaration --emitDeclarationOnly --noEmit false --outDir types",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

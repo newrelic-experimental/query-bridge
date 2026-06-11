@@ -4,11 +4,12 @@
     "allowJs": true,
     "noEmit": true,
     "strict": false,
-    "module": "ESNext",
-    "moduleResolution": "node",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "target": "ES2022",
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["src/**/*.js", "bin/**/*.js"],
   "exclude": ["src/input/spl/splParser.js", "node_modules", "dist", "tmp"]

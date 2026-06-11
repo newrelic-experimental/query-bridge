@@ -1,0 +1,21 @@
+project_name: nr-query-bridge
+
+identity:
+  owning_team: Logging
+
+slack_channel: logging-notifications
+
+# This is a publishable npm library, not a deployed service — CI checks only,
+# no deploy and no artifact publish.
+deploy_mechanism: none
+
+# test_suites opts the repo into Grand Central PR jobs. Each suite becomes a
+# named status check on every pull request. Unlike `build:`, test_suites does
+# not require a publish step — it just runs the command.
+test_suites:
+  - name: Lint, Types & Tests
+    # Lint, typecheck, and the full vitest suite. Mirrors the local checks.
+    command: npm ci && npm run lint && npm run types:check && npm test
+    environment:
+      # Node 24 on the approved base-ubuntu:24.04 image (no approved base-node:24).
+      dockerfile: Dockerfile.gc

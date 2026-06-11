@@ -3939,7 +3939,22 @@ afterAll(() => {
     return `<!-- toc -->\n${headings.join('\n')}\n<!-- /toc -->`;
   });
 
-  fs.writeFileSync(DOC_PATH, doc);
+  // In CI (CI=true, set by Grand Central/most CI), do NOT write — instead
+  // assert the committed doc already matches the generated output, so a stale
+  // SPL_TO_NRQL.md fails the build loudly instead of silently dirtying the
+  // git workspace. Locally, write the file so contributors regenerate on
+  // `npm test` as before.
+  if (process.env.CI) {
+    const current = fs.readFileSync(DOC_PATH, 'utf8');
+    if (current !== doc) {
+      throw new Error(
+        'docs/SPL_TO_NRQL.md is out of date. Run `npm test` locally and commit ' +
+          'the regenerated docs/SPL_TO_NRQL.md.',
+      );
+    }
+  } else {
+    fs.writeFileSync(DOC_PATH, doc);
+  }
 });
 
 // ── parseSplTime tests ──────────────────────────────────────────
