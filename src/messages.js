@@ -238,6 +238,38 @@ export const messages = {
   inputlookup_where_warning: () =>
     'inputlookup WHERE condition translated as-is; verify field names match the lookup table schema',
 
+  // SPL: `| where _time >= now()`
+  where_time_future_bound_unsupported: () =>
+    "where _time >= now() makes no sense. NRDB doesn't allow future-dated events, so there are no events >= now.",
+
+  // SPL: `| where _time = now()`
+  where_time_point_unsupported: () =>
+    "where _time = now() makes no sense. NRDB doesn't allow future-dated events, so there are no events = now.",
+
+  // SPL: `| where _time < now()` / `<= now()`
+  where_time_tautology_dropped: () =>
+    'where _time < now() is a tautology (NRDB stores no future-dated events, so every event precedes now); constraint dropped',
+
+  // SPL: `| where _time < relative_time(now(), "-1d")`
+  where_time_past_upper_bound_unsupported: () =>
+    'where _time < <past time> has no NRQL equivalent: an UNTIL in the past with no lower bound inverts the default window, and any invented SINCE would be wrong',
+
+  // SPL: `| where _time > relative_time(eventField, "-1d")`
+  where_relative_time_nonliteral_unsupported: () =>
+    'relative_time() with a non-now() anchor is a per-event value, not a static SINCE/UNTIL bound',
+
+  // SPL: `| where created < now()`
+  where_nontime_relative_unsupported: () =>
+    'comparison of a non-_time field against now()/relative_time() has no NRQL equivalent (now() is rejected in WHERE)',
+
+  // SPL: `| where _time > relative_time(now(), "-7d")` when earliest=/latest= already set
+  where_time_constraints_collapsed: () =>
+    'multiple time constraints collapsed into one SINCE/UNTIL (last-writer-wins)',
+
+  // SPL: `index=web | where bytes > jparse(payload, "size")`
+  where_rhs_func_not_row_wise: (name) =>
+    `${name}() is not supported on a comparison's right-hand side.`,
+
   // ── splExprUtils mapFunction warnings ────────────────────────────
 
   // SPL: `* | stats stdevp(latency) by host`

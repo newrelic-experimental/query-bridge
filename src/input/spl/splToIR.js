@@ -65,6 +65,50 @@ import {
   handleEventstats,
 } from './aggregationHandlers.js';
 
+// NRQL functions NOT implemented in the row-wise (per-event) evaluator. They
+// compile in some aggregation contexts but fail `Not supported: Call <fn>` on a
+// WHERE comparison RHS. Verified via MCP 2026-06-10.
+const ROW_WISE_UNIMPLEMENTED = new Set([
+  'jparse',
+  'convert',
+  'cidrAddress',
+  'toTimestamp',
+  'toDatetime',
+  'decode',
+  'encode',
+  'mapKeys',
+  'mapValues',
+  'lookup',
+  'blob',
+]);
+
+// Find the first unimplemented-on-RHS function name anywhere in a SPL AST
+// expression node, or null if none. SPL AST functions use type 'EvalFunc' or
+// 'FunctionCall' with a 'name' field. Recurses into args and binary sides.
+function findUnimplementedRhsFuncInAst(node) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.type === 'EvalFunc' || node.type === 'FunctionCall') {
+    const name = typeof node.name === 'string' ? node.name.toLowerCase() : '';
+    if (ROW_WISE_UNIMPLEMENTED.has(name)) return name;
+    for (const a of node.args || []) {
+      const hit = findUnimplementedRhsFuncInAst(a);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  for (const key of ['left', 'right', 'operand', 'inner', 'value']) {
+    if (node[key]) {
+      const hit = findUnimplementedRhsFuncInAst(node[key]);
+      if (hit) return hit;
+    }
+  }
+  for (const a of node.args || []) {
+    const hit = findUnimplementedRhsFuncInAst(a);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /**
  * Main entry: translate a parsed SPL AST into an IR query plan.
  */
@@ -154,6 +198,10 @@ export function translateSearchExpr(node, ir) {
   const unsupported = [];
   let since = null;
   let until = null;
+  // True once a `where _time ...` clause has been fully handled — as SINCE/UNTIL,
+  // as a tautology drop, or as unsupported. Distinguishes "consumed, emit no WHERE
+  // term" from "produced no IR", so the caller won't re-walk via the eval fallback.
+  let consumedTime = false;
 
   function walk(node) {
     if (!node) return null;
@@ -175,6 +223,134 @@ export function translateSearchExpr(node, ir) {
       }
 
       case 'Comparison': {
+        // New typed-node RHS (grammar `field op u_add`). Branch before the
+        // legacy flat-`value` path, which assumes `value` is a string.
+        if (node.rhsExpr) {
+          const op = node.operator;
+          const field = node.field;
+          const rhs = node.rhsExpr;
+          // Path 1: time-window. `_time` vs relative_time()/now() → SINCE/UNTIL.
+          const isFunc =
+            rhs && typeof rhs === 'object' && rhs.type === 'EvalFunc';
+          const fnName = isFunc ? rhs.name.toLowerCase() : null;
+          if (
+            field === '_time' &&
+            (fnName === 'relative_time' || fnName === 'now')
+          ) {
+            // This `_time` clause is consumed here (as SINCE/UNTIL, tautology
+            // drop, or unsupported) — never as a WHERE term. Signal the caller.
+            consumedTime = true;
+            const isLower = op === '>' || op === '>=';
+            const isUpper = op === '<' || op === '<=';
+
+            // now() RHS
+            if (fnName === 'now') {
+              if (isUpper) {
+                // `_time < now()` / `<= now()` is a tautology: NRDB stores no
+                // future-dated events, so every event precedes now. It filters
+                // nothing — drop it (warn so the dropped clause is visible).
+                warnings.push(messages.where_time_tautology_dropped());
+                return null;
+              }
+              if (isLower) {
+                unsupported.push(
+                  messages.where_time_future_bound_unsupported(),
+                );
+              } else {
+                unsupported.push(messages.where_time_point_unsupported());
+              }
+              return null;
+            }
+
+            // relative_time(now(), "<offset>")
+            const [anchor, offsetNode] = rhs.args;
+            const anchorIsNow =
+              anchor &&
+              typeof anchor === 'object' &&
+              anchor.type === 'EvalFunc' &&
+              anchor.name.toLowerCase() === 'now';
+            const offset =
+              offsetNode &&
+              typeof offsetNode === 'object' &&
+              offsetNode.type === 'StringLiteral'
+                ? offsetNode.value
+                : null;
+            if (!anchorIsNow || offset === null) {
+              unsupported.push(
+                messages.where_relative_time_nonliteral_unsupported(),
+              );
+              return null;
+            }
+            const { nrql, warning } = parseSplTime(offset);
+            if (warning) warnings.push(warning);
+            if (!nrql) {
+              unsupported.push(
+                messages.where_relative_time_nonliteral_unsupported(),
+              );
+              return null;
+            }
+            if (isLower && since) {
+              warnings.push(messages.where_time_constraints_collapsed());
+            }
+            if (isLower) {
+              since = nrql;
+            } else if (isUpper) {
+              // A past upper bound (UNTIL <past>) with no lower bound inverts
+              // NRQL's default window (default SINCE is 1 hour ago), so the
+              // query won't compile and any invented SINCE would be wrong.
+              // (`_time < now()` is a tautology, handled above as drop+warn.)
+              unsupported.push(
+                messages.where_time_past_upper_bound_unsupported(),
+              );
+            } else {
+              unsupported.push(messages.where_time_point_unsupported());
+            }
+            return null;
+          }
+          // Path 2a: non-_time field vs now()/relative_time → unsupported.
+          // (Path 1 already returned for _time; here field !== '_time'.)
+          if (fnName === 'now' || fnName === 'relative_time') {
+            unsupported.push(messages.where_nontime_relative_unsupported());
+            return null;
+          }
+          // Reversed operands: `.25 > count` — left is a numeric literal, not
+          // a field. The eval walker's looksLikeNumber misses leading-decimal
+          // literals like `.25`, so handle this sub-case before delegating.
+          const leftLooksNumeric = /^-?(\d+\.\d+|\.\d+|\d+)$/.test(field);
+          if (leftLooksNumeric) {
+            const numLit = RawNrql(field);
+            const right = walkEvalExpr(node.rhsExpr, ir);
+            if (!right) return null;
+            const numRight =
+              op === '=' || op === '!='
+                ? right
+                : right.type === 'Identifier'
+                  ? Func('numeric', [right])
+                  : right;
+            return BinOp(op, numLit, numRight);
+          }
+          // Path 2b: general expression RHS → BinOp via the eval walker.
+          // walkEvalExpr handles numeric coercion + loud failure; reuse its
+          // EvalComparison semantics by building an EvalComparison and walking it.
+          const cmpNode = {
+            type: 'EvalComparison',
+            op,
+            left: field === '_time' ? '_time' : field,
+            right: node.rhsExpr,
+          };
+          // Gate: reject RHS expressions containing functions NRQL can't
+          // evaluate row-wise (would emit non-compiling NRQL). Check the SPL
+          // AST before walking so only one unsupported message fires.
+          const badFn = findUnimplementedRhsFuncInAst(node.rhsExpr);
+          if (badFn) {
+            unsupported.push(messages.where_rhs_func_not_row_wise(badFn));
+            return null;
+          }
+          const expr = walkEvalExpr(cmpNode, ir);
+          if (!expr) return null; // walker already pushed unsupported
+          return expr;
+        }
+
         let { field, value, operator: op } = node;
 
         // Reversed operands: `.25 > count` parses `.25` into the field slot and
@@ -392,7 +568,7 @@ export function translateSearchExpr(node, ir) {
   }
 
   const expr = walk(node);
-  return { expr, warnings, unsupported, since, until };
+  return { expr, warnings, unsupported, since, until, consumedTime };
 }
 
 // ── Command dispatch ─────────────────────────────────────────

@@ -20,6 +20,7 @@ Requires Node 24: `ASDF_NODEJS_VERSION=24.14.0 <command>`
 
 ```
 npm run test                    # unit tests (vitest)
+npm run test -- spl             # filter to matching files (Vitest positional; NOT Jest --testPathPattern)
 npm run lint                    # ESLint
 npm run lint:fix                # ESLint with auto-fix
 npm run format                  # Prettier write
@@ -99,8 +100,8 @@ ESLint (flat config), Prettier, TypeScript checkJs. Husky pre-commit runs lint-s
 - `spl` — input SPL query
 - `nrql` — expected NRQL output
 - `errorIncludes` — substring expected in errors
-- `warningIncludes` — substring expected in warnings
-- `unsupportedIncludes` — substring expected in unsupported messages
+- `warningFunc` — exhaustive array of message keys (from `src/messages.js`) expected in warnings
+- `unsupportedFunc` — exhaustive array of message keys expected in unsupported messages
 - `doc` — tag linking to SPL_TO_NRQL.md sentinel section (optional for table-ified commands)
 - `verified` — verification level (see below)
 - `skip` — skip this test case

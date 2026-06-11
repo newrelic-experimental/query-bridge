@@ -287,6 +287,18 @@ where_comparison
     {
       return { type: 'Comparison', field: field, operator: 'like', value: value };
     }
+  / field:field_name _* op:comparison_op _* rhs:u_add
+    &{
+      // Route through rhsExpr ONLY for non-literal RHS (field/func/arith/parens).
+      // A lone number string or a lone StringLiteral must backtrack to where_value
+      // so existing literal-RHS cases keep their legacy translation untouched.
+      if (rhs && typeof rhs === 'object' && rhs.type === 'StringLiteral') return false;
+      if (typeof rhs === 'string' && /^[0-9]/.test(rhs)) return false;
+      return true;
+    }
+    {
+      return { type: 'Comparison', field: field, operator: op, rhsExpr: rhs };
+    }
   / field:field_name _* op:comparison_op _* value:where_value
     {
       return { type: 'Comparison', field: field, operator: op, value: value };

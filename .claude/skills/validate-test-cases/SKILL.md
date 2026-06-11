@@ -44,9 +44,11 @@ Ask the NRQL expert to:
 1. Confirm the NRQL achieves the **same intent** as the SPL (even if the mechanism is wildly different)
 2. Flag any NRQL syntax issues, wrong functions, or semantic differences
 3. Note if the translation is a reasonable approximation with caveats vs. fundamentally wrong
-4. For cases with `warningIncludes` or `unsupportedIncludes`, confirm the warning/unsupported message is appropriate
+4. For cases with `warningFunc` or `unsupportedFunc`, confirm the warning/unsupported message is appropriate
 
 **Key principle:** The NRQL doesn't need to be a literal translation. It needs to answer the same question the SPL user was asking.
+
+**Before flagging any translation as a defect, check whether it's settled behavior.** `grep` `test/spl/spl.test.js` for the construct and look for a `verified: 'human'` case, and check the relevant `src/input/spl/*Handlers.js` for a deliberate mapping. If a human already approved it (or a handler maps it on purpose), it is NOT a defect — it's intended. This catches the recurring failure mode of applying a SQL/boolean prior to NRQL's un-SQL-like semantics (e.g. `OR` value-coalesces; `WITH`/`FACET` alias rules) and crying bug on a correct mapping. When the divergence rests on NRQL behavior you're inferring rather than know, confirm with the live compiler (`execute_nrql_query`); if the NR MCP is disconnected, two agents agreeing on docs is corroboration, not proof — record the verdict as pending, don't assert it as fact.
 
 #### Step 3: NRQL Validation (Opus subagent)
 
@@ -58,7 +60,7 @@ For each case that has an `nrql` field:
 3. Classify: SUCCESS (compiled, even if 0 rows) or FAILURE (syntax/semantic error)
 4. For failures, report the exact error message
 
-For cases that only have `errorIncludes`, `warningIncludes`, or `unsupportedIncludes` (no `nrql`), skip MCP validation — these are expected-failure cases.
+For cases that only have `errorIncludes`, `warningFunc`, or `unsupportedFunc` (no `nrql`), skip MCP validation — these are expected-failure cases. (Note: `warningIncludes`/`unsupportedIncludes` are NOT implemented by the runner — only `errorIncludes` (substring) and `warningFunc`/`unsupportedFunc` (exhaustive message-key arrays) are asserted.)
 
 #### Step 4: Update Verification Status
 
@@ -93,7 +95,7 @@ For each case, collect:
 1. **Line number** where the test case starts in `test/spl/spl.test.js`
 2. **SPL** — the `spl` field
 3. **NRQL** — the `nrql` field (or "_(unsupported — no NRQL emitted)_" if absent)
-4. **Full message text** — look up the message key used in `warningIncludes`/`unsupportedIncludes`/`errorIncludes` and find the full message text from `src/messages.js`. Show the complete rendered message, not just the substring.
+4. **Full message text** — look up the message key used in `warningFunc`/`unsupportedFunc`/`errorIncludes` and find the full message text from `src/messages.js`. Show the complete rendered message, not just the substring.
 5. **FIXMEs/TODOs** — any FIXME or TODO comments in the lines above the test case
 6. **Current verified status** — should be `'llm'`
 

@@ -3001,7 +3001,7 @@ const cases = [
     spl: '* | dedup userId | stats count by routeName',
     nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) FACET routeName LIMIT MAX',
     warningFunc: ['dedup_facet_warning', 'dedup_limit_max_cap'],
-    doc: 'dedup',
+    doc: 'results-dedup',
     verified: 'llm',
   },
   // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
@@ -3013,7 +3013,7 @@ const cases = [
       'dedup_limit_max_cap',
       'dedup_timeseries_warning',
     ],
-    doc: 'timechart',
+    doc: 'reports-timechart',
     verified: 'llm',
   },
   // Gap #7 — >5 rex commands: warn about capture() limit
@@ -3021,7 +3021,7 @@ const cases = [
     spl: '* | rex field=f1 "(?<a>\\w+)" | rex field=f2 "(?<b>\\w+)" | rex field=f3 "(?<c>\\w+)" | rex field=f4 "(?<d>\\w+)" | rex field=f5 "(?<e>\\w+)" | rex field=f6 "(?<f>\\w+)"',
     nrql: "FROM Log WITH capture(f1, r'.*(?P<a>\\w+).*') AS (a), capture(f2, r'.*(?P<b>\\w+).*') AS (b), capture(f3, r'.*(?P<c>\\w+).*') AS (c), capture(f4, r'.*(?P<d>\\w+).*') AS (d), capture(f5, r'.*(?P<e>\\w+).*') AS (e), capture(f6, r'.*(?P<f>\\w+).*') AS (f) SELECT *",
     warningFunc: ['rex_capture_limit'],
-    doc: 'rex',
+    doc: 'fields-rex',
     verified: 'llm',
   },
   // Gap #13 — split() multi-char delimiter
@@ -3029,7 +3029,7 @@ const cases = [
     spl: '* | eval parts = split(field, "},{")',
     nrql: "FROM Log WITH split(field, '},{') AS parts SELECT *",
     warningFunc: ['split_multi_char_delimiter'],
-    doc: 'eval',
+    doc: 'fields-eval-arithmetic',
     verified: 'llm',
   },
   // Gap #3 — cascading mvexpand
@@ -3037,28 +3037,28 @@ const cases = [
     spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels',
     warningFunc: ['spath_json_only'],
     unsupportedFunc: ['mvexpand_unsupported', 'mvexpand_cascading'],
-    doc: 'mvexpand',
+    doc: 'unsupported-mvexpand',
     verified: 'llm',
   },
   // Gap #5 — mvzip unsupported
   {
     spl: '* | eval paired = mvzip(nodes, skus)',
     unsupportedFunc: ['mvzip_unsupported'],
-    doc: 'eval',
+    doc: 'fields-eval-arithmetic',
     verified: 'llm',
   },
   // Gap #22 — streamstats
   {
     spl: '* | streamstats count as row_num',
     unsupportedFunc: ['streamstats_unsupported'],
-    doc: 'streamstats',
+    doc: 'reports-streamstats',
     verified: 'llm',
   },
   // Gap #10 — kvparse / extract
   {
     spl: '* | extract',
     unsupportedFunc: ['kvparse_unsupported'],
-    doc: 'extract',
+    doc: 'fields-extract',
     verified: 'llm',
   },
   // Gap #15 — list() order not preserved
@@ -3066,7 +3066,7 @@ const cases = [
     spl: '* | stats list(eventType) by orderId',
     nrql: 'FROM Log SELECT uniques(eventType) FACET orderId',
     warningFunc: ['list_order_warning', 'facet_default_limit'],
-    doc: 'stats',
+    doc: 'reports-stats',
     verified: 'llm',
   },
   // Gap #4 — cross-expand field matching (two mvexpands on different fields)
@@ -3074,7 +3074,7 @@ const cases = [
     spl: '* | spath input=_raw output=validation path=validations{} | mvexpand validation | spath input=_raw output=sku_data path=items{} | mvexpand sku_data',
     warningFunc: ['spath_json_only'],
     unsupportedFunc: ['mvexpand_unsupported', 'mvexpand_cascading'],
-    doc: 'mvexpand',
+    doc: 'unsupported-mvexpand',
     verified: 'llm',
   },
   // Gap #12 — FACET default 10 warning
@@ -3082,7 +3082,7 @@ const cases = [
     spl: '* | stats count by host',
     nrql: 'FROM Log SELECT count(*) FACET host',
     warningFunc: ['facet_default_limit'],
-    doc: 'stats',
+    doc: 'reports-stats',
     verified: 'llm',
   },
   // Gap #16 — append workaround hint
@@ -3096,7 +3096,7 @@ const cases = [
   {
     spl: '* | eval combined = coalesce(msg, message)',
     nrql: 'FROM Log WITH (msg OR message) AS combined SELECT *',
-    doc: 'eval',
+    doc: 'fields-eval-arithmetic',
     verified: 'llm',
   },
   // Gap #18 — multi-column ORDER BY (already covered by sort_single_field)
@@ -3104,7 +3104,7 @@ const cases = [
     spl: '* | sort host, -duration',
     nrql: 'FROM Log SELECT * ORDER BY host ASC',
     warningFunc: ['sort_single_field'],
-    doc: 'sort',
+    doc: 'results-sort',
     verified: 'llm',
   },
 
@@ -3122,7 +3122,7 @@ const cases = [
     skip: true,
     spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels | spath input=channels path=Name output=channelName',
     nrql: 'FIXME: should emit nested FROM with EXPAND at each level',
-    doc: 'mvexpand',
+    doc: 'unsupported-mvexpand',
     verified: false,
   },
   // Gap #2 — FIXME: dedup + timechart should emit nested subquery approach
@@ -3151,7 +3151,7 @@ const cases = [
     skip: true,
     spl: '(routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as completionRate span=1m',
     nrql: 'FIXME: needs grammar change for timechart eval(), then nested FROM (SELECT latest(routeName) AS lastRoute FACET userId LIMIT MAX) with filter/count formula + warnings',
-    doc: 'dedup',
+    doc: 'results-dedup',
     verified: false,
   },
 
@@ -3165,7 +3165,7 @@ const cases = [
     skip: true,
     spl: '* | stats count by validations{}.code',
     nrql: "FROM Log SELECT count(val) EXPAND jparse(validations) AS val FACET getField(val, 'code') LIMIT MAX",
-    doc: 'stats',
+    doc: 'reports-stats',
     verified: false,
   },
 
@@ -3177,7 +3177,7 @@ const cases = [
     skip: true,
     spl: '* | eval last = mvindex(result, -1)',
     unsupportedFunc: ['mvindex_last_element'],
-    doc: 'eval',
+    doc: 'fields-eval-arithmetic',
     verified: false,
   },
 
@@ -3277,6 +3277,150 @@ const cases = [
     spl: 'index=x | where count != 5',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND count != '5' AND numeric(count) != 5",
     doc: 'where-bang-regression',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where in_bytes > out_bytes',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(in_bytes) > numeric(out_bytes)",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where a > b + 1',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(a) > numeric(b) + 1",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where bytes > round(total / 100, 2)',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(bytes) > round(numeric(total) / 100, 0.01)",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where _time > relative_time(now(), "-7d")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 7 days ago",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where _time < relative_time(now(), "-1d")',
+    unsupportedFunc: ['where_time_past_upper_bound_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where _time < now()',
+    nrql: "FROM Log SELECT * WHERE index = 'web'",
+    warningFunc: ['where_time_tautology_dropped'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where created < now()',
+    unsupportedFunc: ['where_nontime_relative_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where bytes > jparse(payload, "size")',
+    unsupportedFunc: ['where_rhs_func_not_row_wise'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+
+  // ── where-comparison-rhs regression cases ──────────────────────────
+  {
+    // plain numeric value: lone literal on RHS, clean output, no messages
+    spl: 'index=web status > 200',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(status) > 200",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // bare field RHS: in where/eval an UNQUOTED rhs is a FIELD NAME (Splunk
+    // docs), so `status = foo` is a field-to-field comparison → NRQL `status = foo`
+    // (an attribute reference), NOT the string 'foo'. Quoting it would be wrong.
+    spl: 'index=web | where status = foo',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND status = foo",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // function on LHS (where_func_comparison rule): mvcount → length, fires eval_length_warning
+    spl: 'index=web | where mvcount(tags) > 1',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(length(tags)) > 1",
+    warningFunc: ['eval_length_warning'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // outer AND is NOT swallowed by the u_add RHS rule
+    spl: 'index=web | where a > b AND c < d',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(a) > numeric(b) AND numeric(c) < numeric(d)",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // subsearch with a `search`-COMMAND comparison: `in_bytes > out_bytes` is a
+    // search term, not a where pipe, so it correctly does NOT get the new RHS rule
+    // (search treats an unquoted RHS as a string — see spl-reference). This is the
+    // expected search-vs-where distinction, not a gap. Captured as-is.
+    spl: 'index=web [ search in_bytes > out_bytes ]',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND in_bytes > 'out_bytes'",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // subsearch with a `| where` PIPE: the re-parse DOES apply the new RHS rule
+    // (the subsearch body is re-parsed through the same grammar). Proves the
+    // spec's "reaches inside subsearches" claim for where pipes specifically.
+    spl: 'index=web [ search index=x | where in_bytes > out_bytes ]',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND index = 'x' AND numeric(in_bytes) > numeric(out_bytes)",
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    // reversed-operand (numeric literal LHS) with a row-wise-unimplemented fn on
+    // the RHS: NOT caught by the Task 6 gate (that gates the main Path 2b), but
+    // still fails LOUD via the eval walker's own unknown-function handling — no
+    // non-compiling NRQL leaks. Locks in the safe behavior.
+    spl: 'index=web | where 0.25 > jparse(payload, "x")',
+    unsupportedFunc: ['eval_func_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+
+  // ── where-comparison-rhs unsupported cases ─────────────────────────
+  {
+    spl: 'index=web | where _time >= now()',
+    unsupportedFunc: ['where_time_future_bound_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where _time = now()',
+    unsupportedFunc: ['where_time_point_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where _time > relative_time(eventField, "-1d")',
+    unsupportedFunc: ['where_relative_time_nonliteral_unsupported'],
+    doc: 'where-comparison-rhs',
+    verified: false,
+  },
+
+  // ── where-comparison-rhs collapsed-constraint warning ──────────────
+  {
+    // Two lower-bound constraints in same where → collapse warning (last-writer-wins)
+    // NOTE: earliest=+where in separate pipeline stages does NOT trigger this warning
+    // because each stage runs translateSearchExpr with a fresh local `since` variable.
+    // The collapse only fires when two _time constraints appear in the same expression.
+    spl: 'index=web | where _time > relative_time(now(), "-7d") AND _time > relative_time(now(), "-1d")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 1 day ago",
+    warningFunc: ['where_time_constraints_collapsed'],
+    doc: 'where-comparison-rhs',
     verified: false,
   },
 
@@ -3753,15 +3897,37 @@ afterAll(() => {
     return match;
   });
 
-  // Warn (don't error) about tags with no sentinel — these are in table sections
+  // AI-DEV: This check MUST throw, not warn. A doc: tag with no sentinel AND no
+  // spl-table-tags declaration is documentation rot — the tag points at a section
+  // that does not exist. Do NOT downgrade this throw back to console.warn (or add
+  // a blanket skip) without explicit human permission: a warning is how this
+  // rotted to ~40 orphans before. Every doc: tag MUST either (a) have a
+  // <!-- spl-cases: TAG --> / <!-- spl-table: TAG --> sentinel, or (b) be listed
+  // in the <!-- spl-table-tags: ... --> directive (parser-leniency / regression
+  // groupings that intentionally have no generated section). Fix the cause:
+  // add a sentinel, add the tag to spl-table-tags, or delete the dead tag.
+  const tableTagsMatch = doc.match(/<!-- spl-table-tags: ([^>]+?) -->/);
+  const declaredTableTags = new Set(
+    tableTagsMatch
+      ? tableTagsMatch[1]
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [],
+  );
   const orphanedTags = [];
   const docTags = new Set(Object.keys(groups));
   for (const tag of docTags) {
-    if (!foundTags.has(tag)) orphanedTags.push(tag);
+    if (!foundTags.has(tag) && !declaredTableTags.has(tag)) {
+      orphanedTags.push(tag);
+    }
   }
   if (orphanedTags.length > 0) {
-    console.warn(
-      `Doc tags with no sentinel in SPL_TO_NRQL.md (in tables): ${orphanedTags.join(', ')}`,
+    throw new Error(
+      `Doc tag(s) with no <!-- spl-cases/spl-table --> sentinel and not in ` +
+        `<!-- spl-table-tags --> in SPL_TO_NRQL.md: ${orphanedTags.join(', ')}. ` +
+        `Add a sentinel section, add the tag to the spl-table-tags directive, ` +
+        `or remove the dead doc: tag from its test case(s).`,
     );
   }
 
