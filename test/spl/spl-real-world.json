@@ -1,0 +1,36 @@
+[
+  { "spl": "index=web status=500 | stats count by host" },
+  { "spl": "index=app sourcetype=access_combined | timechart span=1m count" },
+  {
+    "spl": "index=main | eval latency=round(duration/1000) | stats avg(latency) by service"
+  },
+  { "spl": "index=infra | dedup userId | stats count by region" },
+  { "spl": "index=api error=* | top limit=10 endpoint" },
+  {
+    "spl": "index=logs | rex field=_raw \"user=(?<user>\\w+)\" | stats count by user"
+  },
+  { "spl": "index=metrics | where value > 100 | sort -value | head 20" },
+  { "spl": "index=events action=login | timechart span=1h count by action" },
+  { "spl": "index=web | stats count, avg(bytes) as avg_bytes by host, status" },
+  {
+    "spl": "index=app level=ERROR | eval msg=lower(message) | search msg=\"*timeout*\" | stats count"
+  },
+  {
+    "spl": "index=orders | eval total=price*quantity | stats sum(total) as revenue by region"
+  },
+  {
+    "spl": "index=auth action IN (login, logout, denied) | timechart span=5m count by action"
+  },
+  {
+    "spl": "index=jobs | eval state=if(code=0, \"ok\", \"fail\") | stats count by state"
+  },
+  {
+    "spl": "index=trace duration>1000 | spath path=span.name | stats p95(duration) by span.name"
+  },
+  {
+    "spl": "index=cache | rename hits as cache_hits | eval ratio=cache_hits/total | table host, ratio"
+  },
+  {
+    "spl": "index=web | bin _time span=1h | stats dc(userId) as users by _time"
+  }
+]
