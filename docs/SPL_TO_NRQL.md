@@ -4,6 +4,15 @@
 
 <!-- sort-order: status -->
 
+<!-- AI-DEV: spl-table-tags declares doc: tags that intentionally have NO generated
+     sentinel section — parser-leniency and regression-guard groupings, not
+     command-doc sections. Every doc: tag in spl.test.js MUST either have a
+     <!-- spl-cases: TAG --> sentinel OR be listed here, or the doc-currency test
+     fails loudly. Do NOT remove a tag from this list to silence that failure
+     without either adding a real sentinel section or deleting the tag from its
+     test cases. -->
+<!-- spl-table-tags: bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression -->
+
 See [CLI.md](CLI.md) for the command-line tool documentation.
 
 <!-- toc -->
@@ -294,6 +303,24 @@ SPL:  * | stats count by host | dedup host
 NRQL: FROM Log SELECT count(*) FACET host LIMIT MAX
 🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
 ```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | dedup userId | stats count by routeName
+NRQL: FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) FACET routeName LIMIT MAX
+🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
+🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
+```
+
+```
+❓ Not confirmed
+SPL:  (routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.  Status: 200" | eval orders=if(routeName=="Submit",1,0) | dedup userId | eval addtobags=if(routeName=="AddItem",1,0) | timechart eval((sum(orders)*100)/sum(addtobags)) as completionRate span=1m
+NRQL: FROM (FROM Log WITH if(routeName = 'Submit', 1, 0) AS orders, if(routeName = 'AddItem', 1, 0) AS addtobags SELECT latest(timestamp) WHERE routeName = 'AddItem' OR routeName = 'Submit' AND msg = 'Processed Server Request.  Status: 200' FACET userId LIMIT MAX) SELECT * LIMIT MAX TIMESERIES 1 minute
+🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
+🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
+🟡 `dedup` with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.
+🟡 SPL function eval() has no known NRQL equivalent
+```
 <!-- /spl-cases -->
 
 ## `eval` — Supported
@@ -365,6 +392,25 @@ NRQL: FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *
 ```
 
 ```
+🤖 Confirmed by LLM
+SPL:  * | eval parts = split(field, "},{")
+NRQL: FROM Log WITH split(field, '},{') AS parts SELECT *
+🟡 `split()` with multi-character delimiter '},{' not supported; NRQL split() accepts single characters only
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | eval combined = coalesce(msg, message)
+NRQL: FROM Log WITH (msg OR message) AS combined SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval last = mvindex(result, -1)
+NRQL: FROM Log WITH getField(result, -1) AS last SELECT *
+```
+
+```
 ❓ Not confirmed
 SPL:  * | eval hi = status >= 400
 NRQL: FROM Log WITH numeric(status) >= 400 AS hi SELECT *
@@ -404,6 +450,12 @@ NRQL: FROM Log WITH mod(numeric(a), numeric(b)) AS r SELECT *
 ❓ Not confirmed
 SPL:  * | eval r = round(a) + 1
 NRQL: FROM Log WITH round(a) + 1 AS r SELECT *
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | eval paired = mvzip(nodes, skus)
+🔴 `mvzip()` has no NRQL equivalent; cannot zip two arrays element-wise into paired tuples
 ```
 <!-- /spl-cases -->
 
@@ -520,6 +572,12 @@ Extracts key-value pairs using automatic field discovery. NRQL has no equivalent
 ```
 ✅ Confirmed by human
 SPL:  * | extract pairdelim=","
+🔴 Key=value extraction from unstructured text has no NRQL equivalent; use Grok parsing rules to extract fields at ingest time, or restructure logs as JSON
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | extract
 🔴 Key=value extraction from unstructured text has no NRQL equivalent; use Grok parsing rules to extract fields at ingest time, or restructure logs as JSON
 ```
 <!-- /spl-cases -->
@@ -912,6 +970,30 @@ SPL:  index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats l
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
+🔴 `cascading` mvexpand (expand-then-expand) not directly supported; use nested FROM with EXPAND at each level as a workaround
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | spath input=_raw output=validation path=validations{} | mvexpand validation | spath input=_raw output=sku_data path=items{} | mvexpand sku_data
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
+🔴 `cascading` mvexpand (expand-then-expand) not directly supported; use nested FROM with EXPAND at each level as a workaround
+```
+
+```
+❓ Not confirmed
+SPL:  * | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels | spath input=channels path=Name output=channelName
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
+🔴 `cascading` mvexpand (expand-then-expand) not directly supported; use nested FROM with EXPAND at each level as a workaround
+```
 <!-- /spl-cases -->
 
 ## `rename` — Supported
@@ -1057,6 +1139,13 @@ NRQL: FROM Log WITH capture(message, r'.*status=(?P<code>\d+).*') AS (code) SELE
 ✅ Confirmed by human
 SPL:  * | rex field=message "\"orderId\":\"(?<orderId>[A-Z0-9-]+)\""
 NRQL: FROM Log WITH capture(message, r'.*\"orderId\":\"(?P<orderId>[A-Z0-9-]+)\".*') AS (orderId) SELECT *
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | rex field=f1 "(?<a>\w+)" | rex field=f2 "(?<b>\w+)" | rex field=f3 "(?<c>\w+)" | rex field=f4 "(?<d>\w+)" | rex field=f5 "(?<e>\w+)" | rex field=f6 "(?<f>\w+)"
+NRQL: FROM Log WITH capture(f1, r'.*(?P<a>\w+).*') AS (a), capture(f2, r'.*(?P<b>\w+).*') AS (b), capture(f3, r'.*(?P<c>\w+).*') AS (c), capture(f4, r'.*(?P<d>\w+).*') AS (d), capture(f5, r'.*(?P<e>\w+).*') AS (e), capture(f6, r'.*(?P<f>\w+).*') AS (f) SELECT *
+🟡 `query` uses 6 rex extractions but NRQL capture() is limited to 5 per query; consider using aparse() for anchor-based patterns
 ```
 
 ```
@@ -1292,6 +1381,28 @@ NRQL: FROM Log SELECT filter(count(*), WHERE numeric(status) >= 400) AS 'errors'
 SPL:  * | stats count(eval(EventCode=4648)) as attempts, count(eval(EventCode=4624)) as successes
 NRQL: FROM Log SELECT filter(count(*), WHERE EventCode = '4648' OR numeric(EventCode) = 4648) AS 'attempts', filter(count(*), WHERE EventCode = '4624' OR numeric(EventCode) = 4624) AS 'successes'
 ```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | stats list(eventType) by orderId
+NRQL: FROM Log SELECT uniques(eventType) FACET orderId
+🟡 SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | stats count by host
+NRQL: FROM Log SELECT count(*) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count by validations{}.code
+NRQL: FROM Log SELECT count(*) FACET `validations{}.code`
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
 <!-- /spl-cases -->
 
 ## Multiple chained aggregations
@@ -1364,6 +1475,12 @@ Computes running statistics over events in stream order. Like `eventstats`, NRQL
 ```
 ✅ Confirmed by human
 SPL:  * | streamstats count by host
+🔴 `streamstats` has no NRQL equivalent; NRQL does not support row-to-row references (LAG/LEAD) or running aggregations
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | streamstats count as row_num
 🔴 `streamstats` has no NRQL equivalent; NRQL does not support row-to-row references (LAG/LEAD) or running aggregations
 ```
 <!-- /spl-cases -->
@@ -1479,6 +1596,15 @@ NRQL: FROM (FROM Log SELECT count(*)) SELECT count(*) TIMESERIES 1 minute
 ❓ Not confirmed
 SPL:  * | timechart span=5m count | stats sum(count)
 NRQL: FROM (FROM Log SELECT count(*)) SELECT sum(count) TIMESERIES 5 minutes
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | dedup userId | timechart count span=1m
+NRQL: FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) LIMIT MAX TIMESERIES 1 minute
+🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
+🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
+🟡 `dedup` with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.
 ```
 <!-- /spl-cases -->
 
@@ -2395,6 +2521,13 @@ NRQL: FROM Log SELECT * ORDER BY count DESC
 ✅ Confirmed by human
 SPL:  * | sort 0 - firstTime
 NRQL: FROM Log SELECT * ORDER BY firstTime DESC
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | sort host, -duration
+NRQL: FROM Log SELECT * ORDER BY host ASC
+🟡 NRQL ORDER BY supports only one field; additional sort fields ignored
 ```
 <!-- /spl-cases -->
 

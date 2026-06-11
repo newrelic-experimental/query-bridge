@@ -118,11 +118,32 @@ The RHS of a comparison operator (`=`, `!=`, `<`, `>`, `<=`, `>=`) accepts a lit
 
 For an aggregator, neither holds — wrap it: `op (SELECT fn(...) FROM <source>)`. (The table above is the cached answer for the common functions so you don't have to run the probe every time.)
 
-## Template variables (`{{var}}`) — where they're allowed
+## Placeholders: `$macro$` vs `{{var}}` — two different systems resolve them
 
-NRQL has ONE template-variable syntax: **double-brace `{{var}}`** (used by dashboard variables). **`$macro$`** (dollar-delimited, Splunk/Grafana style) is NOT NRQL syntax — `host = $x$` fails at the parser before evaluation. Do not emit `$...$`.
+NRQL text can carry two unrelated placeholder syntaxes, each resolved by a
+*different* upstream system **before** the query reaches NRDB (the engine that
+parses/runs NRQL). NRDB itself rejects both — neither is NRDB-grammar syntax — so
+where they're "allowed" is a question of which upstream resolver handles them.
 
-`{{var}}` is a parse-time token. When a query is run without the variable bound, NRQL reports `Found undefined template variable(s)` — that is a *binding* error, meaning the position is syntactically allowed. A `unexpected '{'` *parse* error means the position rejects template variables outright. Verified against account 1 (2026-06-10):
+- **`$macro$`** (dollar-delimited) — resolved by **NQG** (the NRQL Query Gateway).
+  Its compiler does text substitution of saved NRQL macros before forwarding to
+  NRDB. So `$mymacro$` is valid *if* it reaches NQG; tested directly against NRDB
+  it fails (`unexpected '='`/parser error) because NRDB never sees the expansion.
+  Verified: NQG source (`dirac/nrql-query-gateway`) has a `macros/` expander; it
+  has **no** `{{}}` handling. So emit `$macro$` only when the consumer routes
+  through NQG.
+- **`{{var}}`** (double-brace, "moustache") — resolved by the **dashboard
+  platform**, NOT NQG. A dashboard substitutes a variable's scalar value into the
+  query, wrapping strings in quotes (`x = {{v}}` → `x = 'US'`). It substitutes
+  into **filter/value positions only** — never into time clauses, and a `{{var}}`
+  inside quotes is not substituted. Variables are scalar string/list values; there
+  is no variable type that yields a `SINCE`/`UNTIL` bound (dashboards own time via
+  their native picker, not a query variable).
+
+`{{var}}` is a parse-time token to NRDB. Run without binding, NRDB reports
+`Found undefined template variable(s)` — a *binding* error, meaning the position is
+syntactically allowed. `unexpected '{'` is a *parse* error — the position rejects
+the token outright. Verified against account 1 (2026-06-10):
 
 | Position | `{{var}}` allowed? | Result |
 |---|---|---|

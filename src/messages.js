@@ -240,11 +240,19 @@ export const messages = {
 
   // SPL: `| where _time >= now()`
   where_time_future_bound_unsupported: () =>
-    'where _time >= now() (lower bound at/after present) matches no historical events; NRQL SINCE now does not compile',
+    "where _time >= now() makes no sense. NRDB doesn't allow future-dated events, so there are no events >= now.",
 
   // SPL: `| where _time = now()`
   where_time_point_unsupported: () =>
-    'where _time = now() (point-in-time, matches nothing) / != now() (degenerate no-op) has no NRQL SINCE/UNTIL equivalent',
+    "where _time = now() makes no sense. NRDB doesn't allow future-dated events, so there are no events = now.",
+
+  // SPL: `| where _time < now()` / `<= now()`
+  where_time_tautology_dropped: () =>
+    'where _time < now() is a tautology (NRDB stores no future-dated events, so every event precedes now); constraint dropped',
+
+  // SPL: `| where _time < relative_time(now(), "-1d")`
+  where_time_past_upper_bound_unsupported: () =>
+    'where _time < <past time> has no NRQL equivalent: an UNTIL in the past with no lower bound inverts the default window, and any invented SINCE would be wrong',
 
   // SPL: `| where _time > relative_time(eventField, "-1d")`
   where_relative_time_nonliteral_unsupported: () =>
@@ -260,7 +268,7 @@ export const messages = {
 
   // SPL: `index=web | where bytes > jparse(payload, "size")`
   where_rhs_func_not_row_wise: (name) =>
-    `${name}() is not supported on a comparison right-hand side; NRQL does not implement it in the row-wise evaluator`,
+    `${name}() is not supported on a comparison's right-hand side.`,
 
   // ── splExprUtils mapFunction warnings ────────────────────────────
 

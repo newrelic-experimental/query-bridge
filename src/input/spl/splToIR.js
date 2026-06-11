@@ -198,6 +198,10 @@ export function translateSearchExpr(node, ir) {
   const unsupported = [];
   let since = null;
   let until = null;
+  // True once a `where _time ...` clause has been fully handled — as SINCE/UNTIL,
+  // as a tautology drop, or as unsupported. Distinguishes "consumed, emit no WHERE
+  // term" from "produced no IR", so the caller won't re-walk via the eval fallback.
+  let consumedTime = false;
 
   function walk(node) {
     if (!node) return null;
@@ -233,16 +237,19 @@ export function translateSearchExpr(node, ir) {
             field === '_time' &&
             (fnName === 'relative_time' || fnName === 'now')
           ) {
+            // This `_time` clause is consumed here (as SINCE/UNTIL, tautology
+            // drop, or unsupported) — never as a WHERE term. Signal the caller.
+            consumedTime = true;
             const isLower = op === '>' || op === '>=';
             const isUpper = op === '<' || op === '<=';
 
             // now() RHS
             if (fnName === 'now') {
               if (isUpper) {
-                if (since || until) {
-                  warnings.push(messages.where_time_constraints_collapsed());
-                }
-                until = 'now';
+                // `_time < now()` / `<= now()` is a tautology: NRDB stores no
+                // future-dated events, so every event precedes now. It filters
+                // nothing — drop it (warn so the dropped clause is visible).
+                warnings.push(messages.where_time_tautology_dropped());
                 return null;
               }
               if (isLower) {
@@ -282,12 +289,20 @@ export function translateSearchExpr(node, ir) {
               );
               return null;
             }
-            if ((isLower && since) || (isUpper && until)) {
+            if (isLower && since) {
               warnings.push(messages.where_time_constraints_collapsed());
             }
-            if (isLower) since = nrql;
-            else if (isUpper) until = nrql;
-            else {
+            if (isLower) {
+              since = nrql;
+            } else if (isUpper) {
+              // A past upper bound (UNTIL <past>) with no lower bound inverts
+              // NRQL's default window (default SINCE is 1 hour ago), so the
+              // query won't compile and any invented SINCE would be wrong.
+              // (`_time < now()` is a tautology, handled above as drop+warn.)
+              unsupported.push(
+                messages.where_time_past_upper_bound_unsupported(),
+              );
+            } else {
               unsupported.push(messages.where_time_point_unsupported());
             }
             return null;
@@ -553,7 +568,7 @@ export function translateSearchExpr(node, ir) {
   }
 
   const expr = walk(node);
-  return { expr, warnings, unsupported, since, until };
+  return { expr, warnings, unsupported, since, until, consumedTime };
 }
 
 // ── Command dispatch ─────────────────────────────────────────

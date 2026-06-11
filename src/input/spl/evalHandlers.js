@@ -62,6 +62,7 @@ export function translateWhereExpr(expr, ir) {
     unsupported,
     since,
     until,
+    consumedTime,
   } = translateSearchExpr(expr, ir);
   ir.warnings.push(...warnings);
   ir.unsupported.push(...unsupported);
@@ -70,13 +71,13 @@ export function translateWhereExpr(expr, ir) {
   // (the leading-search caller does the same).
   if (since) ir.since = since;
   if (until) ir.until = until;
-  if (until && !since && !ir.since) {
-    ir.since = '24 hours ago';
-  }
   if (irExpr) return irExpr;
-  // If translateSearchExpr consumed the expression as a time constraint
-  // (since/until), there is no WHERE term to emit. Skip the eval fallback.
-  if (since || until) return null;
+  // If translateSearchExpr consumed a `where _time ...` clause (as SINCE/UNTIL,
+  // a tautology drop, or unsupported), there is no WHERE term to emit and we
+  // must NOT re-walk via the eval fallback (it can't handle the _time node and
+  // would emit a spurious unsupported). consumedTime covers the drop case where
+  // neither since nor until is set.
+  if (consumedTime || since || until) return null;
   // If translateSearchExpr already emitted unsupported messages for this
   // expression (e.g. Path 2a: non-_time vs now()), don't re-walk through
   // the eval fallback — that would fire a second, spurious unsupported.
