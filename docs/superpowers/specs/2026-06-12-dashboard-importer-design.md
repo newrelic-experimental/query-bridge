@@ -2,8 +2,6 @@
 
 **Goal:** Import a Splunk dashboard export, translate every panel's SPL to NRQL through the existing bridge, and emit a New Relic dashboard. The importer is a *consumer* of the translator layered on top of it — it adds no translation logic and does not touch `src/translate.js` or the IR pipeline. Output is file-based across three targets (Terraform built first; NerdGraph input and UI-paste JSON later); live API push is a deferred phase.
 
-**Relationship to the time-token spec.** This builds directly on `docs/superpowers/specs/2026-06-11-dashboard-time-tokens-design.md` (shipped). Splunk dashboards are the *source* of the `$tok.earliest$` / `$earliest$` / `span=$timespan$` tokens that spec handles. The importer inherits correct behavior for free: time-bound tokens drop-and-warn, `span=$token$` is unsupported, and the **NR dashboard's own time picker owns the window** — exactly the "dashboard owns the whole range" case that spec was written for. The importer adds nothing in the time-token path; it relies on it.
-
 ## Scope
 
 **In scope (all of it — staged, not dropped):**
@@ -19,6 +17,7 @@
 - Modifying the translator. The importer calls `translate()` and consumes its result; it never reaches into IR.
 - Drilldowns, Splunk `<drilldown>`/`<link>` navigation, custom app vizzes (`splunk.<app>`), and `<event>` raw-event search semantics beyond a best-effort table.
 - Splunk `ds.savedSearch` bodies — the SPL is not in the export (referenced by name only); these become placeholder widgets.
+- Time-token handling — already shipped (`docs/superpowers/specs/2026-06-11-dashboard-time-tokens-design.md`). The importer inherits it and adds nothing: `$tok.earliest$`/`$earliest$` drop-and-warn, `span=$timespan$` is unsupported, and the NR dashboard's own picker owns the window. Do NOT re-implement time-token logic in the importer.
 
 ## Confidence convention
 
@@ -218,7 +217,7 @@ For each widget, in order:
    - Failure is **not only** a leading-pipe parse error: a fragment referencing a field the base's transform already collapsed produces NRQL that's confidently wrong (Splunk errors on it too, so it's at least faithful) — flag field-set mismatch as an under-tested edge.
    - Unresolvable `baseRef` (missing id, or savedSearch root) → placeholder widget (step 4), not a crash.
 2. **Translate.** One call to `translate(resolvedSpl)`. Returns `{ nrql, warnings, unsupported, errors }` — the existing contract, untouched.
-3. **Time tokens are already handled.** The shipped time-token spec means `$tok.earliest$`/`$earliest$` drop-and-warn and `span=$timespan$` is unsupported. The dashboard's `defaultTimeRange` becomes the NR page-level range (emit stage), so the picker owns the window. Nothing added here.
+3. **Time tokens are already handled.** The shipped time-token spec means `$tok.earliest$`/`$earliest$` drop-and-warn and `span=$timespan$` is unsupported, so the NR dashboard's own picker owns the window. (The Splunk default range surfaces as a report note, not an emitted field — see Emit → Time range.) Nothing added here.
 4. **Decide the widget's fate by outcome:**
    - **Clean / warnings-only** → real widget with its NRQL. Warnings attach (widget description suffix + report).
    - **`unsupported` or `errors`** → a **`markdown` placeholder widget** in the same grid slot, containing: panel title, original SPL (fenced), the unsupported/error message text, and — *only if the translator produced partial NRQL alongside* — that NRQL labeled "Partial — unverified." Per the project's error/unsupported rule, when the translator returns NO nrql, the placeholder omits the NRQL section rather than showing an empty fence. Nothing silently vanishes; layout is preserved.
