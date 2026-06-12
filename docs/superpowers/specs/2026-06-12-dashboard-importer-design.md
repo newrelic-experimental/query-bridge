@@ -1,6 +1,6 @@
 # Splunk Dashboard Importer Design
 
-**Goal:** Import a Splunk dashboard export, translate every panel's SPL to NRQL through the existing bridge, and emit a New Relic dashboard. The importer is a *consumer* of the translator layered on top of it — it adds no translation logic and does not touch `src/translate.js` or the IR pipeline. Output is file-based (Terraform first, NerdGraph JSON later); live API push is a deferred phase.
+**Goal:** Import a Splunk dashboard export, translate every panel's SPL to NRQL through the existing bridge, and emit a New Relic dashboard. The importer is a *consumer* of the translator layered on top of it — it adds no translation logic and does not touch `src/translate.js` or the IR pipeline. Output is file-based across three targets (Terraform built first; NerdGraph input and UI-paste JSON later); live API push is a deferred phase.
 
 **Relationship to the time-token spec.** This builds directly on `docs/superpowers/specs/2026-06-11-dashboard-time-tokens-design.md` (shipped). Splunk dashboards are the *source* of the `$tok.earliest$` / `$earliest$` / `span=$timespan$` tokens that spec handles. The importer inherits correct behavior for free: time-bound tokens drop-and-warn, `span=$token$` is unsupported, and the **NR dashboard's own time picker owns the window** — exactly the "dashboard owns the whole range" case that spec was written for. The importer adds nothing in the time-token path; it relies on it.
 
@@ -13,18 +13,33 @@
 - Per-dashboard **coverage report** (clean / warned / placeholder widgets).
 
 **Deferred (later phase, designed here so the seam exists):**
-- **Live push** via NerdGraph `dashboardCreate`/`dashboardUpdate` with US/EU/staging env selection and GUID-tracked idempotent update. Settled direction: explicit `--env` flag, no default (a prod push is always deliberate); needs a `.import-state.json` GUID map. NOT built in the near-term phases.
+- **Live push** — the *network call* that sends a generated `dashboardCreate`/`dashboardUpdate` payload to NerdGraph, with US/EU/staging env selection and GUID-tracked idempotent update. (Generating the `dashboardCreate` *input* is a Phase-4 emit target; only the push itself is deferred.) Settled direction: explicit `--env` flag, no default (a prod push is always deliberate); needs a `.import-state.json` GUID map.
 
 **Out of scope:**
 - Modifying the translator. The importer calls `translate()` and consumes its result; it never reaches into IR.
 - Drilldowns, Splunk `<drilldown>`/`<link>` navigation, custom app vizzes (`splunk.<app>`), and `<event>` raw-event search semantics beyond a best-effort table.
 - Splunk `ds.savedSearch` bodies — the SPL is not in the export (referenced by name only); these become placeholder widgets.
 
-## Corpus reality (verified 2026-06-12)
+## Confidence convention
 
-Against `../nr-query-bridge-corpus/sources/REDACTED.saved/dashboards.json` (the only sample, a Splunk REST export, 4,665 entries):
+Claims in this spec are tagged so the implementer inherits the right confidence and verifies before building on sand:
 
-- **Delivery:** one vehicle — the REST envelope. Each `entry[].content` has exactly six keys; **SPL lives only in the `eai:data` string**. No separate parsed-definition field.
+- **[verified]** — checked this session against the corpus, live NerdGraph introspection, or live docs (date noted).
+- **[assumed]** — domain knowledge or convention, NOT independently confirmed; **verify before relying on it.** Most NR-schema and Studio-type-string claims are `[assumed]` until the Phase-4 introspection pass.
+
+When `[verified]` and `[assumed]` conflict, trust `[verified]` and re-check the other.
+
+## Corpus reality
+
+Two distinct sources in `../nr-query-bridge-corpus/sources/` (verified 2026-06-12) — both are translation/test material:
+
+1. **`REDACTED.saved/dashboards.json`** — a Splunk REST export, 4,665 entries (REDACTED).
+2. **`REDACTED/`** — a REDACTED SRE Splunk-app tree with **149 standalone `.xml` view files** on disk (`REDACTED.xml`, etc.).
+
+So **standalone-`.xml`-file input is corpus-real, not hypothetical** — the detector's single-file path has 149 real fixtures, and Phase 1 can use a real (de-identified) one.
+
+From the REST export (`[verified]` 2026-06-12):
+- **Delivery:** the REST envelope. Each `entry[].content` has exactly six keys; **SPL lives only in the `eai:data` string**. No separate parsed-definition field.
 - **Format discriminator:** `content.version` — `"2"` = Studio (844), `"1.1"`/`""` = Simple XML. `content.isDashboard === false` on 110 entries (non-dashboard views — skip).
 - **Distribution:** 3,417 Simple XML, 391 XML-wrapped Studio, **0 pure-JSON**. Pure-JSON Studio is real in the wild (Studio export/clipboard) but absent here — handled synthetically, marked non-corpus-verified in tests.
 - **The nesting:** `.json` envelope → `eai:data` string-of-XML → (Studio only) `<definition><![CDATA[ {JSON} ]]>`. Three layers for Studio, two for Simple XML. The detector owns all unwrapping so downstream parsers each get one clean format.
@@ -157,6 +172,8 @@ DashboardModel = {
 - `<fieldset><input>` → `variables[]`. `type="time"` → `defaultTimeRange` from `<default><earliest>/<latest>`. `type="dropdown"|"text"|"multiselect"|"radio"` → a variable; a populating `<search><query>` → `sourceQuery`; `<choice>` list → `choices`; `<default>` → `defaultValue`.
 - `<row><panel>` → iterate viz children in document order. Viz element + `<option name="charting.chart">` → neutral `vizType` (table above). `<option>`s carried into `widget.options`.
 - `<search><query>` → `rawSpl`. `<search base="id">` → `baseRef = "id"`; its `<query>` is the leading-pipe post-process fragment (stored as `rawSpl`, resolved later). Global `<search id="id">` blocks collected into a base-search map passed to `translateWidgets`.
+- A global `<search id>` can carry its own `<earliest>/<latest>`, which applies to **every** panel chaining off it. Dropping it for the page picker changes those panels' results — **warn when a base search has an explicit time range** (`[verified]` spl-expert 2026-06-12).
+- A `<search>` can sit at panel level (not viz level) and be shared by all sibling vizzes in that panel — associate it with each.
 - Inline `<earliest>/<latest>` on a panel search → per-widget time (rare; carried but the NR page-level range dominates).
 - **Layout:** Simple XML has no explicit coordinates. Compute from row order and panels-per-row: row index → `y`, panel index within row → `x`, width = `12 / panelCount` columns (NR's 12-col grid).
 - `depends`/`rejects` token-visibility attrs on `<row>`/`<panel>` → recorded in `options` as a caveat (NR has conditional visibility via variables, but v1 notes rather than wires it).
@@ -165,7 +182,7 @@ DashboardModel = {
 
 Input already unwrapped by the detector to the JSON definition object (CDATA stripped, or pure-JSON passed straight through). Walk the graph:
 - `dataSources.<id>`: `ds.search` → `rawSpl = options.query`. `ds.chain` → `baseRef = options.extend` (parent dataSource id) + `rawSpl = options.query` (the chain's post-process SPL). `ds.savedSearch` → no inline SPL → widget flagged `unknown`/placeholder. Chains can nest (chain→chain→search); `translateWidgets` walks `extend` to the root.
-- `visualizations.<id>`: `type` (`splunk.<x>`) → neutral `vizType`; `dataSources.primary` → the dataSource id supplying `rawSpl`/`baseRef`; `title` → widget title; `options` carried.
+- `visualizations.<id>`: `type` (`splunk.<x>`) → neutral `vizType`; `dataSources.primary` → the dataSource id supplying `rawSpl`/`baseRef`; `title` → widget title; `options` carried. The literal gauge type strings (`splunk.singlevalueradial`/`markergauge`/`fillergauge`) are `[assumed]` — Studio's type strings shift across versions; confirm against the 391 wrapped-Studio corpus entries before relying on them, or they silently fall to `unknown`/placeholder.
 - `inputs.<id>`: `input.timerange` → `defaultTimeRange` (`options.defaultValue` like `"-24h@h,now"`); `input.dropdown`/`input.text`/`input.multiselect` → `variables[]`.
 - `layout.structure[]`: `{item: vizId, position:{x,y,w,h}}` → `widget.layout` (px; scaled to 12-col grid in emit).
 - `defaults.dataSources.global` → fallback time/query params if no explicit timerange input.
@@ -195,22 +212,28 @@ Returns `DashboardModel[]` (a REST export yields many; a single file yields one)
 
 For each widget, in order:
 
-1. **Resolve base/chain first.** A widget with `baseRef` holds a leading-pipe fragment, not standalone SPL — translating it raw is a parse error. Simple XML: look up `baseRef` in the base-search map, `resolved = baseQuery + " " + fragment`. Studio: follow `ds.chain.extend` to the parent dataSource, concatenating up the chain to the root `ds.search`. If `baseRef` can't be resolved (missing id, or `ds.savedSearch` with no inline SPL) → placeholder widget (step 4), not a crash.
+1. **Resolve base/chain first.** A widget with `baseRef` holds a leading-pipe fragment, not standalone SPL. Simple XML: look up `baseRef` in the base-search map, `resolved = baseQuery + " " + fragment`. Studio: follow `ds.chain.extend` to the parent dataSource, concatenating up the chain to the root.
+   - **Concatenation is an approximation, not a semantic identity** (`[verified]` Splunk behavior, spl-expert 2026-06-12). Splunk runs the base once and the post-process on its *materialized result set* (capped ~500k rows transforming / ~10k events non-transforming), not on the raw event stream. For a *transforming* base (ends in `stats`/`timechart`/`chart`/`top`) the concatenation matches Splunk closely. For a **non-transforming** base, the capped/truncated event set means the concatenated NRQL can disagree with Splunk on large data — **warn when the base is non-transforming**, don't claim equivalence.
+   - **The root may be a `ds.savedSearch`** (SPL not inline) even when the chain's own fragment is translatable. The chain walker must terminate on "reached root, root has no inline SPL" → placeholder, the same as a missing id.
+   - Failure is **not only** a leading-pipe parse error: a fragment referencing a field the base's transform already collapsed produces NRQL that's confidently wrong (Splunk errors on it too, so it's at least faithful) — flag field-set mismatch as an under-tested edge.
+   - Unresolvable `baseRef` (missing id, or savedSearch root) → placeholder widget (step 4), not a crash.
 2. **Translate.** One call to `translate(resolvedSpl)`. Returns `{ nrql, warnings, unsupported, errors }` — the existing contract, untouched.
 3. **Time tokens are already handled.** The shipped time-token spec means `$tok.earliest$`/`$earliest$` drop-and-warn and `span=$timespan$` is unsupported. The dashboard's `defaultTimeRange` becomes the NR page-level range (emit stage), so the picker owns the window. Nothing added here.
 4. **Decide the widget's fate by outcome:**
    - **Clean / warnings-only** → real widget with its NRQL. Warnings attach (widget description suffix + report).
    - **`unsupported` or `errors`** → a **`markdown` placeholder widget** in the same grid slot, containing: panel title, original SPL (fenced), the unsupported/error message text, and — *only if the translator produced partial NRQL alongside* — that NRQL labeled "Partial — unverified." Per the project's error/unsupported rule, when the translator returns NO nrql, the placeholder omits the NRQL section rather than showing an empty fence. Nothing silently vanishes; layout is preserved.
-5. **Filter tokens pass through.** Non-time `$tok_category$` → `{{tok_category}}` in NRQL (translator's existing `TemplateVariable` behavior; correct per the time-token spec's non-goal #1). The Splunk `<input>` becomes an NR dashboard variable in emit; the `{{var}}` reference resolves against it.
+5. **Filter tokens pass through.** Non-time `$tok_category$` → `{{tok_category}}` in NRQL (translator's existing `TemplateVariable` behavior; `[verified]` `{{var}}` is valid in WHERE/SELECT/FACET/IN/LIKE per `nrql-reference.md`). The Splunk `<input>` becomes an NR dashboard variable in emit.
+   - **Quoting trap (most-likely silent bug, nrql-expert 2026-06-12):** NR substitutes a string variable's value *already quoted* (`x = {{v}}` → `x = 'US'`), and **a `{{var}}` inside quotes is NOT substituted**. So if SPL `category="$tok$"` translates to `category = '{{tok_category}}'`, the dashboard runs against the literal text `{{tok_category}}` and silently matches nothing. The emitter MUST produce the token **unquoted** (`category = {{tok_category}}`). Add a test asserting this, and choose the NR variable type (enum vs string) deliberately — they quote differently.
 
 ## Emit targets — three, not interchangeable
 
 The NerdGraph mutation input, the NR1 UI-paste blob, and Terraform HCL are three *related but distinct* shapes (verified via NerdGraph introspection 2026-06-12). Conflating them causes import failures. All three read the same `DashboardModel`; each is one `emit*.js`.
 
-Key divergences:
-- **`accountId` placement.** `DashboardInput` (the `dashboardCreate` mutation arg) takes `accountId` as a *separate mutation parameter*. The UI-paste JSON embeds it *inside each widget* at `rawConfiguration.nrqlQueries[].accountId`. Terraform puts it in `nrql_query { account_id }`.
+Key divergences (`[verified]` via NerdGraph introspection 2026-06-12 except where noted):
+- **`accountId` placement.** `dashboardCreate(accountId: Int!, dashboard: DashboardInput!)` takes `accountId` as a *separate mutation arg*. The UI-paste JSON embeds it *per-widget* at `rawConfiguration.nrqlQueries[].accountId`. Terraform uses `nrql_query { account_id }`.
 - **GUIDs/IDs.** A dashboard *exported* from NR1 carries `guid`/page `id`. On *import*, those must be **omitted** or the import fails / dangles. Our emitters never invent them.
-- **`rawConfiguration`** is a free-form JSON scalar (`DashboardWidgetRawConfiguration` is a `SCALAR` in the schema) holding `nrqlQueries`, `platformOptions`, viz settings — the same payload across all three forms.
+- **`rawConfiguration`** is a free-form JSON `SCALAR` (`DashboardWidgetRawConfiguration`) holding `nrqlQueries`, `platformOptions`, viz settings.
+- **The UI-paste blob is NOT simply "`DashboardInput` minus guids"** (`[assumed]`, nrql-expert 2026-06-12). The exported envelope differs in `permissions` placement, per-widget `id`/`linkedEntityGuids`/`layout` expression, and possibly a top-level wrapper the import dialog expects. **Diff it field-by-field during Phase 4 introspection** — "minus guids" is an oversimplification that will bite.
 
 ### Terraform (`emitTerraform.js`, Phase 1) — resource + provider/variables skeleton
 
@@ -225,10 +248,11 @@ A `newrelic_one_dashboard` resource alone is **not a runnable TF project** — t
 
 Mapping (shared conceptually across all three emitters):
 - Dashboard → `name`, `description`, one `page` (one Splunk view → one NR page).
-- Widget → `widget_<type>` block: `line→widget_line`, `area→widget_area`, `bar→widget_bar`, `column→widget_bar` (NR has no column; orientation is config), `pie→widget_pie`, `billboard→widget_billboard`, `table→widget_table`, `markdown→widget_markdown`, `scatter→widget_scatter`, `map→widget_markdown`+note (NR choropleth needs geo fields SPL won't carry — flag, don't fake), `unknown→widget_markdown` placeholder.
+- Widget → `widget_<type>` block. **This map is `[assumed]` — pin every id via NerdGraph `Visualization` introspection + the provider schema before writing it (nrql-expert 2026-06-12).** Known-good: `line→widget_line`, `area→widget_area`, `bar→widget_bar`, `column→widget_bar` (NR has no column; orientation is config), `pie→widget_pie`, `billboard→widget_billboard`, `table→widget_table`, `markdown→widget_markdown`. **Known-suspect: `scatter→widget_scatter` is probably WRONG** — NR likely has no `viz.scatter`/`widget_scatter`; scatter is `viz.line` + config. `map→widget_markdown`+note (NR geo viz needs lat/long or region fields SPL won't carry — flag, don't fake; confirm the geo viz id is `viz.geo` not `choropleth`). `unknown→widget_markdown` placeholder. If `options.stackMode` is set, plain `widget_bar` loses stacking — NR has `widget_stacked_bar`; note the tradeoff.
+- **`rawConfiguration` minimum shapes differ by widget kind** (`[assumed]`, confirm at introspection): an NRQL widget needs `{ "nrqlQueries": [ { "accountId": <int>, "query": "<nrql>" } ] }`; a **markdown widget needs `{ "text": "..." }` and NO `nrqlQueries`.** The placeholder/`<html>` path MUST emit the `text` shape — reusing the nrqlQueries shape for `widget_markdown` makes the widget fail to render.
 - **Layout → 12-col grid:** Studio px scaled to columns 1–12; Simple XML computed (`12/panelCount`→width). Placeholders take the failed widget's slot.
 - **Variables → `variable` blocks:** static `<choice>` → `enum` items; populating `sourceQuery` → translated → variable's `nrql_query`; `*`-default → "any". Token names resolved so `{{tok_category}}` in widget NRQL matches the variable.
-- **Time range → page default:** `-60m@m` → NR `since`/`duration`; snap `@m` dropped with a note (NR has no snap — loud-not-silent).
+- **Time range → report note, probably NOT an emitted field.** `[assumed]` NR dashboards have **no** per-page/dashboard default-time field in `DashboardInput`/`PageInput` (nrql-expert 2026-06-12) — the window is the viewer's picker. So the "dashboard owns the window" story holds, but emitting `-60m` into Terraform may have nowhere to land. **Demote the Splunk default time to a report note** ("set the picker to last 60m") unless introspection proves a page-level time field exists. Snap `@m` dropped regardless (NR has no snap — loud-not-silent).
 - Exact `newrelic_one_dashboard` field names/nesting **verified against the provider docs during implementation** (registry page is JS-rendered; not guessed here).
 
 **Stable filenames** — `<slug>.tf` + `versions.tf` + `variables.tf`. Re-running overwrites; `terraform apply` reconciles. A REST export yields a directory of dashboard `.tf` files sharing one `versions.tf`/`variables.tf`, plus one roll-up report.
@@ -259,7 +283,7 @@ spl-dashboard <file> --format terraform   # default; also: nerdgraph | ui-paste 
 
 All formats are in scope; this is build order. **Phase 1 is a vertical slice** (thinnest end-to-end path to prove the pipeline); then breadth.
 
-- **Phase 0 — monorepo migration.** Convert the repo to npm workspaces; move the existing translator into `packages/nr-query-bridge/`; create the empty `packages/nr-dashboard-importer/` scaffold. Mechanical path/config/CI/hook updates only — full test suite green before and after, in its own commit, no importer logic. (See Packaging migration note.)
+- **Phase 0 — monorepo migration. Its OWN PR, merged before any importer work.** Convert the repo to npm workspaces; move the translator into `packages/nr-query-bridge/`; create the empty `packages/nr-dashboard-importer/` scaffold. Mechanical path/config/CI/hook updates only — the 681-test suite green before and after, no importer logic, no behavior change. A standalone PR keeps the giant path-move diff from tangling with any logic change, so reviewers can see the move *is* just a move.
 - **Phase 1 — vertical slice, Terraform-only.** One Simple XML file → `detectFormat` (single-file path) → `parseSimpleXml` (minimal: `<chart>`/`<table>`/`<single>` → `line`/`table`/`billboard`, no variables, no base/post-process) → `translateWidgets` → `emitTerraform` → `<slug>.tf` + `versions.tf` + `variables.tf` skeleton. CLI single-file mode. Proves model + translate + emit end-to-end. Stable filename re-run. One de-identified dashboard fixture + synthetic edge fixtures.
 - **Phase 2 — Simple XML breadth.** All viz types incl. `<html>`/`<map>`/gauges; template variables (static + populating-search); base/post-process resolution; placeholder widgets for unsupported/errors; `defaultTimeRange` → page range; REST-envelope bulk path (skip `isDashboard:false`); per-dashboard + roll-up reports.
 - **Phase 3 — Dashboard Studio.** `parseStudio` for both XML-wrapped (CDATA) and pure-JSON; `ds.search`/`ds.chain`/`ds.savedSearch`; viz/dataSource graph linkage; `layout.structure` px→grid; Studio inputs → variables. Pure-JSON path synthetic (no corpus sample).
@@ -288,6 +312,19 @@ Vitest, in `packages/nr-dashboard-importer/test/` mirroring its `src/`. Pure fun
 - **`charting.chart` defaulting.** A `<chart>` with no `charting.chart` option defaults to `line` (per Splunk docs). The parser must apply that default, or such panels become `unknown`/placeholder wrongly.
 - **Studio `theme`/decoration vizzes** (`splunk.rectangle`/`ellipse`/`image`/`markdown`-as-label) carry no query. Don't translate them; either skip or emit as static markdown. Don't placeholder-spam the dashboard with "unsupported" for pure decorations.
 - **Customer data in fixtures.** The corpus is real customer dashboards (REDACTED index/host/app names). Every committed fixture MUST be de-identified. Synthetic-first; de-identify the one real sample. Gitignore raw corpus pulls.
+
+## Open questions — verify before building on these
+
+The load-bearing `[assumed]` calls a planner must resolve, each with what breaks if it's wrong:
+
+1. **NR viz ids / Terraform widget block names** (Emit). The map is assumed; `scatter` is probably wrong. If wrong, widgets fail to emit or render. **Resolve:** introspect `Visualization` + read the provider schema before writing `model.js`'s emit map. Cheapest first step — one introspection query settles most of it.
+2. **`{{var}}` must be emitted unquoted** (Translate §5). If the translator emits `'{{var}}'`, filters silently match nothing — a silent-wrong bug, the class this project most wants to avoid. **Resolve:** a test asserting unquoted emission; decide enum-vs-string variable type.
+3. **NR dashboards may have no default-time field** (Emit). If true, Splunk default time can't be emitted anywhere — demote to a report note, don't invent a Terraform field. **Resolve:** introspect `PageInput`/`DashboardInput` for a time field.
+4. **UI-paste envelope ≠ DashboardInput-minus-guids** (Emit). If we assume sameness, the paste blob fails NR1 import. **Resolve:** export one real dashboard from NR1, diff its JSON field-by-field against `DashboardInput` during Phase 4.
+5. **Non-transforming base searches** (Translate §1). Concatenation can disagree with Splunk on large data. **Resolve:** detect transforming-vs-not; warn on non-transforming; don't claim equivalence.
+6. **Studio gauge type strings** (Parser 2). Literal `splunk.*gauge` strings are version-dependent. **Resolve:** sample the 391 wrapped-Studio corpus entries.
+
+The single highest-value pre-build check (settles 1, 2, 3, 4 at once): generate one UI-paste blob, paste it into NR1's import dialog against staging, with one widget carrying a `{{var}}`. One round-trip confirms the schema shape, the quoting, and the time-field question together.
 
 ## Deferred gaps (FIXME-tracked)
 
