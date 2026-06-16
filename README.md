@@ -46,9 +46,9 @@ Then open the printed URL with `/docs/playground/` appended. Serve from the
 ## API
 
 ```js
-import { translateSplToNrqlV2 } from '@datanerd/nr-query-bridge';
+import { translateSplToNrql } from '@datanerd/nr-query-bridge';
 
-const result = translateSplToNrqlV2('index=web status=500 | stats count by host');
+const result = translateSplToNrql('index=web status=500 | stats count by host');
 console.log(result.nrql);
 // FROM Log SELECT count(*) WHERE index = 'web' AND status = '500' OR numeric(status) = 500 FACET host
 
