@@ -140,7 +140,6 @@ const cases = [
   },
   // Template variables $var.earliest$/$var.latest$ are time tokens: drop+warn
   // (old behavior emitted invalid NRQL `SINCE {{…}}` — fixed by Path 2 handler)
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: '* $global_time.earliest$ $global_time.latest$',
     nrql: 'FROM Log SELECT *',
@@ -664,21 +663,18 @@ const cases = [
     verified: 'human',
   },
   // ── Dashboard time tokens: Path 1 (TimeConstraint earliest=/latest=) ──
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliest=$tok.earliest$ latest=$tok.latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
     verified: false,
   },
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web latest=$tok.latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped'],
     verified: false,
   },
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliest=$myStart$ latest=$myEnd$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
@@ -687,7 +683,6 @@ const cases = [
   },
   // The genuinely common dashboard form: a global time picker injects prefix-less
   // $earliest$/$latest$ as the earliest=/latest= RHS (a TimeConstraint → Path 1).
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliest=$earliest$ latest=$latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
@@ -695,21 +690,18 @@ const cases = [
     verified: false,
   },
   // ── Dashboard time tokens: Path 2 (standalone TemplateVariable) ──
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web $tok.earliest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped'],
     verified: false,
   },
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web $earliest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped'],
     verified: false,
   },
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web $latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
@@ -717,7 +709,6 @@ const cases = [
     verified: false,
   },
   // ── Dashboard time tokens: mixed literal + token → unsupported ──
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliest=-24h latest=$tok.latest$ | stats count',
     nrql: '',
@@ -725,7 +716,6 @@ const cases = [
     unsupportedFunc: ['mixed_token_literal_time_unsupported'],
     verified: false,
   },
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliest=$tok.earliest$ latest=-2h | stats count',
     nrql: '',
@@ -736,7 +726,6 @@ const cases = [
   // Cross-path mix: a Path-2 standalone token ($tok.latest$) alongside a Path-1
   // literal (earliest=-24h) must ALSO escalate — proves the TemplateVariable
   // branch sets the same sawTimeToken flag the escalation reads.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web $tok.latest$ earliest=-24h | stats count',
     nrql: '',
@@ -745,14 +734,12 @@ const cases = [
     verified: false,
   },
   // Regression: literal-only window is untouched (no token, no escalation).
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliest=-24h latest=-1h | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' SINCE 24 hours ago UNTIL 1 hour ago",
     verified: false,
   },
   // Regression: a NON-time template variable in value position is untouched.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web status=$sev$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND status = '$sev$'",
@@ -760,7 +747,6 @@ const cases = [
   },
   // Boundary: name CONTAINS "earliest" but is neither `earliest` nor `.earliest`
   // suffix — must NOT be treated as a time token (guards a sloppy .includes match).
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliestSeen=$earliestSeen$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = '$earliestSeen$'",
@@ -768,7 +754,6 @@ const cases = [
   },
   // Boundary: standalone non-time $…$ search term falls through to identifier path,
   // NOT dropped, NOT span-unsupported (it's not in a span= position).
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web $timespan$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND {{timespan}}",
@@ -1978,14 +1963,12 @@ const cases = [
     verified: false,
   },
   // ── Dashboard time tokens: Path 3 ($timespan$ in span=) ──
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web | timechart span=$timespan$ count',
     nrql: '',
     unsupportedFunc: ['span_token_unsupported'],
     verified: false,
   },
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web | bin _time span=$timespan$ | stats count',
     nrql: '',
@@ -1996,14 +1979,12 @@ const cases = [
   // span_token_unsupported, not the generic bin-unsupported — for BOTH grammar
   // orders (span-first and field-first). The grammar preserves the SpanToken
   // object on span so handleBin's guard catches it regardless of field.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web | bin span=$timespan$ bytes',
     nrql: '',
     unsupportedFunc: ['span_token_unsupported'],
     verified: false,
   },
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web | bin bytes span=$timespan$ as size',
     nrql: '',
@@ -2011,14 +1992,12 @@ const cases = [
     verified: false,
   },
   // Regression: literal numeric span unchanged.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web | timechart span=5m count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 5 minutes",
     verified: false,
   },
   // Regression: bare-word duration span unchanged.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web | timechart span=hour count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 hour",
@@ -3535,7 +3514,6 @@ const cases = [
   // ── Dashboard time tokens: subsearch scoping (observed via bin/spl2nrql.js) ──
   // Token inside a subsearch is dropped within the subsearch scope (warning
   // wrapped by subsearch_warning); the OUTER query gets NO SINCE/UNTIL from it.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web [ search index=auth earliest=$tok.earliest$ ] | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'",
@@ -3545,7 +3523,6 @@ const cases = [
   // Outer literal + subsearch token: outer SINCE preserved, NO mixed escalation
   // on the outer (flags are scope-local; the subsearch token never sets the
   // outer's sawTimeToken). Proves cross-scope isolation.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliest=-24h [ search index=auth latest=$tok.latest$ ] | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth' SINCE 24 hours ago",
@@ -3558,7 +3535,6 @@ const cases = [
   // drops loud (subsearch_warning); the window is simply not escalated. This is
   // the documented scope boundary (mid-pipe/subsearch search is out of escalation
   // scope), captured as observed behavior, NOT a silent-wrong result.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web [ search index=auth earliest=-1h latest=$tok.latest$ ] | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'",
@@ -3567,7 +3543,6 @@ const cases = [
   },
   // Edge: token-only time bounds with NO trailing command — both bounds drop,
   // SELECT * survives with no time range.
-  // AI-DEV: AI **MUST NOT** change this case's expected nrql/warningFunc without re-validating via bin/spl2nrql.js.
   {
     spl: 'index=web earliest=$tok.earliest$ latest=$tok.latest$',
     nrql: "FROM Log SELECT * WHERE index = 'web'",
