@@ -131,14 +131,15 @@ export function translateAstToIR(ast) {
       // Mixed literal+token window: dropping only the token would silently widen
       // or invert the range. Fail loud and emit no bound at all.
       ir.unsupported.push(messages.mixed_token_literal_time_unsupported());
+    } else if (until && !since) {
+      // Upper bound with no lower bound. We can't fabricate a safe SINCE: any
+      // fixed default inverts the window when `until` resolves older than it
+      // (NRQL rejects start >= end), and we can't evaluate relative offsets
+      // statically. Fail loud rather than emit a window that may not compile.
+      ir.unsupported.push(messages.latest_without_earliest_unsupported());
     } else {
       if (since) ir.since = since;
       if (until) ir.until = until;
-      // NRQL requires SINCE < UNTIL; default SINCE is 1h which may overlap UNTIL
-      if (until && !since) {
-        ir.since = '24 hours ago';
-        ir.warnings.push(messages.latest_without_earliest());
-      }
     }
     ir.warnings.push(...warnings);
     ir.unsupported.push(...unsupported);

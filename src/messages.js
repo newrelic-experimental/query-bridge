@@ -308,26 +308,35 @@ export const messages = {
 
   // ── splToIR ───────────────────────────────────────────────────────
 
-  // SPL: `* latest=-1h`
-  latest_without_earliest: () =>
-    'SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match',
+  // SPL: `* latest=-1h` — an upper time bound with no lower bound. NRQL has no
+  // safe way to fabricate the missing lower bound: any fixed default (e.g. 24h)
+  // inverts the window whenever latest resolves to older than that default, and
+  // NRQL rejects an inverted range. (Splunk fills the missing earliest from the
+  // dashboard picker / all-time, which we can't resolve statically.)
+  latest_without_earliest_unsupported: () =>
+    'latest= without earliest= has no lower time bound, so there is no safe NRQL ' +
+    'time range to produce. Add an explicit earliest= (e.g. earliest=-24h) or a ' +
+    'literal datetime range (e.g. earliest="01/01/2024:00:00:00").',
 
   // SPL: `earliest=$tok.earliest$` / `$earliest$` — a dashboard time-range token,
-  // resolved only at dashboard run time, with no static NRQL bound.
+  // resolved only at dashboard run time, with no static value we can translate.
   time_token_bound_dropped: (param, token) =>
-    `${param}=${token} is a dashboard time-range token resolved only at run time; ` +
-    `it has no static NRQL time bound. Dropped — the query uses the surrounding/default time range.`,
+    `${param}=${token} is a dashboard time variable resolved only at run time; ` +
+    'it has no static value to translate. This has been dropped — the query will ' +
+    "use the dashboard's default time range. To set a fixed bound, use a literal " +
+    'datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").',
 
   // SPL: `earliest=-24h latest=$tok.latest$` — one literal bound, one token bound.
   mixed_token_literal_time_unsupported: () =>
-    'This search mixes a literal time bound with a dashboard time-range token. ' +
-    'Dropping only the token would silently widen or invert the window, so the whole ' +
-    'time range is unsupported. Make both bounds literal, or both tokens.',
+    'This search mixes a literal time bound with a dashboard time variable. ' +
+    'Dropping only the variable would widen or invert the window, so the whole ' +
+    'time range is unsupported. Make both bounds literal datetimes ' +
+    '(e.g. earliest=-24h latest=now).',
 
   // SPL: `| timechart span=$timespan$ count`
   span_token_unsupported: (token) =>
-    `span=${token} is a dashboard token resolved only at run time; NRQL TIMESERIES needs a concrete duration ` +
-    `(TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. 5 minutes) instead.`,
+    `span=${token} is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration ` +
+    '(TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.',
 
   // SPL: `_raw=*error*`
   raw_mapped_to_message: () =>

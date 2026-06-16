@@ -11,7 +11,7 @@
      fails loudly. Do NOT remove a tag from this list to silence that failure
      without either adding a real sentinel section or deleting the tag from its
      test cases. -->
-<!-- spl-table-tags: bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression -->
+<!-- spl-table-tags: bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression, eval-like-apostrophe-regression, where-in-func-regression, regex-apostrophe-regression, regex-template-var-regression -->
 
 See [CLI.md](CLI.md) for the command-line tool documentation.
 
@@ -3018,13 +3018,6 @@ NRQL: FROM Log SELECT * SINCE 24 hours ago
 
 ```
 ✅ Confirmed by human
-SPL:  latest=-1h
-NRQL: FROM Log SELECT * SINCE 24 hours ago UNTIL 1 hour ago
-🟡 SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match
-```
-
-```
-✅ Confirmed by human
 SPL:  latest=now
 NRQL: FROM Log SELECT *
 ```
@@ -3064,6 +3057,198 @@ NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND host =
 ✅ Confirmed by human
 SPL:  earliest=-24h earliest=-1h
 NRQL: FROM Log SELECT * SINCE 1 hour ago
+```
+
+```
+❓ Not confirmed
+SPL:  latest=-1h
+🔴 Latest= without earliest= has no lower time bound, so there is no safe NRQL time range to produce. Add an explicit earliest= (e.g. earliest=-24h) or a literal datetime range (e.g. earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  latest=-2d
+🔴 Latest= without earliest= has no lower time bound, so there is no safe NRQL time range to produce. Add an explicit earliest= (e.g. earliest=-24h) or a literal datetime range (e.g. earliest="01/01/2024:00:00:00").
+```
+<!-- /spl-cases -->
+
+## Dashboard time tokens
+
+Splunk dashboard time tokens (`$tok.earliest$`, bare `$earliest$`/`$latest$`, custom `$x$` in `earliest=`/`latest=`, and `$timespan$` in `span=`) resolve only at dashboard run time, so they carry no static value to translate. Time-bound tokens are dropped with a warning; `$timespan$` and mixed literal+token windows are unsupported. Use literal datetime/duration values instead.
+
+<!-- spl-cases: dashboard-time-tokens -->
+```
+❓ Not confirmed
+SPL:  index=web earliest=$tok.earliest$ latest=$tok.latest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web latest=$tok.latest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web earliest=$myStart$ latest=$myEnd$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$myStart$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$myEnd$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web earliest=$earliest$ latest=$latest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web $tok.earliest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web $earliest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web $latest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Latest=$latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web earliest=-24h latest=-1h | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' SINCE 24 hours ago UNTIL 1 hour ago
+```
+
+```
+❓ Not confirmed
+SPL:  index=web status=$sev$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND status = '$sev$'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web earliestSeen=$earliestSeen$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = '$earliestSeen$'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web $timespan$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND {{timespan}}
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=5m count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 5 minutes
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=hour count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 hour
+```
+
+```
+❓ Not confirmed
+SPL:  index=web [ search index=auth earliest=$tok.earliest$ ] | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'
+🟡 `subsearch`: earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web earliest=-24h [ search index=auth latest=$tok.latest$ ] | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth' SINCE 24 hours ago
+🟡 `subsearch`: latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web [ search index=auth earliest=-1h latest=$tok.latest$ ] | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'
+🟡 `subsearch`: latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web earliest=$tok.earliest$ latest=$tok.latest$
+NRQL: FROM Log SELECT * WHERE index = 'web'
+🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+❓ Not confirmed
+SPL:  index=web earliest=-24h latest=$tok.latest$ | stats count
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+❓ Not confirmed
+SPL:  index=web earliest=$tok.earliest$ latest=-2h | stats count
+🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+❓ Not confirmed
+SPL:  index=web $tok.latest$ earliest=-24h | stats count
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=$timespan$ count
+🔴 Span=$timespan$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | bin _time span=$timespan$ | stats count
+🔴 Span=$timespan$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | bin span=$timespan$ bytes
+🔴 Span=$timespan$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | bin bytes span=$timespan$ as size
+🔴 Span=$timespan$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=$time-span$ count
+🔴 Span=$time-span$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=$ns:span$ count
+🔴 Span=$ns:span$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
 ```
 <!-- /spl-cases -->
 
@@ -3590,8 +3775,8 @@ NRQL: FROM Log SELECT * WHERE Operation = 'Add member'
 ❓ Not confirmed
 SPL:  * $global_time.earliest$ $global_time.latest$
 NRQL: FROM Log SELECT *
-🟡 Earliest=$global_time.earliest$ is a dashboard time-range token resolved only at run time; it has no static NRQL time bound. Dropped — the query uses the surrounding/default time range.
-🟡 Latest=$global_time.latest$ is a dashboard time-range token resolved only at run time; it has no static NRQL time bound. Dropped — the query uses the surrounding/default time range.
+🟡 Earliest=$global_time.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$global_time.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
 ```
 
 ```

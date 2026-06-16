@@ -612,11 +612,24 @@ const cases = [
     verified: 'human',
   },
   {
+    // latest= with no earliest= is unsupported: there's no safe lower bound to
+    // fabricate (any fixed default inverts the window when latest is older than
+    // it, which NRQL rejects). Was previously a fabricated SINCE 24 hours ago —
+    // corrected after live-NRQL confirmed the inversion failure. Re-verify+promote.
     spl: 'latest=-1h',
-    nrql: 'FROM Log SELECT * SINCE 24 hours ago UNTIL 1 hour ago',
-    warningFunc: ['latest_without_earliest'],
+    nrql: '',
+    unsupportedFunc: ['latest_without_earliest_unsupported'],
     doc: 'time-constraints',
-    verified: 'human',
+    verified: false,
+  },
+  // Regression: latest= older than the old 24h default used to emit invalid
+  // inverted NRQL (SINCE 24 hours ago UNTIL 2 days ago). Now unsupported.
+  {
+    spl: 'latest=-2d',
+    nrql: '',
+    unsupportedFunc: ['latest_without_earliest_unsupported'],
+    doc: 'time-constraints',
+    verified: false,
   },
   {
     spl: 'latest=now',
@@ -667,18 +680,21 @@ const cases = [
     spl: 'index=web earliest=$tok.earliest$ latest=$tok.latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   {
     spl: 'index=web latest=$tok.latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   {
     spl: 'index=web earliest=$myStart$ latest=$myEnd$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // The genuinely common dashboard form: a global time picker injects prefix-less
@@ -687,6 +703,7 @@ const cases = [
     spl: 'index=web earliest=$earliest$ latest=$latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // ── Dashboard time tokens: Path 2 (standalone TemplateVariable) ──
@@ -694,18 +711,21 @@ const cases = [
     spl: 'index=web $tok.earliest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   {
     spl: 'index=web $earliest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   {
     spl: 'index=web $latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // ── Dashboard time tokens: mixed literal + token → unsupported ──
@@ -714,6 +734,7 @@ const cases = [
     nrql: '',
     warningFunc: ['time_token_bound_dropped'],
     unsupportedFunc: ['mixed_token_literal_time_unsupported'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   {
@@ -721,6 +742,7 @@ const cases = [
     nrql: '',
     warningFunc: ['time_token_bound_dropped'],
     unsupportedFunc: ['mixed_token_literal_time_unsupported'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Cross-path mix: a Path-2 standalone token ($tok.latest$) alongside a Path-1
@@ -731,18 +753,21 @@ const cases = [
     nrql: '',
     warningFunc: ['time_token_bound_dropped'],
     unsupportedFunc: ['mixed_token_literal_time_unsupported'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Regression: literal-only window is untouched (no token, no escalation).
   {
     spl: 'index=web earliest=-24h latest=-1h | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' SINCE 24 hours ago UNTIL 1 hour ago",
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Regression: a NON-time template variable in value position is untouched.
   {
     spl: 'index=web status=$sev$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND status = '$sev$'",
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Boundary: name CONTAINS "earliest" but is neither `earliest` nor `.earliest`
@@ -750,6 +775,7 @@ const cases = [
   {
     spl: 'index=web earliestSeen=$earliestSeen$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = '$earliestSeen$'",
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Boundary: standalone non-time $…$ search term falls through to identifier path,
@@ -757,6 +783,7 @@ const cases = [
   {
     spl: 'index=web $timespan$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND {{timespan}}",
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   //
@@ -1078,6 +1105,7 @@ const cases = [
   {
     spl: '* | eval x=if(like(message, "%Can\'t cover%"), "y", "n")',
     nrql: "FROM Log WITH if(message LIKE '%Can\\'t cover%', 'y', 'n') AS x SELECT *",
+    doc: 'eval-like-apostrophe-regression',
     verified: false,
   },
   // eval tonumber() → numeric()
@@ -1967,12 +1995,14 @@ const cases = [
     spl: 'index=web | timechart span=$timespan$ count',
     nrql: '',
     unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   {
     spl: 'index=web | bin _time span=$timespan$ | stats count',
     nrql: '',
     unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // A span token on a NON-_time numeric bin must ALSO surface the specific
@@ -1983,24 +2013,47 @@ const cases = [
     spl: 'index=web | bin span=$timespan$ bytes',
     nrql: '',
     unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   {
     spl: 'index=web | bin bytes span=$timespan$ as size',
     nrql: '',
     unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Token name with a HYPHEN — a real corpus token (`span=$time-span$`). Our
+  // original [a-zA-Z0-9_.]+ charset rejected it (whole command read as generic
+  // unsupported). Widened to include hyphen + colon, confirmed by 3 OSS SPL
+  // parsers (see .claude/references/spl-reference.md → Cross-check Parsers).
+  {
+    spl: 'index=web | timechart span=$time-span$ count',
+    nrql: '',
+    unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Token name with a COLON — same charset widening.
+  {
+    spl: 'index=web | timechart span=$ns:span$ count',
+    nrql: '',
+    unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Regression: literal numeric span unchanged.
   {
     spl: 'index=web | timechart span=5m count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 5 minutes",
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Regression: bare-word duration span unchanged.
   {
     spl: 'index=web | timechart span=hour count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 hour",
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   //
@@ -2256,6 +2309,7 @@ const cases = [
   {
     spl: '* | where in(minute_check, "00", "30")',
     unsupportedFunc: ['eval_func_unsupported'],
+    doc: 'where-in-func-regression',
     verified: false,
   },
   //
@@ -2435,6 +2489,7 @@ const cases = [
   {
     spl: '* | regex message="don\'t"',
     nrql: "FROM Log SELECT * WHERE message RLIKE r'don\\'t'",
+    doc: 'regex-apostrophe-regression',
     verified: false,
   },
   // Regression: `| regex foo=$bar$` (unquoted/template-variable RHS) used to
@@ -2443,6 +2498,7 @@ const cases = [
   {
     spl: '* | regex accountUsername=$Account_Username$',
     unsupportedFunc: ['regex_command_unparsed'],
+    doc: 'regex-template-var-regression',
     verified: false,
   },
   //
@@ -3518,6 +3574,7 @@ const cases = [
     spl: 'index=web [ search index=auth earliest=$tok.earliest$ ] | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'",
     warningFunc: ['time_token_bound_dropped', 'subsearch_warning'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Outer literal + subsearch token: outer SINCE preserved, NO mixed escalation
@@ -3527,6 +3584,7 @@ const cases = [
     spl: 'index=web earliest=-24h [ search index=auth latest=$tok.latest$ ] | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth' SINCE 24 hours ago",
     warningFunc: ['time_token_bound_dropped', 'subsearch_warning'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Literal + token BOTH inside the same subsearch. The subsearch body is a
@@ -3539,6 +3597,7 @@ const cases = [
     spl: 'index=web [ search index=auth earliest=-1h latest=$tok.latest$ ] | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'",
     warningFunc: ['time_token_bound_dropped', 'subsearch_warning'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   // Edge: token-only time bounds with NO trailing command — both bounds drop,
@@ -3547,6 +3606,7 @@ const cases = [
     spl: 'index=web earliest=$tok.earliest$ latest=$tok.latest$',
     nrql: "FROM Log SELECT * WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
     verified: false,
   },
   {
@@ -3931,6 +3991,26 @@ describe('translateSplToNrql', () => {
         }
       }
     });
+  });
+
+  // AI-DEV: This check MUST throw, not warn. Every case MUST carry a `doc:` tag.
+  // The doc generator (afterAll) skips untagged cases (`if (!c.doc) continue`),
+  // so an untagged case silently vanishes from SPL_TO_NRQL.md — its translation
+  // is never surfaced for review. Do NOT add a skip or exception list without
+  // explicit human permission. Fix the cause: add a `doc:` tag (and a matching
+  // <!-- spl-cases: TAG --> sentinel, or list the tag in <!-- spl-table-tags -->).
+  it('every case has a doc: tag', () => {
+    const untagged = [];
+    cases.forEach((c, i) => {
+      if (!c.doc) untagged.push(`[${i}] ${c.spl === null ? 'null' : c.spl}`);
+    });
+    if (untagged.length > 0) {
+      expect.fail(
+        `${untagged.length} test case(s) are missing a doc: tag and would ` +
+          `vanish from SPL_TO_NRQL.md. Add a doc: tag to each:\n` +
+          untagged.join('\n'),
+      );
+    }
   });
 });
 

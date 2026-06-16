@@ -1247,8 +1247,13 @@ template_variable
   = '$' name:template_var_name '$'
     { return { type: 'TemplateVariable', name: name }; }
 
+// Dashboard token/variable name charset. Hyphen and colon are included because
+// all three cross-check SPL parsers (airbus-cert ANTLR, kotlaluk Lark from
+// Splunk's btool BNF, salspaugh PLY) permit them mid-identifier, and a real
+// corpus token `span=$time-span$` requires the hyphen. See
+// .claude/references/spl-reference.md → Cross-check Parsers.
 template_var_name
-  = chars:[a-zA-Z0-9_.]+ { return chars.join(''); }
+  = chars:[a-zA-Z0-9_.:-]+ { return chars.join(''); }
 
 term_directive
   = 'TERM'i '(' '"' chars:double_string_char* '"' ')'

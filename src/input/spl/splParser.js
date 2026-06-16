@@ -305,7 +305,7 @@ function peg$parse(input, options) {
   const peg$r19 = /^[^|]/;
   const peg$r20 = /^["'`]/;
   const peg$r21 = /^[^\]]/;
-  const peg$r22 = /^[a-zA-Z0-9_.]/;
+  const peg$r22 = /^[a-zA-Z0-9_.:\-]/;
   const peg$r23 = /^[^)]/;
   const peg$r24 = /^[^`(]/;
   const peg$r25 = /^[^,)`]/;
@@ -446,7 +446,7 @@ function peg$parse(input, options) {
   const peg$e126 = peg$classExpectation(["|"], true, false, false);
   const peg$e127 = peg$classExpectation(["\"", "'", "`"], false, false, false);
   const peg$e128 = peg$classExpectation(["]"], true, false, false);
-  const peg$e129 = peg$classExpectation([["a", "z"], ["A", "Z"], ["0", "9"], "_", "."], false, false, false);
+  const peg$e129 = peg$classExpectation([["a", "z"], ["A", "Z"], ["0", "9"], "_", ".", ":", "-"], false, false, false);
   const peg$e130 = peg$literalExpectation("TERM", true);
   const peg$e131 = peg$classExpectation([")"], true, false, false);
   const peg$e132 = peg$literalExpectation("`", false);
