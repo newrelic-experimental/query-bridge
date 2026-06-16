@@ -14,7 +14,7 @@
 - **Live push** — the *network call* that sends a generated `dashboardCreate`/`dashboardUpdate` payload to NerdGraph, with US/EU/staging env selection and GUID-tracked idempotent update. (Generating the `dashboardCreate` *input* is a Phase-4 emit target; only the push itself is deferred.) Settled direction: explicit `--env` flag, no default (a prod push is always deliberate); needs a `.import-state.json` GUID map.
 
 **Out of scope:**
-- Modifying the translator. The importer calls `translate()` and consumes its result; it never reaches into IR.
+- Modifying the translator. The importer calls `translateSplToNrql()` and consumes its result; it never reaches into IR.
 - Drilldowns, Splunk `<drilldown>`/`<link>` navigation, custom app vizzes (`splunk.<app>`), and `<event>` raw-event search semantics beyond a best-effort table.
 - Splunk `ds.savedSearch` bodies — the SPL is not in the export (referenced by name only); these become placeholder widgets.
 - Time-token handling — already shipped (`docs/superpowers/specs/2026-06-11-dashboard-time-tokens-design.md`). The importer inherits it and adds nothing: `$tok.earliest$`/`$earliest$` drop-and-warn, `span=$timespan$` is unsupported, and the NR dashboard's own picker owns the window. Do NOT re-implement time-token logic in the importer.
@@ -52,7 +52,7 @@ import (path/string)
   → detectFormat        ┌─ parseSimpleXml ─┐                     ┌─ emitTerraform ─┐
   → (route per format) ─┤                  ├─→ DashboardModel ──→ translateWidgets ─┼─ emitNerdGraph ─┼─→ files
                         └─ parseStudio ────┘   (neutral model)   (per widget,      └─ emitUiPaste ───┘  (+ report.md)
-                                                                  via translate())
+                                                                  via translator)
                                                               [later] → pushDashboard (NerdGraph, network)
 ```
 
@@ -100,7 +100,7 @@ nr-query-bridge/ (repo root — becomes a workspace root)
         parseSimpleXml.js   ← <form>/<dashboard v1> tree-walk → DashboardModel
         parseStudio.js      ← Studio JSON graph → DashboardModel
         model.js            ← DashboardModel factory + neutral vizType enum + viz maps
-        translateWidgets.js ← bridge into translate(); base/chain resolution
+        translateWidgets.js ← bridge into translateSplToNrql(); base/chain resolution
         emitTerraform.js    ← → newrelic_one_dashboard + provider/vars skeleton (Phase 1)
         emitNerdGraph.js    ← → dashboardCreate mutation input               (later)
         emitUiPaste.js      ← → NR1 "Import dashboard" JSON blob              (later)
@@ -216,7 +216,7 @@ For each widget, in order:
    - **The root may be a `ds.savedSearch`** (SPL not inline) even when the chain's own fragment is translatable. The chain walker must terminate on "reached root, root has no inline SPL" → placeholder, the same as a missing id.
    - Failure is **not only** a leading-pipe parse error: a fragment referencing a field the base's transform already collapsed produces NRQL that's confidently wrong (Splunk errors on it too, so it's at least faithful) — flag field-set mismatch as an under-tested edge.
    - Unresolvable `baseRef` (missing id, or savedSearch root) → placeholder widget (step 4), not a crash.
-2. **Translate.** One call to `translate(resolvedSpl)`. Returns `{ nrql, warnings, unsupported, errors }` — the existing contract, untouched.
+2. **Translate.** One call to `translateSplToNrql(resolvedSpl)`. Returns `{ nrql, warnings, unsupported, errors }` — the existing contract, untouched.
 3. **Time tokens are already handled.** The shipped time-token spec means `$tok.earliest$`/`$earliest$` drop-and-warn and `span=$timespan$` is unsupported, so the NR dashboard's own picker owns the window. (The Splunk default range surfaces as a report note, not an emitted field — see Emit → Time range.) Nothing added here.
 4. **Decide the widget's fate by outcome:**
    - **Clean / warnings-only** → real widget with its NRQL. Warnings attach (widget description suffix + report).
