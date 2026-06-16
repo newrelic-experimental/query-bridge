@@ -2,6 +2,8 @@
 
 Architectural choices that affect how code should be written and modified.
 
+> **This file is where shipped specs graduate.** When a `docs/superpowers/` spec/plan ships, its durable *invariants* (things a future edit could violate) move here as one-liners; the spec/plan is then deleted (git history is the archive). Before deleting any shipped spec/plan, confirm its invariants are captured below — distill, don't archive. The build narrative (alternatives weighed, corpus counts, "how we got here") dies with the spec; only the load-bearing rule survives. Retiring a spec is a good moment to run `/nr:reflect`.
+
 ## IR & Optimization
 - **DualCheck IR node**: `SPL: status=500` → `DualCheck` node → expanded by optimizer to `status = '500' OR numeric(status) = 500`. Consolidates dual-check logic from 2 call sites into 1 expansion pass.
 - **Subquery wrapping**: Stats-after-stats wraps as `SubquerySource`. `wrapAsSubquery` carries expand/timeseries into inner query and clears _fieldReplacements.

@@ -93,7 +93,7 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 - `.claude/references/nrql-reference.md` — NRQL syntax, functions, and translation gotchas (on-demand, read by agents)
 - `.claude/references/spl-reference.md` — SPL syntax, commands, and translation gotchas (on-demand, read by agents)
 - `.claude/references/datadog-reference.md` — Datadog query syntax, field mappings, translation patterns (on-demand, read by datadog-expert)
-- `.claude/rules/design-decisions.md` — architectural choices affecting how code should be written
+- `.claude/rules/design-decisions.md` — architectural choices affecting how code should be written; also where shipped-spec invariants graduate to. Before deleting a shipped `docs/superpowers/` spec/plan, capture its durable invariants there first.
 
 ### Style & Lint
 ESLint (flat config), Prettier, TypeScript checkJs. Husky pre-commit runs lint-staged; pre-push runs full lint + types:check. commitlint enforces conventional commits. Generated parser (`splParser.js`) excluded from all checks.
