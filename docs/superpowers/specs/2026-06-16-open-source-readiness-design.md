@@ -83,13 +83,11 @@ tooling rather than hand-maintaining (exact tool/Action — open question 1).
 Replace `grandcentral.yml` `test_suites` with `.github/workflows/ci.yml`: Node 24, `npm ci`, then
 `npm run lint && npm run types:check && npm test` — the root scripts already fan out across
 workspaces per the monorepo plan. Add `repolinter.yml` and a CodeQL (JavaScript) workflow, and wire
-the third-party-notices check. **Keep `grandcentral.yml` until GHA is proven green, then remove it +
-`Dockerfile.gc`** so PRs are never left without a status check.
-
-Open (question 2): whether GitHub Actions runners exist on internal GHE (`source.datanerd.us`). If
-not, these workflows only execute once the repo is on github.com — in which case `grandcentral.yml`
-stays as the internal gate until the public push, and the GHA workflows are authored but dormant
-until then.
+the third-party-notices check. GitHub Actions **do not run on internal GHE** (`source.datanerd.us`) — confirmed 2026-06-16. So the
+workflows are authored in the monorepo now but stay **dormant on the internal repo**, where
+`grandcentral.yml` remains the PR gate. They first execute on the public github.com repo; once green
+there, they replace `grandcentral.yml` + `Dockerfile.gc`. `grandcentral.yml` is therefore retired as
+part of the public push, not before.
 
 ### Phase 3 — GitHub repo settings (admin / OSPO)
 
@@ -105,9 +103,27 @@ Repo settings, not committable files — they run at/after public repo creation 
 
 Gated on the scrub spec's **Phase B** (history rewrite) completing. Push the monorepo to
 `github.com/newrelic-experimental/nr-query-bridge`, confirm repolinter is green, then publish both
-packages to npm under the OSPO-approved scope (open question 3). Use `npm pack` / `git archive` for
+packages to npm under the `@newrelic/` scope (see npm naming below). Use `npm pack` / `git archive` for
 any pre-publish inspection — never hand-zip (sweeps in `node_modules`, `.git`, gitignored
 `docs/local/`).
+
+## npm naming (recommended)
+
+Both packages publish under the shared **`@newrelic/`** scope — NR's established public npm scope
+(e.g. `@newrelic/publish-sourcemap`), verified live 2026-06-16. Idiomatic Node practice puts the org
+in the scope and the thing in the name, so the redundant `nr-` prefix is dropped:
+
+| Package dir | npm name |
+|---|---|
+| `packages/nr-query-bridge` | `@newrelic/query-bridge` |
+| `packages/nr-dashboard-importer` | `@newrelic/dashboard-importer` |
+
+An npm `name` need not match the directory or the GitHub repo name — that's normal and common. The
+current `@datanerd/nr-query-bridge` is an internal scope, not the public name. Publishing under
+`@newrelic/` needs npm publish access to that scope, which OSPO grants (same thread as open question
+1). Fallback if `@newrelic/` access isn't granted to an experimental project: unscoped public names
+(`nr-query-bridge` — verified available — and `nr-dashboard-importer`), which work but lack a
+namespace.
 
 ## Critical files
 
@@ -128,11 +144,13 @@ any pre-publish inspection — never hand-zip (sweeps in `node_modules`, `.git`,
 
 ## Open questions
 
-1. The exact NR OSS third-party-notices tool/Action — and whether `newrelic-experimental`
-   additionally mandates FOSSA-as-a-GHA (the template carries no FOSSA workflow, only repolinter).
-2. Are GitHub Actions runners available on internal GHE, or does CI only run once the repo is public?
-3. npm scope/name for the public packages (the translator is currently `@datanerd/nr-query-bridge`;
-   public NR packages usually publish under `@newrelic/`).
+1. **Pending (Chuck → Emily Weeks, OSPO):** the exact NR OSS third-party-notices tool/Action, and
+   whether `newrelic-experimental` additionally mandates FOSSA-as-a-GHA (the template carries no
+   FOSSA workflow, only repolinter). This thread also covers npm `@newrelic/` publish-access.
+2. **Resolved 2026-06-16:** GitHub Actions do not run on internal GHE — GHA workflows are authored
+   but dormant until the public push; `grandcentral.yml` stays the internal gate (see Phase 2).
+3. **Recommended 2026-06-16:** npm names settled to `@newrelic/query-bridge` +
+   `@newrelic/dashboard-importer` (see npm naming) — pending the OSPO scope-access grant in item 1.
 
 ## Sequencing
 
