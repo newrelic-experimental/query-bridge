@@ -8,7 +8,7 @@
 
 ## Problem
 
-Splunk dashboards expose time-range pickers as tokens. A picker named `tok` auto-exposes `$tok.earliest$` / `$tok.latest$`; a single global picker injects bare `$earliest$` / `$latest$` (no prefix — the commonest form in exported dashboards). A token conventionally named `$timespan$` supplies a `span=` argument (`$timespan$` is just a token name, not a Splunk reserved word — by convention a duration input, though a dashboard could derive it from the picker):
+Splunk dashboards expose time-range pickers as tokens. A picker named `tok` auto-exposes `$tok.earliest$` / `$tok.latest$`; a single global picker exposes prefix-less `$earliest$` / `$latest$`. In real dashboards these are almost always referenced as the RHS of `earliest=`/`latest=` (e.g. `earliest=$earliest$ latest=$latest$`) — i.e. a `TimeConstraint` (Path 1). A token standing alone in the search body (`TemplateVariable`, Path 2) is the rarer form but must still be handled. A token conventionally named `$timespan$` supplies a `span=` argument (`$timespan$` is just a token name, not a Splunk reserved word — by convention a duration input, though a dashboard could derive it from the picker):
 
 ```
 index=web earliest=$tok.earliest$ latest=$tok.latest$ | stats count
@@ -40,7 +40,7 @@ So no layer will ever turn a `{{tok.earliest}}` or `$tok.earliest$` into a valid
 | `SINCE $myStart$ UNTIL $myEnd$` | FAILURE — `unexpected '$'` (no macro syntax in time clauses either) |
 | `TIMESERIES {{mySpan}}` | FAILURE — `unexpected '{'` (no placeholder span) |
 
-(The `$…$`-in-SINCE and `TIMESERIES {{…}}` rows were run fresh 2026-06-11 to close the prior review's untested-claim gap; the rest are from 2026-06-10, re-confirmed.)
+(The `$…$`-in-SINCE and `TIMESERIES {{…}}` rows were run fresh 2026-06-11 to close the prior review's untested-claim gap; the rest are from 2026-06-10, re-confirmed. The "default SINCE is 1h" note is documented: NRQL SINCE-clause reference, "The default value is 1 hour ago" — https://docs.newrelic.com/docs/nrql/nrql-syntax-clauses-functions/#sel-since. The inverted-window boundary was re-verified via MCP 2026-06-16: `SINCE 24 hours ago UNTIL 2 hours ago` SUCCEEDS, `SINCE 24 hours ago UNTIL 25 hours ago` FAILS.)
 
 So SINCE/UNTIL accept only a concrete literal: relative `N units ago`, epoch **milliseconds** (note: SPL absolute tokens are epoch **seconds** — a unit mismatch that never arises statically since the value is run-time-only), or a datetime string. A placeholder is never one of these.
 
@@ -52,7 +52,7 @@ How a token parses decides which bug fires:
 
 2. **Standalone `$tok.earliest$` / `$tok.latest$` in a search expr → non-compiling NRQL.** When a `$x.earliest$` token appears bare in the search (not after `earliest=`), it parses as `TemplateVariable` (`spl.grammar:1227`). The handler (`splToIR.js:505-512`) sets `since = '{{tok.earliest}}'` / `until = '{{tok.latest}}'` by name suffix; the emitter passes `{{…}}` through into `SINCE {{tok.earliest}}`, which **does not compile** (verified above). Emits broken NRQL.
 
-3. **`span=$timespan$` → parse error.** `span_value` (`spl.grammar:197`) accepts only `[0-9]+[smhdwMy]` or a bare duration word (`day`/`hour`/…). It does **not** accept `$timespan$`, so the `span2:(_+ 'span=' …)?` optional in `timechart` (`:171`) fails to match and the trailing `$timespan$` becomes a parse error — the whole query lands in the `errors` bucket. Unlike bugs 1–2 this is a *parse-time* failure, not a mistranslation; the fix is to parse the token and then reject it loud, not to invent a `TIMESERIES` argument.
+3. **`span=$timespan$` → generic unsupported (the wrong reason).** `span_value` (`spl.grammar:197`) accepts only `[0-9]+[smhdwMy]` or a bare duration word (`day`/`hour`/…). It does **not** accept `$timespan$`, so the `span2:(_+ 'span=' …)?` optional in `timechart` (`:171`) fails to match. Verified via CLI 2026-06-16: `index=web | timechart span=$timespan$ count` emits no NRQL and reports `unsupported: SPL command 'timechart' has no known NRQL equivalent` — the whole `timechart` is rejected as unrecognized, NOT a clean per-token reason. (It is an `unsupported`, not an `errors`-bucket parse failure.) The fix is to *parse* the token (so the rest of the pipe survives) and reject it with a specific `span_token_unsupported` reason — not invent a `TIMESERIES` argument, and not let the whole command read as unrecognized.
 
 ## The decision: drop-and-warn, no mode flag
 
@@ -64,10 +64,12 @@ Two design questions were settled in brainstorm (2026-06-11):
 
 **The mixed literal+token window is the dangerous case (raised by both expert reviews, 2026-06-11) — escalate it to `unsupported`.** A query can pin one bound with a literal and defer the other to a token: `earliest=-24h latest=$tok.latest$`. The author explicitly chose the lower bound; the picker only supplies the upper. Dropping just the token here is silent-wrong in two distinct ways:
 
-- `earliest=-24h latest=$tok.latest$` → drop the token `latest`, keep `since = 24 hours ago`, `until` unset → NRQL runs `SINCE 24 hours ago UNTIL now`. The author never asked for "up to now"; they deferred the upper bound to a picker. The window is silently widened and the drop-warning's "uses the surrounding time range" text actively misdescribes it (since *is* pinned).
-- `earliest=$tok.earliest$ latest=-2h` → drop the token `earliest`, keep `until = 2 hours ago`, `since` unset → NRQL **fails to compile**: `UNTIL 3 hours ago` with no SINCE returns `start time must be before its end time` (verified via MCP, account 1, 2026-06-11). Inverted window.
+- **Silent-widen direction** — `earliest=-24h latest=$tok.latest$`: today (CLI-verified 2026-06-16) the token `latest` drops with only a buried `Unrecognized SPL time expression` warning, the literal `since` survives, and the query emits `... SINCE 24 hours ago` (no UNTIL). The author pinned the lower bound and deferred the upper to the picker; instead they get "from 24h ago to *now*." Compiles fine, wrong window — silent-wrong.
+- **Inverted-window direction** — `earliest=$tok.earliest$ latest=-2h`: today (CLI-verified 2026-06-16) the token `earliest` drops, the literal `latest` survives, and because `until` is set with no `since`, the existing `latest_without_earliest` rule fabricates `SINCE 24 hours ago`, emitting `... SINCE 24 hours ago UNTIL 2 hours ago`. That *compiles* (24h ago precedes 2h ago) but is a fabricated window the author never asked for — silent-wrong. **It only fails to compile when the literal `latest` is older than the fabricated 24h SINCE:** verified via MCP (account 1, 2026-06-16), `SINCE 24 hours ago UNTIL 2 hours ago` succeeds, while `SINCE 24 hours ago UNTIL 25 hours ago` fails with `start time must be before its end time`. So the danger here is usually a wrong-but-compiling window, occasionally an outright compile failure — both unacceptable.
 
-So the rule is: **if any time bound in a search has a token AND any sibling bound in the same search is a literal, the whole window is `unsupported`** — emit no SINCE/UNTIL, fail loud. Only when *every* time bound in the search is a token (or there is just one token bound and no literal partner) does the drop+warn path apply. A search-level flag tracks whether a literal `earliest=`/`latest=` was seen alongside a token (see Architecture → Mixed-bound detection).
+So the rule is: **if any time bound in a search has a token AND any sibling bound in the same search is a literal, the whole window is `unsupported`** — emit no SINCE/UNTIL, fail loud. Only when *every* time bound in the search is a token (or there is just one token bound and no literal partner) does the drop+warn path apply. A search-level flag tracks whether a literal time bound (`earliest=`/`latest=` OR a `where _time` relative-time clause that sets `since`/`until`) was seen alongside a token (see Architecture → Mixed-bound detection).
+
+**Known cost (SPL-expert review + Splunk docs, 2026-06-16):** `earliest=-7d latest=$tok.latest$` ("pin the floor at 7 days, let the picker move the ceiling") is a *legitimate* Splunk idiom, not a malformed query — per [Splunk search time modifiers](https://docs.splunk.com/Documentation/Splunk/latest/SearchReference/SearchTimeModifiers), a search-syntax `earliest=` overrides the time-range picker and stands on its own. So escalating to `unsupported` deliberately discards a real, knowable user intent (the `-7d` floor). We accept that cost: the translator cannot resolve the token statically, and emitting a floor-only window (`SINCE 7 days ago`, no UNTIL → defaults to `now`) would silently change the semantics the author expressed. Loud `unsupported` beats a silently-altered window. This is a trade-off, not an oversight.
 
 **`unsupported` (not warn) for `$timespan$`.** `$timespan$` in `span=` has no defensible drop semantics — silently dropping a `span=` would change the chart's bucket size to NRQL's auto-default, a different and invisible result. So `$timespan$` is `unsupported`: loud, no `TIMESERIES`/bucket emitted for that clause, rest of the pipe still translates.
 
@@ -76,7 +78,7 @@ So the rule is: **if any time bound in a search has a token AND any sibling boun
 ## Goals
 
 1. `earliest=$…$` / `latest=$…$` (the `TimeConstraint` path, any token name) → DROP the bound, set neither `since` nor `until`, emit a WARNING naming the token. Never call `parseSplTime` on a token.
-2. Standalone time tokens in a search expr (the `TemplateVariable` path) → same: drop, do not set `since`/`until` to `{{…}}`, WARN. This must cover BOTH `$tok.earliest$` (dotted) AND bare `$earliest$`/`$latest$` (global, no prefix — the commonest form). Never emit `SINCE {{…}}`.
+2. Standalone time tokens in a search expr (the `TemplateVariable` path) → same: drop, do not set `since`/`until` to `{{…}}`, WARN. This must cover BOTH `$tok.earliest$` (dotted) AND bare `$earliest$`/`$latest$` (global, no prefix). (The common `earliest=$earliest$` RHS form is Path 1, not this path — see Goal 1.) Never emit `SINCE {{…}}`.
 3. **Mixed literal+token window** (`earliest=-24h latest=$tok.latest$`) → `unsupported`; clear any partial `since`/`until`. Dropping one bound while keeping a literal partner silently widens or inverts the window.
 4. `span=$timespan$` (and any `$…$` token where `span_value` is expected) → parse the token, then `unsupported`. No `errors`-bucket parse failure, no invented `TIMESERIES`.
 5. Respect subsearch scoping: tokens inside `[ search … ]` affect only that subsearch's bounds, never the outer query.
@@ -130,7 +132,7 @@ case 'TemplateVariable': {
   const isLatest = n === 'latest' || n.endsWith('.latest');
   if (isEarliest || isLatest) {
     const param = isEarliest ? 'earliest' : 'latest';
-    markTimeTokenSeen(); // for mixed-bound detection (below)
+    sawTimeToken = true; // for mixed-bound detection (below)
     warnings.push(messages.time_token_bound_dropped(param, `$${n}$`));
     return null; // drop: do NOT set since/until to {{…}}
   }
@@ -144,21 +146,27 @@ This kills the `SINCE {{…}}` non-compiling emission for both `$tok.earliest$` 
 
 Both bound-handling paths and the literal `parseSplTime` success path must record, per search scope, whether they saw a TOKEN bound and whether they saw a LITERAL bound. After the search expr is walked, if BOTH were seen → the window is mixed → emit `unsupported`, and CLEAR any `since`/`until` the literal path set (so no partial window leaks).
 
-Concretely, in the `translateSearchExpr` scope add two flags:
-- `sawTimeToken` — set by Path 1 (token branch) and Path 2 (`markTimeTokenSeen`).
-- `sawTimeLiteral` — set by Path 1's `parseSplTime` success branch (when it assigns `since`/`until` from a real offset).
+Concretely, in the `translateSearchExpr` scope add two flags (alongside the existing `consumedTime`):
+- `sawTimeToken` — set by Path 1 (token branch) and Path 2 (the time-suffix branch).
+- `sawTimeLiteral` — set whenever a LITERAL offset actually lands on `since`/`until`: Path 1's `parseSplTime` success branch AND spec A's `where _time > relative_time(...)` lower-bound path (the `since = nrql` assignment). The `where _time` *upper*-bound/point branches push `unsupported` and set no bound, so they do NOT mark a literal.
 
-At the end of the scope (where `since`/`until` are returned to the caller, `splToIR.js:120` for the leading search; mirror in subsearch walkers):
+`translateSearchExpr` already returns `{ expr, warnings, unsupported, since, until, consumedTime }`; add `sawTimeToken` and `sawTimeLiteral` to that return. The escalation then happens in the CALLER, `translateAstToIR` (where `since`/`until` are committed onto `ir`, currently `splToIR.js:120-134`) — that is the right place because clearing a partial bound means simply NOT copying it onto `ir`:
 
 ```js
 if (sawTimeToken && sawTimeLiteral) {
-  unsupported.push(messages.mixed_token_literal_time_unsupported());
-  since = undefined;
-  until = undefined;
+  ir.unsupported.push(messages.mixed_token_literal_time_unsupported());
+  // do NOT copy since/until onto ir, and do NOT run the latest_without_earliest default
+} else {
+  if (since) ir.since = since;
+  if (until) ir.until = until;
+  if (until && !since) {
+    ir.since = '24 hours ago';
+    ir.warnings.push(messages.latest_without_earliest());
+  }
 }
 ```
 
-Token-only windows fall through to drop+warn (since/until already unset). Literal-only windows are untouched. This is the only place the silent-widen / inverted-window cases are caught, so it is load-bearing — see Testing.
+Token-only windows fall through to drop+warn (since/until already unset). Literal-only windows are untouched. Subsearches recurse through their own `translateAstToIR` call, so their flags and bounds are naturally scope-isolated — a subsearch token never escalates the outer window. This is the only place the silent-widen / inverted-window cases are caught, so it is load-bearing — see Testing.
 
 ### Path 3 — `span=$timespan$` (grammar + handler)
 
@@ -214,7 +222,7 @@ span_token_unsupported: (token) =>
   `(TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. 5 minutes) instead.`,
 ```
 
-`time_token_bound_dropped` is a WARNING; `mixed_token_literal_time_unsupported` and `span_token_unsupported` are UNSUPPORTED. The bidirectional consistency test in `packages/nr-query-bridge/test/messages.test.js` must list all three. (The `span_token_unsupported` text names `TIMESERIES AUTO` explicitly to preempt the "why not auto-bucket?" question — auto would change the chart resolution the SPL `span=` specified, the same silent-different-result class we reject.)
+`time_token_bound_dropped` is a WARNING; `mixed_token_literal_time_unsupported` and `span_token_unsupported` are UNSUPPORTED. (There is NO separate `messages.test.js` — corrected 2026-06-16. The exhaustive bidirectional check lives in the case runner in `packages/nr-query-bridge/test/spl/spl.test.js` (~line 3711): it spies every key in `messages`, then asserts each test case's `warningFunc`/`unsupportedFunc` arrays fired AND no unlisted key fired. New keys are exercised simply by being listed in a case's arrays.) (The `span_token_unsupported` text names `TIMESERIES AUTO` explicitly to preempt the "why not auto-bucket?" question — auto would change the chart resolution the SPL `span=` specified, the same silent-different-result class we reject.)
 
 ## Testing
 
