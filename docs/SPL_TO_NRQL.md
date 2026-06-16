@@ -3078,7 +3078,7 @@ Splunk dashboard time tokens (`$tok.earliest$`, bare `$earliest$`/`$latest$`, cu
 
 <!-- spl-cases: dashboard-time-tokens -->
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  index=web earliest=$tok.earliest$ latest=$tok.latest$ | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
@@ -3086,14 +3086,14 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  index=web latest=$tok.latest$ | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  index=web earliest=$myStart$ latest=$myEnd$ | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 🟡 Earliest=$myStart$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
@@ -3101,7 +3101,7 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  index=web earliest=$earliest$ latest=$latest$ | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 🟡 Earliest=$earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").

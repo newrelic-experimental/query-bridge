@@ -681,21 +681,21 @@ const cases = [
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
     doc: 'dashboard-time-tokens',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web latest=$tok.latest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped'],
     doc: 'dashboard-time-tokens',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web earliest=$myStart$ latest=$myEnd$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
     doc: 'dashboard-time-tokens',
-    verified: false,
+    verified: 'llm',
   },
   // The genuinely common dashboard form: a global time picker injects prefix-less
   // $earliest$/$latest$ as the earliest=/latest= RHS (a TimeConstraint → Path 1).
@@ -704,9 +704,20 @@ const cases = [
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
     warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
     doc: 'dashboard-time-tokens',
-    verified: false,
+    verified: 'llm',
   },
   // ── Dashboard time tokens: Path 2 (standalone TemplateVariable) ──
+  // FIXME(path-2-semantics): These three standalone-body token cases drop the
+  // token AS A TIME BOUND, but that's semantically wrong. Two independent SPL
+  // experts + three OSS SPL parsers (airbus ANTLR, kotlaluk Lark-from-btool-BNF,
+  // salspaugh PLY) agree: a bare $x.earliest$ in the SEARCH BODY (not an
+  // earliest=/latest= RHS) is an ordinary _raw term/value substitution — time
+  // semantics come from POSITION, never the token name. The "correct" value-sub
+  // output (WHERE ... AND {{tok.earliest}}) does NOT compile standalone (MCP:
+  // "undefined template variable"), whereas the current drop output DOES compile.
+  // This form is also ~nonexistent in the corpus (every real .earliest token is
+  // an earliest= RHS = Path 1, which is correct). Left as-is and NOT promoted to
+  // 'llm' pending the dashboard-importer work, which will give this real context.
   {
     spl: 'index=web $tok.earliest$ | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
