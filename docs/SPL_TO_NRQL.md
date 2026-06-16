@@ -3587,9 +3587,11 @@ NRQL: FROM Log SELECT * WHERE Operation = 'Add member'
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * $global_time.earliest$ $global_time.latest$
-NRQL: FROM Log SELECT * SINCE {{global_time.earliest}} UNTIL {{global_time.latest}}
+NRQL: FROM Log SELECT *
+🟡 Earliest=$global_time.earliest$ is a dashboard time-range token resolved only at run time; it has no static NRQL time bound. Dropped — the query uses the surrounding/default time range.
+🟡 Latest=$global_time.latest$ is a dashboard time-range token resolved only at run time; it has no static NRQL time bound. Dropped — the query uses the surrounding/default time range.
 ```
 
 ```

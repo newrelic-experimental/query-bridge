@@ -107,6 +107,14 @@ export function handleDedup(cmd, ir) {
 }
 
 export function handleBin(cmd, ir) {
+  if (
+    cmd.span &&
+    typeof cmd.span === 'object' &&
+    cmd.span.type === 'SpanToken'
+  ) {
+    ir.unsupported.push(messages.span_token_unsupported(`$${cmd.span.name}$`));
+    return;
+  }
   if (cmd.field === '_time' && cmd.span) {
     ir.timeseries = formatSpan(cmd.span);
     if (cmd.alias) {

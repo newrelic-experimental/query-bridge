@@ -195,7 +195,9 @@ span_clause
     { return value; }
 
 span_value
-  = num:[0-9]+ unit:[smhdwMy]
+  = '$' name:template_var_name '$'
+    { return { type: 'SpanToken', name: name }; }
+  / num:[0-9]+ unit:[smhdwMy]
     { return num.join('') + unit; }
   / 'day'i { return '1d'; }
   / 'hour'i { return '1h'; }
@@ -735,13 +737,30 @@ bin_command
     }
   / ('bin'i / 'bucket'i) _+ 'span=' span:span_value _+ field:field_name alias:as_clause?
     {
+      var isToken = span !== null && typeof span === 'object';
       return {
         type: 'BinCommand',
         field: field,
-        span: field === '_time' ? span : null,
-        width: field !== '_time' ? parseInt(span, 10) || null : null,
+        // A SpanToken object is preserved on span so handleBin's token guard
+        // catches it for any field; only a literal span becomes a numeric width.
+        span: field === '_time' || isToken ? span : null,
+        width: field !== '_time' && !isToken ? parseInt(span, 10) || null : null,
         alias: alias || null,
-        rawText: 'span=' + span + ' ' + field
+        rawText: 'span=' + (isToken ? '$' + span.name + '$' : span) + ' ' + field
+      };
+    }
+  / ('bin'i / 'bucket'i) _+ field:field_name _+ 'span=' '$' name:template_var_name '$' alias:as_clause?
+    {
+      // A dashboard span token after the field (`bin field span=$tok$`). Preserve
+      // the SpanToken object on span so handleBin's token guard surfaces the
+      // specific span_token_unsupported regardless of field/span order.
+      return {
+        type: 'BinCommand',
+        field: field,
+        span: { type: 'SpanToken', name: name },
+        width: null,
+        alias: alias || null,
+        rawText: field + ' span=$' + name + '$'
       };
     }
   / ('bin'i / 'bucket'i) _+ field:field_name _+ 'span=' width:[0-9]+ alias:as_clause?

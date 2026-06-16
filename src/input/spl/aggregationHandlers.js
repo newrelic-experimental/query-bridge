@@ -62,7 +62,15 @@ export function handleStats(cmd, ir) {
 
 export function handleTimechart(cmd, ir) {
   handleStats(cmd, ir);
-  ir.timeseries = cmd.span ? formatSpan(cmd.span) : 'AUTO';
+  if (
+    cmd.span &&
+    typeof cmd.span === 'object' &&
+    cmd.span.type === 'SpanToken'
+  ) {
+    ir.unsupported.push(messages.span_token_unsupported(`$${cmd.span.name}$`));
+  } else {
+    ir.timeseries = cmd.span ? formatSpan(cmd.span) : 'AUTO';
+  }
   for (const opt of cmd.options || []) {
     if (opt.type === 'limit') {
       ir.limit = opt.value === 0 ? 'MAX' : opt.value;

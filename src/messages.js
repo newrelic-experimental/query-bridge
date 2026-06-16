@@ -312,6 +312,23 @@ export const messages = {
   latest_without_earliest: () =>
     'SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match',
 
+  // SPL: `earliest=$tok.earliest$` / `$earliest$` — a dashboard time-range token,
+  // resolved only at dashboard run time, with no static NRQL bound.
+  time_token_bound_dropped: (param, token) =>
+    `${param}=${token} is a dashboard time-range token resolved only at run time; ` +
+    `it has no static NRQL time bound. Dropped — the query uses the surrounding/default time range.`,
+
+  // SPL: `earliest=-24h latest=$tok.latest$` — one literal bound, one token bound.
+  mixed_token_literal_time_unsupported: () =>
+    'This search mixes a literal time bound with a dashboard time-range token. ' +
+    'Dropping only the token would silently widen or invert the window, so the whole ' +
+    'time range is unsupported. Make both bounds literal, or both tokens.',
+
+  // SPL: `| timechart span=$timespan$ count`
+  span_token_unsupported: (token) =>
+    `span=${token} is a dashboard token resolved only at run time; NRQL TIMESERIES needs a concrete duration ` +
+    `(TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. 5 minutes) instead.`,
+
   // SPL: `_raw=*error*`
   raw_mapped_to_message: () =>
     '_raw is not a valid NRQL field; mapped to message',
