@@ -91,6 +91,8 @@ So the rule is: **if any time bound in a search has a token AND any sibling boun
 
 A token is detectable statically by shape: `$…$` (dollar-delimited, `TemplateVariable` node) or a raw value beginning with `$` (the `TimeConstraint` raw string). The fix is a guard at each of the three sites that recognizes the token shape and routes to drop-warn or unsupported — no new IR nodes, no emitter change, no `parseSplTime` change.
 
+> **Source paths (post-2026-06-16 monorepo migration):** the translator now lives in `packages/nr-query-bridge/`. All bare filenames below (`splToIR.js`, `spl.grammar`, `splTime.js`, `messages.js`) are under `packages/nr-query-bridge/src/input/spl/` (or `src/` for `messages.js`); tests are under `packages/nr-query-bridge/test/`; the CLI is `packages/nr-query-bridge/bin/spl2nrql.js`. Line numbers are pre-migration but the move is a pure rename, so they still resolve relative to the file.
+
 ### Path 1 — `TimeConstraint` (`splToIR.js:487`)
 
 Before calling `parseSplTime`, test the raw value for a token shape (`/\$[^$]+\$/`):
@@ -193,7 +195,7 @@ Existing string-valued `span` (`'5m'`, `'1d'`) flows unchanged. This converts a 
 - Paths 1 & 2 set nothing; they push a warning and return null. The leading-search caller (`splToIR.js:120-131`) and subsearch walkers already tolerate unset `since`/`until`. **One interaction to verify:** the `latest_without_earliest` default at `:128` fires when `until` is set but `since` is not — dropping a `latest=` token means `until` stays unset, so this branch correctly does NOT fire. Confirm with a test.
 - Path 3 pushes `unsupported`; the `timechart`/`bin` handler emits no time-bucket for that clause.
 
-### Message catalog (new entries in `src/messages.js`)
+### Message catalog (new entries in `packages/nr-query-bridge/src/messages.js`)
 
 Per the project rule, all user-facing text lives in the catalog — handlers call `messages.key()`, no inline literals. New entries (wording to finalize during implementation):
 
@@ -210,11 +212,11 @@ span_token_unsupported: (token) =>
   `(TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. 5 minutes) instead.`,
 ```
 
-`time_token_bound_dropped` is a WARNING; `mixed_token_literal_time_unsupported` and `span_token_unsupported` are UNSUPPORTED. The bidirectional consistency test in `test/messages.test.js` must list all three. (The `span_token_unsupported` text names `TIMESERIES AUTO` explicitly to preempt the "why not auto-bucket?" question — auto would change the chart resolution the SPL `span=` specified, the same silent-different-result class we reject.)
+`time_token_bound_dropped` is a WARNING; `mixed_token_literal_time_unsupported` and `span_token_unsupported` are UNSUPPORTED. The bidirectional consistency test in `packages/nr-query-bridge/test/messages.test.js` must list all three. (The `span_token_unsupported` text names `TIMESERIES AUTO` explicitly to preempt the "why not auto-bucket?" question — auto would change the chart resolution the SPL `span=` specified, the same silent-different-result class we reject.)
 
 ## Testing
 
-Synthetic `verified: false` cases (humans promote). Assert ACTUAL emitted NRQL (capture via `bin/spl2nrql.js`); `warningFunc`/`unsupportedFunc` arrays must be exhaustive (list every message key that fires).
+Synthetic `verified: false` cases (humans promote). Assert ACTUAL emitted NRQL (capture via `packages/nr-query-bridge/bin/spl2nrql.js`); `warningFunc`/`unsupportedFunc` arrays must be exhaustive (list every message key that fires).
 
 - **Path 1 token-only (drop+warn):** `index=web earliest=$tok.earliest$ latest=$tok.latest$ | stats count` → `FROM Log SELECT count(*) WHERE …` with NO SINCE/UNTIL; `warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped']` (one per dropped bound). Confirm `latest_without_earliest` does NOT fire.
 - **Path 1 single token (drop+warn):** `index=web latest=$tok.latest$ | stats count` → no UNTIL, no SINCE, one `time_token_bound_dropped`; `latest_without_earliest` does NOT fire (until unset).

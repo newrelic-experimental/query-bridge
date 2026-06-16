@@ -1,5 +1,7 @@
 # Dashboard Time Tokens — Spec B Handoff (NOT a finished spec)
 
+> **Superseded by `docs/superpowers/specs/2026-06-11-dashboard-time-tokens-design.md`** — that is the finished, expert-reviewed design. This file is kept as the discovery trail only. Note: the `src/...` code paths below are PRE the 2026-06-16 monorepo migration; the translator now lives under `packages/nr-query-bridge/src/...`. The finished spec carries the corrected paths — do not implement from this file.
+
 **Status:** discovery notes for a future brainstorm → spec. This is a HANDOFF, not an approved design. It records what's already verified so spec B doesn't re-derive it, and lists the open questions a brainstorm pass must answer before writing a plan.
 
 **Sibling:** spec A is `docs/superpowers/specs/2026-06-04-where-func-rhs-design.md` (where-clause function RHS, `_time`-only). Spec A deliberately scoped dashboard time tokens OUT (its deferred-gap #6). This is that carved-out work.
