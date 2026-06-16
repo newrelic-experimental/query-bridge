@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remove all customer-identifiable and private data from the `nr-query-bridge` repo (working tree + git history) and relocate the real-world query corpus to a private repo, so the project can be published at `github.com/newrelic/nr-query-bridge`.
+> **Update 2026-06-16:** Public target moved to **`newrelic-experimental`** (promote to `newrelic` later) and the repo is becoming an npm-workspaces monorepo (`packages/nr-query-bridge` + `packages/nr-dashboard-importer`) per `docs/superpowers/plans/2026-06-16-dashboard-importer-phase-0-1.md`. Phase A already ran against the flat layout, so the paths below are historical and left as-is. OSS scaffolding is specified in `docs/superpowers/specs/2026-06-16-open-source-readiness-design.md`.
+
+**Goal:** Remove all customer-identifiable and private data from the `nr-query-bridge` repo (working tree + git history) and relocate the real-world query corpus to a private repo, so the project can be published at `github.com/newrelic-experimental/nr-query-bridge`.
 
 **Architecture:** Two gated phases. Phase A relocates the corpus to a new private repo, deletes it here, swaps in a synthetic stub, redacts customer specifics, and updates infra refs — all as normal reviewable commits. Phase B rewrites git history on a throwaway mirror clone (never the live repo) and force-pushes only after explicit human go-ahead.
 
@@ -244,7 +246,7 @@ ASDF_NODEJS_VERSION=24.14.0 git commit -m "docs: drop customer-specific planning
 Run: `git grep -nE "datanerd\.us|newrelic\.com|artifacts\." -- package.json .github/dependabot.yml`
 Expected: shows the `source.<GHE_DOMAIN>` repo URL, team email, and `artifacts.<GHE_DOMAIN>` registry.
 
-- [ ] **Step 2: Edit `package.json`.** Set `repository.url` → `git+https://github.com/newrelic/nr-query-bridge.git`; set `bugs.url` → `https://github.com/newrelic/nr-query-bridge/issues`; handle the team email per the human's decision.
+- [ ] **Step 2: Edit `package.json`.** Set `repository.url` → `git+https://github.com/newrelic-experimental/nr-query-bridge.git`; set `bugs.url` → `https://github.com/newrelic-experimental/nr-query-bridge/issues`; handle the team email per the human's decision.
 
 - [ ] **Step 3: Edit `.github/dependabot.yml`.** Replace the `artifacts.<GHE_DOMAIN>` artifactory registry with the public npm registry (or remove the custom registry block so dependabot uses the default).
 

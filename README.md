@@ -46,9 +46,9 @@ Then open the printed URL with `/docs/playground/` appended. Serve from the
 ## API
 
 ```js
-import { translateSplToNrqlV2 } from '@datanerd/nr-query-bridge';
+import { translateSplToNrql } from '@datanerd/nr-query-bridge';
 
-const result = translateSplToNrqlV2('index=web status=500 | stats count by host');
+const result = translateSplToNrql('index=web status=500 | stats count by host');
 console.log(result.nrql);
 // FROM Log SELECT count(*) WHERE index = 'web' AND status = '500' OR numeric(status) = 500 FACET host
 
@@ -62,6 +62,28 @@ if (result.warnings.length) {
 ```
 npm test
 ```
+
+## Packaging & distribution
+
+Do **not** hand-zip the working directory. It sweeps in `node_modules` (~110MB), the
+`.git` folder, and — critically — `docs/local/`, which is gitignored and contains
+private data that must never leave the repo. Use a method that ships only what belongs:
+
+- **Consumable package** (what a dependant installs) — ships only the `files` field:
+  ```
+  npm pack
+  ```
+- **Source tree** (tracked files at HEAD, no deps, no history, no gitignored paths):
+  ```
+  git archive --format=zip --prefix=nr-query-bridge/ -o ../nr-query-bridge.zip HEAD
+  ```
+- **Verify before sending** — must print `0`:
+  ```
+  unzip -l ../nr-query-bridge.zip | grep -cE 'node_modules/|docs/local/'
+  ```
+
+Both `npm pack` and `git archive` exclude gitignored paths automatically, so
+`docs/local/` stays out without manual excludes.
 
 ## License
 

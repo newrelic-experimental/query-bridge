@@ -3,11 +3,12 @@
 **Date:** 2026-06-02
 **Status:** Design — approved for spec, pending user review
 
+> **Update 2026-06-16:** Two changes since this was written. (1) Public target moved from the main `newrelic` org to **`newrelic-experimental`** (`github.com/newrelic-experimental/nr-query-bridge`); it can be promoted to `newrelic` later. (2) The repo is becoming an npm-workspaces monorepo (`packages/nr-query-bridge` + `packages/nr-dashboard-importer`) per `docs/superpowers/plans/2026-06-16-dashboard-importer-phase-0-1.md`. Phase A below already ran against the flat layout, so its paths are an accurate historical record and are intentionally left as-is. OSS scaffolding (LICENSE / CONTRIBUTING / README headers / THIRD_PARTY_NOTICES / CI→GHA / repo settings) is specified separately in `docs/superpowers/specs/2026-06-16-open-source-readiness-design.md`.
+
 ## Context
 
 `nr-query-bridge` (SPL→NRQL query translator) is being open-sourced at
-`github.com/newrelic/nr-query-bridge` (verified: correct NR public OSS org; repo name currently 404 /
-available). Before publishing, every trace of customer-identifiable and private information must be removed
+`github.com/newrelic-experimental/nr-query-bridge` (newrelic-experimental target; see the 2026-06-16 update note below). Before publishing, every trace of customer-identifiable and private information must be removed
 from both the working tree **and** git history, and the real-world query corpus must be relocated to a new
 private repo.
 
@@ -67,7 +68,7 @@ anonymized in place.
   (`spl-fuzz.test.js` invariants, `spl.test.js` real-world block) keeps running.
 - **Sequencing:** Phase 0 (corpus relocation) completes inside Phase A *before* deletion → Phase A tree
   scrub (reviewable PR) → Phase B history rewrite (gated, mirror clone, explicit go-ahead before force-push).
-- **Public home:** `github.com/newrelic/nr-query-bridge`; dependabot registry → public npm.
+- **Public home:** `github.com/newrelic-experimental/nr-query-bridge`; dependabot registry → public npm.
 
 ## Approach
 
@@ -99,7 +100,7 @@ Consumers use `.length`/`.forEach` dynamically — no hardcoded count — so a s
 - Drop the two customer-flavored superpowers docs (Tier 2). **Keep** `2026-03-30-skipped-tests-design.md` and
   this spec (`2026-06-02-open-source-scrub-design.md`).
 
-**A4. Tier 4 infra.** `package.json` repo URL → `github.com/newrelic/nr-query-bridge`; team email per the
+**A4. Tier 4 infra.** `package.json` repo URL → `github.com/newrelic-experimental/nr-query-bridge`; team email per the
 open item below (keep / swap for public alias / remove). `.github/dependabot.yml` → public npm registry.
 
 **A5. Verify (see Verification), commit as logically-separate commits.**

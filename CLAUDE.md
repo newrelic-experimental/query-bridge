@@ -8,32 +8,22 @@ Multi-language query translator. SPL/Lucene/PromQL/PPL → NRQL/Trino. Pure ESM 
 
 * For code analysis, use Read/Edit/Grep — do NOT shell out to node/python to inspect or transform source files. Work in chunks — you timeout over 200-300 lines.
 * `node bin/spl2nrql.js "<query>"` IS allowed for translating ad-hoc SPL queries (see "Running ad-hoc SPL queries" below).
-* DO NOT COMMIT AUTOMATICALLY. Ask first.
+* When translating a list of queries, use v2-show.test.js.
 * Commit messages: lowercase subject, max 72 chars.
 * Conventional commits required (`feat:`, `fix:`, `chore:`).
 * Commit with `ASDF_NODEJS_VERSION=24.14.0 git commit` (hooks need Node 24).
 * **Loud failure over silent wrong results.** If a command can't be translated correctly, emit `unsupported`, not a warning-and-skip. A user getting an error is better than a user getting wrong data.
+* **Do not hand-zip / `tar` the working directory to share it.** It sweeps in `node_modules`, `.git`, and the gitignored `docs/local/` (private data that must not leave the repo). See "Packaging & distribution" in README.md.
 
 ## Build & Test
 
-Requires Node 24: `ASDF_NODEJS_VERSION=24.14.0 <command>`
+Dev requires **Node 24** (hooks, CI): prefix every command `ASDF_NODEJS_VERSION=24.14.0 <command>`. (Consumers only need Node 20+ — see README.) Standard scripts (`npm test`, lint, format) and end-user CLI usage are in the README; the agent-relevant extras:
 
 ```
-npm run test                    # unit tests (vitest)
 npm run test -- spl             # filter to matching files (Vitest positional; NOT Jest --testPathPattern)
-npm run lint                    # ESLint
 npm run lint:fix                # ESLint with auto-fix
-npm run format                  # Prettier write
-npm run format:check            # Prettier check
 npm run types:check             # TypeScript checkJs (no emit)
-npm run build:parsers           # regenerate Peggy parser after grammar changes
-```
-
-CLI:
-```
-node bin/spl2nrql.js "index=web status=500 | stats count by host"
-echo "index=web | stats count" | node bin/spl2nrql.js
-node bin/spl2nrql.js -i   # interactive REPL
+npm run build:parsers           # regenerate Peggy parser AFTER any grammar change
 ```
 
 ### Running ad-hoc SPL queries
@@ -42,23 +32,11 @@ node bin/spl2nrql.js -i   # interactive REPL
 
 ## Architecture
 
-See `docs/ARCHITECTURE.md` for full pipeline overview with worked example.
-
 ```
 SPL → Peggy parser → AST → splToIR → IR → optimize → irToNrql → NRQL
 ```
 
-### IR Nodes (src/ir/nodes.js)
-Plain objects with `type` field. `SelectQuery` at query level. `Identifier`, `Literal`, `BinOp`, `Func`, `Alias`, `DualCheck`, etc. at expression level.
-
-### IR Optimization (src/ir/optimize.js)
-Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.js`):
-1. Double-NOT elimination
-2. Constant folding (arithmetic on number literals)
-3. Tautology elimination (`x AND true` → `x`)
-4. DualCheck expansion (`DualCheck(field, =, 500)` → `field = '500' OR numeric(field) = 500`)
-5. Fillnull substitution (apply `_fillnullMap` entries)
-6. Field replacement substitution (apply `_fieldReplacements` entries)
+**Full pipeline, stage table, six-pass optimizer, file map, and a worked example: `docs/ARCHITECTURE.md`.** Read it before non-trivial pipeline work. The invariants below are the ones a casual edit could violate — they stay here so they're always loaded.
 
 ### Key Design Decisions
 - **Smart backticking**: Only backtick identifiers with dots/dashes/spaces/colons/curlies. Simple names bare. Macros (`$name`) pass through.
@@ -70,13 +48,7 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 ## Important Paths
 
 ### Source
-- `src/translate.js` — Top-level entry: parse → optimize → emit
-- `src/ir/` — IR node types (`nodes.js`), tree walker (`transform.js`), optimization pipeline (`optimize.js`)
-- `src/input/spl/splToIR.js` — Entry point + search expr translation + command dispatch table
-- `src/input/spl/*Handlers.js` — Command handlers split by theme: aggregation, enrichment, extraction, eval, row
-- `src/input/spl/splExprUtils.js` — Shared utilities: field/function mapping, comparison builders, arithmetic parsing
-- `src/output/nrql/` — IR→NRQL emitter and encoding utilities
-- `src/messages.js` — Centralized catalog of all user-facing warning/unsupported/error messages
+Full file map (every handler file + what it owns) lives in `docs/ARCHITECTURE.md` → File Map. The two entry points worth memorizing: `src/translate.js` (top-level: parse → optimize → emit) and `src/messages.js` (the centralized warning/unsupported/error catalog — never inline a user-facing message).
 
 ### Tests
 - `test/spl/spl.test.js` — Unit tests + real-world regression suite
@@ -91,7 +63,7 @@ Six-pass pipeline using `transformTree` (generic bottom-up walker in `transform.
 - `.claude/references/nrql-reference.md` — NRQL syntax, functions, and translation gotchas (on-demand, read by agents)
 - `.claude/references/spl-reference.md` — SPL syntax, commands, and translation gotchas (on-demand, read by agents)
 - `.claude/references/datadog-reference.md` — Datadog query syntax, field mappings, translation patterns (on-demand, read by datadog-expert)
-- `.claude/rules/design-decisions.md` — architectural choices affecting how code should be written
+- `.claude/rules/design-decisions.md` — architectural choices affecting how code should be written; also where shipped-spec invariants graduate to. Before deleting a shipped `docs/superpowers/` spec/plan, capture its durable invariants there first.
 
 ### Style & Lint
 ESLint (flat config), Prettier, TypeScript checkJs. Husky pre-commit runs lint-staged; pre-push runs full lint + types:check. commitlint enforces conventional commits. Generated parser (`splParser.js`) excluded from all checks.

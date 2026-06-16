@@ -50,6 +50,8 @@ Ask the NRQL expert to:
 
 **Before flagging any translation as a defect, check whether it's settled behavior.** `grep` `test/spl/spl.test.js` for the construct and look for a `verified: 'human'` case, and check the relevant `src/input/spl/*Handlers.js` for a deliberate mapping. If a human already approved it (or a handler maps it on purpose), it is NOT a defect — it's intended. This catches the recurring failure mode of applying a SQL/boolean prior to NRQL's un-SQL-like semantics (e.g. `OR` value-coalesces; `WITH`/`FACET` alias rules) and crying bug on a correct mapping. When the divergence rests on NRQL behavior you're inferring rather than know, confirm with the live compiler (`execute_nrql_query`); if the NR MCP is disconnected, two agents agreeing on docs is corroboration, not proof — record the verdict as pending, don't assert it as fact.
 
+**Adjudicate the translator's ACTUAL output, never a report's quoted/paraphrased NRQL.** A defect report's example may be stale (the translator was since fixed) or a lossy paraphrase (a simplified SPL that drops a distinguishing filter, making two correct distinct outputs collapse into one that *looks* wrong). Before promoting OR withdrawing, re-run the real SPL through `node bin/spl2nrql.js "<query>"` and, when the example is paraphrased, pull a genuine instance from the corpus (`jq '.[] | select(.spl | test("..."))' spl-real-world.json`) rather than the report's transcription.
+
 #### Step 3: NRQL Validation (Opus subagent)
 
 Dispatch an Agent (model: opus, subagent_type: general-purpose) that invokes the `nrql-validation` skill (or reads `.claude/skills/nrql-validation/SKILL.md`).
