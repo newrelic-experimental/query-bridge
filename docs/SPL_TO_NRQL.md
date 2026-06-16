@@ -11,7 +11,7 @@
      fails loudly. Do NOT remove a tag from this list to silence that failure
      without either adding a real sentinel section or deleting the tag from its
      test cases. -->
-<!-- spl-table-tags: bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression -->
+<!-- spl-table-tags: bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression, eval-like-apostrophe-regression, where-in-func-regression, regex-apostrophe-regression, regex-template-var-regression -->
 
 See [CLI.md](CLI.md) for the command-line tool documentation.
 
@@ -248,19 +248,19 @@ NRQL: FROM Log WITH numeric(status) AS status_converted, numeric(replace(total, 
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | convert dur2sec(duration)
 🔴 `convert` dur2sec(duration) is not supported; NRQL has no duration string parser
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | convert mstime(elapsed)
 🔴 `convert` mstime(elapsed) is not supported; NRQL has no mm:ss.ms parser
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | convert auto(field)
 🔴 `convert` auto(field) is not supported; NRQL has no auto-type-detection function
 ```
@@ -411,43 +411,43 @@ NRQL: FROM Log WITH getField(result, -1) AS last SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval hi = status >= 400
 NRQL: FROM Log WITH numeric(status) >= 400 AS hi SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = a*2+b
 NRQL: FROM Log WITH numeric(a) * 2 + numeric(b) AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = (a+b)*c
 NRQL: FROM Log WITH (numeric(a) + numeric(b)) * numeric(c) AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = field + 5
 NRQL: FROM Log WITH numeric(field) + 5 AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = f + g
 NRQL: FROM Log WITH numeric(f) + numeric(g) AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = a % b
 NRQL: FROM Log WITH mod(numeric(a), numeric(b)) AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = round(a) + 1
 NRQL: FROM Log WITH round(a) + 1 AS r SELECT *
 ```
@@ -931,40 +931,40 @@ Sometimes `mvexpand` is applied to a field that is already single-value (defensi
 
 <!-- spl-cases: unsupported-mvexpand -->
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | spath path=cloudformation{}.stack_prefix output=stack_prefix | mvexpand stack_prefix | search stack_prefix="fff000-gitlabrole"
 🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | mvexpand list(orderNumber)
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | stats values(title) as title | mvexpand title
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber
 🟡 SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
@@ -1813,25 +1813,25 @@ NRQL: FROM Log SELECT * WHERE name LIKE '%test%'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | where like(message, "%error%")
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | where NOT like(message, "%debug%")
 NRQL: FROM Log SELECT * WHERE message NOT LIKE '%debug%'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | where like(message, "%timeout%") AND status=500
 NRQL: FROM Log SELECT * WHERE message LIKE '%timeout%' AND status = '500' OR numeric(status) = 500
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | where NOT like(message, "%debug%") AND status=200
 NRQL: FROM Log SELECT * WHERE message NOT LIKE '%debug%' AND status = '200' OR numeric(status) = 200
 ```
@@ -1975,13 +1975,13 @@ NRQL: FROM Log WITH if(numeric(skuCount) > numeric(FCQuantity), 'yes', 'no') AS 
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | stats count | eval x = round(total/count, 2)
 NRQL: FROM Log WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT count(*)
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval x = if(a > b+1, "hi", "lo")
 NRQL: FROM Log WITH if(numeric(a) > numeric(b) + 1, 'hi', 'lo') AS x SELECT *
 ```
@@ -2023,31 +2023,31 @@ NRQL: FROM Log WITH 'only' AS x SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = if(a*2 > b AND c < 3, "y", "n")
 NRQL: FROM Log WITH if(numeric(a) * 2 > numeric(b) AND numeric(c) < 3, 'y', 'n') AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = if(NOT isnull(x), 1, 0)
 NRQL: FROM Log WITH if(x IS NOT NULL, 1, 0) AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = if(NOT (a AND b), 1, 0)
 NRQL: FROM Log WITH if(NOT (a AND b), 1, 0) AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = if(x==1, "y", "n")
 NRQL: FROM Log WITH if(x = '1' OR numeric(x) = 1, 'y', 'n') AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = if(status=500, 1, 0)
 NRQL: FROM Log WITH if(status = '500' OR numeric(status) = 500, 1, 0) AS r SELECT *
 ```
@@ -2145,43 +2145,43 @@ NRQL: FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  index=x | eval z = businessDate + " "
 NRQL: FROM Log WITH concat(businessDate, ' ') AS z SELECT * WHERE index = 'x'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  index=x | eval z = a + " " + b
 NRQL: FROM Log WITH concat(a, ' ', b) AS z SELECT * WHERE index = 'x'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval z = businessDate + " "
 NRQL: FROM Log WITH concat(businessDate, ' ') AS z SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval full = a + " " + b
 NRQL: FROM Log WITH concat(a, ' ', b) AS full SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval r = a . " " . b
 NRQL: FROM Log WITH concat(a, ' ', b) AS r SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval z = lower(a) + b
 NRQL: FROM Log WITH concat(lower(a), b) AS z SELECT *
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  * | eval z = tostring(cost) + suffix
 NRQL: FROM Log WITH concat(string(cost), suffix) AS z SELECT *
 ```
@@ -3018,13 +3018,6 @@ NRQL: FROM Log SELECT * SINCE 24 hours ago
 
 ```
 ✅ Confirmed by human
-SPL:  latest=-1h
-NRQL: FROM Log SELECT * SINCE 24 hours ago UNTIL 1 hour ago
-🟡 SPL latest without earliest defaults to 24h lookback in Splunk; added SINCE 24 hours ago to match
-```
-
-```
-✅ Confirmed by human
 SPL:  latest=now
 NRQL: FROM Log SELECT *
 ```
@@ -3064,6 +3057,198 @@ NRQL: FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND host =
 ✅ Confirmed by human
 SPL:  earliest=-24h earliest=-1h
 NRQL: FROM Log SELECT * SINCE 1 hour ago
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  latest=-1h
+🔴 Latest= without earliest= has no lower time bound, so there is no safe NRQL time range to produce. Add an explicit earliest= (e.g. earliest=-24h) or a literal datetime range (e.g. earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  latest=-2d
+🔴 Latest= without earliest= has no lower time bound, so there is no safe NRQL time range to produce. Add an explicit earliest= (e.g. earliest=-24h) or a literal datetime range (e.g. earliest="01/01/2024:00:00:00").
+```
+<!-- /spl-cases -->
+
+## Dashboard time tokens
+
+Splunk dashboard time tokens (`$tok.earliest$`, bare `$earliest$`/`$latest$`, custom `$x$` in `earliest=`/`latest=`, and `$timespan$` in `span=`) resolve only at dashboard run time, so they carry no static value to translate. Time-bound tokens are dropped with a warning; `$timespan$` and mixed literal+token windows are unsupported. Use literal datetime/duration values instead.
+
+<!-- spl-cases: dashboard-time-tokens -->
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliest=$tok.earliest$ latest=$tok.latest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web latest=$tok.latest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliest=$myStart$ latest=$myEnd$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$myStart$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$myEnd$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliest=$earliest$ latest=$latest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web $tok.earliest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web $earliest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Earliest=$earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web $latest$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web'
+🟡 Latest=$latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliest=-24h latest=-1h | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' SINCE 24 hours ago UNTIL 1 hour ago
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web status=$sev$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND status = '$sev$'
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliestSeen=$earliestSeen$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = '$earliestSeen$'
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web $timespan$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND {{timespan}}
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web | timechart span=5m count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 5 minutes
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web | timechart span=hour count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 hour
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web [ search index=auth earliest=$tok.earliest$ ] | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'
+🟡 `subsearch`: earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliest=-24h [ search index=auth latest=$tok.latest$ ] | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth' SINCE 24 hours ago
+🟡 `subsearch`: latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web [ search index=auth earliest=-1h latest=$tok.latest$ ] | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'
+🟡 `subsearch`: latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliest=$tok.earliest$ latest=$tok.latest$
+NRQL: FROM Log SELECT * WHERE index = 'web'
+🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliest=-24h latest=$tok.latest$ | stats count
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web earliest=$tok.earliest$ latest=-2h | stats count
+🟡 Earliest=$tok.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web $tok.latest$ earliest=-24h | stats count
+🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web | timechart span=$timespan$ count
+🔴 Span=$timespan$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web | bin _time span=$timespan$ | stats count
+🔴 Span=$timespan$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web | bin span=$timespan$ bytes
+🔴 Span=$timespan$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web | bin bytes span=$timespan$ as size
+🔴 Span=$timespan$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web | timechart span=$time-span$ count
+🔴 Span=$time-span$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  index=web | timechart span=$ns:span$ count
+🔴 Span=$ns:span$ is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration (TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.
 ```
 <!-- /spl-cases -->
 
@@ -3227,13 +3412,13 @@ NRQL: FROM Log SELECT * WHERE EventCode = '4720' OR numeric(EventCode) = 4720 OR
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  NOT debug
 NRQL: FROM Log SELECT * WHERE message NOT LIKE '%debug%'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  (error OR warning) NOT debug
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND message NOT LIKE '%debug%'
 ```
@@ -3345,7 +3530,7 @@ NRQL: FROM Log SELECT * WHERE host LIKE '%'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  host!=test*
 NRQL: FROM Log SELECT * WHERE host NOT LIKE 'test%'
 ```
@@ -3369,7 +3554,7 @@ NRQL: FROM Log SELECT * WHERE path = 'C:\\Windows\\System32'
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  msg="line1\nline2"
 NRQL: FROM Log SELECT * WHERE msg = 'line1\\nline2'
 ```
@@ -3587,9 +3772,11 @@ NRQL: FROM Log SELECT * WHERE Operation = 'Add member'
 ```
 
 ```
-✅ Confirmed by human
+🤖 Confirmed by LLM
 SPL:  * $global_time.earliest$ $global_time.latest$
-NRQL: FROM Log SELECT * SINCE {{global_time.earliest}} UNTIL {{global_time.latest}}
+NRQL: FROM Log SELECT *
+🟡 Earliest=$global_time.earliest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
+🟡 Latest=$global_time.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
 ```
 
 ```
@@ -3657,7 +3844,7 @@ NRQL: FROM Log SELECT * WHERE message LIKE '%OR%' AND status = '200' OR numeric(
 ```
 
 ```
-❓ Not confirmed
+🤖 Confirmed by LLM
 SPL:  NOT NOT error
 NRQL: FROM Log SELECT * WHERE message LIKE '%error%'
 ```

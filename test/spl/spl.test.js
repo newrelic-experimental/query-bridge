@@ -138,12 +138,14 @@ const cases = [
     doc: 'bare-keywords',
     verified: 'human',
   },
-  // Template variables $var$ → {{var}}
+  // Template variables $var.earliest$/$var.latest$ are time tokens: drop+warn
+  // (old behavior emitted invalid NRQL `SINCE {{…}}` — fixed by Path 2 handler)
   {
     spl: '* $global_time.earliest$ $global_time.latest$',
-    nrql: 'FROM Log SELECT * SINCE {{global_time.earliest}} UNTIL {{global_time.latest}}',
+    nrql: 'FROM Log SELECT *',
+    warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
     doc: 'bare-keywords',
-    verified: 'human',
+    verified: 'llm',
   },
   // TERM() search directive stripped
   {
@@ -287,13 +289,13 @@ const cases = [
     spl: 'NOT debug',
     nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%'",
     doc: 'boolean-operators',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '(error OR warning) NOT debug',
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%' OR message LIKE '%warning%' AND message NOT LIKE '%debug%'",
     doc: 'boolean-operators',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '`macro_a` AND `macro_b`',
@@ -418,7 +420,7 @@ const cases = [
     spl: 'host!=test*',
     nrql: "FROM Log SELECT * WHERE host NOT LIKE 'test%'",
     doc: 'wildcards',
-    verified: false,
+    verified: 'llm',
   },
   //
   // ── Quoted strings ──────────────────────────────────────────────
@@ -445,7 +447,7 @@ const cases = [
     spl: 'msg="line1\\nline2"',
     nrql: "FROM Log SELECT * WHERE msg = 'line1\\\\nline2'",
     doc: 'quoted-strings',
-    verified: false,
+    verified: 'llm',
   },
   // Double-quoted with spaces, pipe, equals, comma, empty, unicode — all in one implicit-AND
   {
@@ -610,11 +612,24 @@ const cases = [
     verified: 'human',
   },
   {
+    // latest= with no earliest= is unsupported: there's no safe lower bound to
+    // fabricate (any fixed default inverts the window when latest is older than
+    // it, which NRQL rejects). Was previously a fabricated SINCE 24 hours ago —
+    // corrected after live-NRQL confirmed the inversion failure. Re-verify+promote.
     spl: 'latest=-1h',
-    nrql: 'FROM Log SELECT * SINCE 24 hours ago UNTIL 1 hour ago',
-    warningFunc: ['latest_without_earliest'],
+    nrql: '',
+    unsupportedFunc: ['latest_without_earliest_unsupported'],
     doc: 'time-constraints',
-    verified: 'human',
+    verified: 'llm',
+  },
+  // Regression: latest= older than the old 24h default used to emit invalid
+  // inverted NRQL (SINCE 24 hours ago UNTIL 2 days ago). Now unsupported.
+  {
+    spl: 'latest=-2d',
+    nrql: '',
+    unsupportedFunc: ['latest_without_earliest_unsupported'],
+    doc: 'time-constraints',
+    verified: 'llm',
   },
   {
     spl: 'latest=now',
@@ -659,6 +674,128 @@ const cases = [
     nrql: 'FROM Log SELECT * SINCE 1 hour ago',
     doc: 'time-constraints',
     verified: 'human',
+  },
+  // ── Dashboard time tokens: Path 1 (TimeConstraint earliest=/latest=) ──
+  {
+    spl: 'index=web earliest=$tok.earliest$ latest=$tok.latest$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
+    warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  {
+    spl: 'index=web latest=$tok.latest$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
+    warningFunc: ['time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  {
+    spl: 'index=web earliest=$myStart$ latest=$myEnd$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
+    warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // The genuinely common dashboard form: a global time picker injects prefix-less
+  // $earliest$/$latest$ as the earliest=/latest= RHS (a TimeConstraint → Path 1).
+  {
+    spl: 'index=web earliest=$earliest$ latest=$latest$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
+    warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // ── Dashboard time tokens: Path 2 (standalone TemplateVariable) ──
+  // FIXME(path-2-semantics): These three standalone-body token cases drop the
+  // token AS A TIME BOUND, but that's semantically wrong. Two independent SPL
+  // experts + three OSS SPL parsers (airbus ANTLR, kotlaluk Lark-from-btool-BNF,
+  // salspaugh PLY) agree: a bare $x.earliest$ in the SEARCH BODY (not an
+  // earliest=/latest= RHS) is an ordinary _raw term/value substitution — time
+  // semantics come from POSITION, never the token name. The "correct" value-sub
+  // output (WHERE ... AND {{tok.earliest}}) does NOT compile standalone (MCP:
+  // "undefined template variable"), whereas the current drop output DOES compile.
+  // This form is also ~nonexistent in the corpus (every real .earliest token is
+  // an earliest= RHS = Path 1, which is correct). Left as-is and NOT promoted to
+  // 'llm' pending the dashboard-importer work, which will give this real context.
+  {
+    spl: 'index=web $tok.earliest$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
+    warningFunc: ['time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  {
+    spl: 'index=web $earliest$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
+    warningFunc: ['time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  {
+    spl: 'index=web $latest$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web'",
+    warningFunc: ['time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // ── Dashboard time tokens: mixed literal + token → unsupported ──
+  {
+    spl: 'index=web earliest=-24h latest=$tok.latest$ | stats count',
+    nrql: '',
+    warningFunc: ['time_token_bound_dropped'],
+    unsupportedFunc: ['mixed_token_literal_time_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  {
+    spl: 'index=web earliest=$tok.earliest$ latest=-2h | stats count',
+    nrql: '',
+    warningFunc: ['time_token_bound_dropped'],
+    unsupportedFunc: ['mixed_token_literal_time_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Cross-path mix: a Path-2 standalone token ($tok.latest$) alongside a Path-1
+  // literal (earliest=-24h) must ALSO escalate — proves the TemplateVariable
+  // branch sets the same sawTimeToken flag the escalation reads.
+  {
+    spl: 'index=web $tok.latest$ earliest=-24h | stats count',
+    nrql: '',
+    warningFunc: ['time_token_bound_dropped'],
+    unsupportedFunc: ['mixed_token_literal_time_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Regression: literal-only window is untouched (no token, no escalation).
+  {
+    spl: 'index=web earliest=-24h latest=-1h | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' SINCE 24 hours ago UNTIL 1 hour ago",
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Regression: a NON-time template variable in value position is untouched.
+  {
+    spl: 'index=web status=$sev$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND status = '$sev$'",
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Boundary: name CONTAINS "earliest" but is neither `earliest` nor `.earliest`
+  // suffix — must NOT be treated as a time token (guards a sloppy .includes match).
+  {
+    spl: 'index=web earliestSeen=$earliestSeen$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = '$earliestSeen$'",
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Boundary: standalone non-time $…$ search term falls through to identifier path,
+  // NOT dropped, NOT span-unsupported (it's not in a span= position).
+  {
+    spl: 'index=web $timespan$ | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND {{timespan}}",
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
   },
   //
   // ── eval command ────────────────────────────────────────────────
@@ -856,13 +993,13 @@ const cases = [
     spl: '* | stats count | eval x = round(total/count, 2)',
     nrql: 'FROM Log WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT count(*)',
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | eval x = if(a > b+1, "hi", "lo")',
     nrql: "FROM Log WITH if(numeric(a) > numeric(b) + 1, 'hi', 'lo') AS x SELECT *",
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'llm',
   },
   // eval upper() → upper()
   {
@@ -979,7 +1116,8 @@ const cases = [
   {
     spl: '* | eval x=if(like(message, "%Can\'t cover%"), "y", "n")',
     nrql: "FROM Log WITH if(message LIKE '%Can\\'t cover%', 'y', 'n') AS x SELECT *",
-    verified: false,
+    doc: 'eval-like-apostrophe-regression',
+    verified: 'llm',
   },
   // eval tonumber() → numeric()
   {
@@ -1863,6 +2001,72 @@ const cases = [
     doc: 'reports-timechart',
     verified: false,
   },
+  // ── Dashboard time tokens: Path 3 ($timespan$ in span=) ──
+  {
+    spl: 'index=web | timechart span=$timespan$ count',
+    nrql: '',
+    unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  {
+    spl: 'index=web | bin _time span=$timespan$ | stats count',
+    nrql: '',
+    unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // A span token on a NON-_time numeric bin must ALSO surface the specific
+  // span_token_unsupported, not the generic bin-unsupported — for BOTH grammar
+  // orders (span-first and field-first). The grammar preserves the SpanToken
+  // object on span so handleBin's guard catches it regardless of field.
+  {
+    spl: 'index=web | bin span=$timespan$ bytes',
+    nrql: '',
+    unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  {
+    spl: 'index=web | bin bytes span=$timespan$ as size',
+    nrql: '',
+    unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Token name with a HYPHEN — a real corpus token (`span=$time-span$`). Our
+  // original [a-zA-Z0-9_.]+ charset rejected it (whole command read as generic
+  // unsupported). Widened to include hyphen + colon, confirmed by 3 OSS SPL
+  // parsers (see .claude/references/spl-reference.md → Cross-check Parsers).
+  {
+    spl: 'index=web | timechart span=$time-span$ count',
+    nrql: '',
+    unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Token name with a COLON — same charset widening.
+  {
+    spl: 'index=web | timechart span=$ns:span$ count',
+    nrql: '',
+    unsupportedFunc: ['span_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Regression: literal numeric span unchanged.
+  {
+    spl: 'index=web | timechart span=5m count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 5 minutes",
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Regression: bare-word duration span unchanged.
+  {
+    spl: 'index=web | timechart span=hour count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 hour",
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
   //
   // ── chart command ───────────────────────────────────────────────
   //
@@ -2062,28 +2266,28 @@ const cases = [
     spl: '* | where like(message, "%error%")',
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
     doc: 'results-where',
-    verified: false,
+    verified: 'llm',
   },
   // where NOT like() — NOT wrapping of function-call form
   {
     spl: '* | where NOT like(message, "%debug%")',
     nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%'",
     doc: 'results-where',
-    verified: false,
+    verified: 'llm',
   },
   // where like(...) AND field=value — both conditions must appear in WHERE
   {
     spl: '* | where like(message, "%timeout%") AND status=500',
     nrql: "FROM Log SELECT * WHERE message LIKE '%timeout%' AND status = '500' OR numeric(status) = 500",
     doc: 'results-where',
-    verified: false,
+    verified: 'llm',
   },
   // where NOT like() with compound — NOT wrapping + AND
   {
     spl: '* | where NOT like(message, "%debug%") AND status=200',
     nrql: "FROM Log SELECT * WHERE message NOT LIKE '%debug%' AND status = '200' OR numeric(status) = 200",
     doc: 'results-where',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | where match(host, "^web[0-9]+$")',
@@ -2116,7 +2320,8 @@ const cases = [
   {
     spl: '* | where in(minute_check, "00", "30")',
     unsupportedFunc: ['eval_func_unsupported'],
-    verified: false,
+    doc: 'where-in-func-regression',
+    verified: 'llm',
   },
   //
   // ── where on aggregation ────────────────────────────────────────
@@ -2295,7 +2500,8 @@ const cases = [
   {
     spl: '* | regex message="don\'t"',
     nrql: "FROM Log SELECT * WHERE message RLIKE r'don\\'t'",
-    verified: false,
+    doc: 'regex-apostrophe-regression',
+    verified: 'llm',
   },
   // Regression: `| regex foo=$bar$` (unquoted/template-variable RHS) used to
   // emit Rlike(field, null) and crash the emitter. Should now report
@@ -2303,7 +2509,8 @@ const cases = [
   {
     spl: '* | regex accountUsername=$Account_Username$',
     unsupportedFunc: ['regex_command_unparsed'],
-    verified: false,
+    doc: 'regex-template-var-regression',
+    verified: 'llm',
   },
   //
   // ── table / fields ──────────────────────────────────────────────
@@ -2541,21 +2748,21 @@ const cases = [
     warningFunc: ['spath_json_only'],
     unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // mvexpand with function-call field name (stats list() creates literal field name)
   {
     spl: '* | mvexpand list(orderNumber)',
     unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // Pattern 2: dedup round-trip (~30%)
   {
     spl: '* | stats values(title) as title | mvexpand title',
     unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // Pattern 3: expand + aggregate by expanded field
   {
@@ -2563,7 +2770,7 @@ const cases = [
     warningFunc: ['facet_default_limit'],
     unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // Pattern 4: symmetric counting
   {
@@ -2571,7 +2778,7 @@ const cases = [
     warningFunc: ['facet_default_limit'],
     unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   // Pattern 5: expand + sort only (no aggregation by field)
   {
@@ -2579,7 +2786,7 @@ const cases = [
     warningFunc: ['list_order_warning', 'facet_default_limit'],
     unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | mvcombine delim="," values',
@@ -2675,13 +2882,13 @@ const cases = [
     spl: '* | convert dur2sec(duration)',
     unsupportedFunc: ['convert_dur2sec_unsupported'],
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | convert mstime(elapsed)',
     unsupportedFunc: ['convert_mstime_unsupported'],
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     // num: '200' → 200, rmcomma: '1,000' → 1000
@@ -2695,7 +2902,7 @@ const cases = [
     spl: '* | convert auto(field)',
     unsupportedFunc: ['convert_auto_unsupported'],
     doc: 'fields-convert',
-    verified: false,
+    verified: 'llm',
   },
   {
     // '512MB' — can't strip arbitrary units in NRQL
@@ -2775,7 +2982,7 @@ const cases = [
     spl: 'NOT NOT error',
     nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
     doc: 'edge-cases',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '-500',
@@ -3186,20 +3393,20 @@ const cases = [
     spl: 'index=x | timechart span=1m count by service limit=0',
     nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET service LIMIT MAX TIMESERIES 1 minute",
     doc: 'timechart-by-options',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | timechart count by ua useother=false usenull=false limit=5',
     nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET ua LIMIT 5 TIMESERIES AUTO",
     warningFunc: ['usenullNoEquivalent'],
     doc: 'timechart-by-options',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | stats count by host source',
     nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET host, source",
     doc: 'timechart-by-options-regression',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── top multi-field parse ─────────────────────────────────────────
@@ -3207,14 +3414,14 @@ const cases = [
     spl: 'index=x | top limit=10 cs_user_agent, sc_status',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET cs_user_agent, sc_status ORDER BY count DESC LIMIT 10",
     doc: 'top-multifield',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | top host by region',
     nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET host, region ORDER BY count DESC LIMIT 10",
     warningFunc: ['top_groupby_warning'],
     doc: 'top-multifield-regression',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── bin/bucket as-alias ───────────────────────────────────────────
@@ -3223,7 +3430,7 @@ const cases = [
     nrql: "FROM Log SELECT count(*) WHERE index = 'x' TIMESERIES 1 minute",
     warningFunc: ['facet_default_limit'],
     doc: 'bin-as-alias',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── sort leniency: trailing limit, type hints, space-sign multi-key ──
@@ -3231,26 +3438,26 @@ const cases = [
     spl: 'index=x | sort - time_taken limit=10',
     nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY time_taken DESC LIMIT 10",
     doc: 'sort-leniency',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | sort num(duration)',
     nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY duration ASC",
     doc: 'sort-typehint',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | sort -aaa username',
     nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY aaa DESC",
     warningFunc: ['sort_single_field'],
     doc: 'sort-space-multikey',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | sort 0 host',
     nrql: "FROM Log SELECT * WHERE index = 'x' ORDER BY host ASC",
     doc: 'sort-leading-zero-regression',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── where: bang negation, leading-dot decimals, mvcount ───────────
@@ -3258,75 +3465,75 @@ const cases = [
     spl: 'index=x | where !(match(f,"^SYS"))',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND f NOT RLIKE r'^SYS'",
     doc: 'where-bang-negation',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | stats count by f | where .25 > count',
     nrql: "FROM (FROM Log SELECT count(*) WHERE index = 'x' FACET f LIMIT MAX) SELECT * WHERE .25 > numeric(count)",
     doc: 'where-leading-dot-decimal',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | where mvcount(f) > 1',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(length(f)) > 1",
     warningFunc: ['eval_length_warning'],
     doc: 'where-mvcount',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | where count != 5',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND count != '5' AND numeric(count) != 5",
     doc: 'where-bang-regression',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where in_bytes > out_bytes',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(in_bytes) > numeric(out_bytes)",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where a > b + 1',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(a) > numeric(b) + 1",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where bytes > round(total / 100, 2)',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(bytes) > round(numeric(total) / 100, 0.01)",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where _time > relative_time(now(), "-7d")',
     nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 7 days ago",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where _time < relative_time(now(), "-1d")',
     unsupportedFunc: ['where_time_past_upper_bound_unsupported'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where _time < now()',
     nrql: "FROM Log SELECT * WHERE index = 'web'",
     warningFunc: ['where_time_tautology_dropped'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where created < now()',
     unsupportedFunc: ['where_nontime_relative_unsupported'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where bytes > jparse(payload, "size")',
     unsupportedFunc: ['where_rhs_func_not_row_wise'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── where-comparison-rhs regression cases ──────────────────────────
@@ -3335,7 +3542,7 @@ const cases = [
     spl: 'index=web status > 200',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(status) > 200",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     // bare field RHS: in where/eval an UNQUOTED rhs is a FIELD NAME (Splunk
@@ -3344,7 +3551,7 @@ const cases = [
     spl: 'index=web | where status = foo',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND status = foo",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     // function on LHS (where_func_comparison rule): mvcount → length, fires eval_length_warning
@@ -3352,14 +3559,14 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(length(tags)) > 1",
     warningFunc: ['eval_length_warning'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     // outer AND is NOT swallowed by the u_add RHS rule
     spl: 'index=web | where a > b AND c < d',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND numeric(a) > numeric(b) AND numeric(c) < numeric(d)",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     // subsearch with a `search`-COMMAND comparison: `in_bytes > out_bytes` is a
@@ -3369,7 +3576,49 @@ const cases = [
     spl: 'index=web [ search in_bytes > out_bytes ]',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND in_bytes > 'out_bytes'",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
+  },
+  // ── Dashboard time tokens: subsearch scoping (observed via bin/spl2nrql.js) ──
+  // Token inside a subsearch is dropped within the subsearch scope (warning
+  // wrapped by subsearch_warning); the OUTER query gets NO SINCE/UNTIL from it.
+  {
+    spl: 'index=web [ search index=auth earliest=$tok.earliest$ ] | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'",
+    warningFunc: ['time_token_bound_dropped', 'subsearch_warning'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Outer literal + subsearch token: outer SINCE preserved, NO mixed escalation
+  // on the outer (flags are scope-local; the subsearch token never sets the
+  // outer's sawTimeToken). Proves cross-scope isolation.
+  {
+    spl: 'index=web earliest=-24h [ search index=auth latest=$tok.latest$ ] | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth' SINCE 24 hours ago",
+    warningFunc: ['time_token_bound_dropped', 'subsearch_warning'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Literal + token BOTH inside the same subsearch. The subsearch body is a
+  // `| search` COMMAND (not a leading search), so the mixed-bound escalation —
+  // which is leading-search-only by design — does NOT fire here. The token still
+  // drops loud (subsearch_warning); the window is simply not escalated. This is
+  // the documented scope boundary (mid-pipe/subsearch search is out of escalation
+  // scope), captured as observed behavior, NOT a silent-wrong result.
+  {
+    spl: 'index=web [ search index=auth earliest=-1h latest=$tok.latest$ ] | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND index = 'auth'",
+    warningFunc: ['time_token_bound_dropped', 'subsearch_warning'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
+  },
+  // Edge: token-only time bounds with NO trailing command — both bounds drop,
+  // SELECT * survives with no time range.
+  {
+    spl: 'index=web earliest=$tok.earliest$ latest=$tok.latest$',
+    nrql: "FROM Log SELECT * WHERE index = 'web'",
+    warningFunc: ['time_token_bound_dropped', 'time_token_bound_dropped'],
+    doc: 'dashboard-time-tokens',
+    verified: 'llm',
   },
   {
     // subsearch with a `| where` PIPE: the re-parse DOES apply the new RHS rule
@@ -3378,7 +3627,7 @@ const cases = [
     spl: 'index=web [ search index=x | where in_bytes > out_bytes ]',
     nrql: "FROM Log SELECT * WHERE index = 'web' AND index = 'x' AND numeric(in_bytes) > numeric(out_bytes)",
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     // reversed-operand (numeric literal LHS) with a row-wise-unimplemented fn on
@@ -3388,7 +3637,7 @@ const cases = [
     spl: 'index=web | where 0.25 > jparse(payload, "x")',
     unsupportedFunc: ['eval_func_unsupported'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── where-comparison-rhs unsupported cases ─────────────────────────
@@ -3396,19 +3645,19 @@ const cases = [
     spl: 'index=web | where _time >= now()',
     unsupportedFunc: ['where_time_future_bound_unsupported'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where _time = now()',
     unsupportedFunc: ['where_time_point_unsupported'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=web | where _time > relative_time(eventField, "-1d")',
     unsupportedFunc: ['where_relative_time_nonliteral_unsupported'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── where-comparison-rhs collapsed-constraint warning ──────────────
@@ -3421,7 +3670,7 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE index = 'web' SINCE 1 day ago",
     warningFunc: ['where_time_constraints_collapsed'],
     doc: 'where-comparison-rhs',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── tokenizer leniency: empty list items, IN space-separation ─────
@@ -3429,19 +3678,19 @@ const cases = [
     spl: 'index=x | table, _time, host',
     nrql: "FROM Log SELECT timestamp, host WHERE index = 'x'",
     doc: 'tokenizer-empty-list-item',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x f IN ("a" "b", "c")',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND f IN ('a', 'b', 'c')",
     doc: 'tokenizer-in-space-separated',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x f IN ("a", "b", "c")',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND f IN ('a', 'b', 'c')",
     doc: 'tokenizer-in-comma-regression',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── where(...) with no space before the paren ─────────────────────
@@ -3449,13 +3698,13 @@ const cases = [
     spl: 'index=x | where(staked>0)',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(staked) > 0",
     doc: 'tokenizer-where-no-space',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | where (staked>0)',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND numeric(staked) > 0",
     doc: 'tokenizer-where-space-regression',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── stats: stray comma before the by-clause ───────────────────────
@@ -3464,14 +3713,14 @@ const cases = [
     nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET host",
     warningFunc: ['facet_default_limit'],
     doc: 'tokenizer-stats-stray-comma',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | stats count, avg(bytes) by host',
     nrql: "FROM Log SELECT count(*), average(bytes) WHERE index = 'x' FACET host",
     warningFunc: ['facet_default_limit'],
     doc: 'tokenizer-stats-multi-fn-regression',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── quote-boundary: a closing quote acts as a term separator ──────
@@ -3479,13 +3728,13 @@ const cases = [
     spl: 'index=x cs_uri_query !="*Lucky*"cs_uri_query != "*nui*"',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND cs_uri_query NOT LIKE '%Lucky%' AND cs_uri_query NOT LIKE '%nui%'",
     doc: 'tokenizer-quote-boundary',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index="mattbotsummary"$device$',
     nrql: "FROM Log SELECT * WHERE index = 'mattbotsummary' AND {{device}}",
     doc: 'tokenizer-quote-boundary-token',
-    verified: false,
+    verified: 'llm',
   },
   {
     // A closing backtick (end of macro) is a term boundary like a closing quote:
@@ -3494,25 +3743,25 @@ const cases = [
     nrql: "FROM Log SELECT * WHERE $mymacro AND status = '200' OR numeric(status) = 200",
     warningFunc: ['macro_translated'],
     doc: 'tokenizer-quote-boundary-macro',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x cs_uri_query !="*Lucky*" cs_uri_query != "*nui*"',
     nrql: "FROM Log SELECT * WHERE index = 'x' AND cs_uri_query NOT LIKE '%Lucky%' AND cs_uri_query NOT LIKE '%nui%'",
     doc: 'tokenizer-quote-boundary-spaced-regression',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x foo="a" OR bar="b"',
     nrql: "FROM Log SELECT * WHERE (index = 'x' AND foo = 'a') OR bar = 'b'",
     doc: 'tokenizer-quote-boundary-or-regression',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x (foo="a") | stats count',
     nrql: "FROM Log SELECT count(*) WHERE index = 'x' AND foo = 'a'",
     doc: 'tokenizer-quote-boundary-paren-regression',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── quoted field names in field/by lists ──────────────────────────
@@ -3520,14 +3769,14 @@ const cases = [
     spl: 'index=x | table loyaltyId, "Datetime Start", "Datetime End"',
     nrql: "FROM Log SELECT loyaltyId, `Datetime Start`, `Datetime End` WHERE index = 'x'",
     doc: 'quoted-field-name',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | stats count by "Container Name"',
     nrql: "FROM Log SELECT count(*) WHERE index = 'x' FACET `Container Name`",
     warningFunc: ['facet_default_limit'],
     doc: 'quoted-field-name',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── eval `+` with a string operand → now translated via unified ladder ──
@@ -3537,19 +3786,19 @@ const cases = [
     spl: 'index=x | eval z = businessDate + " "',
     nrql: "FROM Log WITH concat(businessDate, ' ') AS z SELECT * WHERE index = 'x'",
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | eval z = a + " " + b',
     nrql: "FROM Log WITH concat(a, ' ', b) AS z SELECT * WHERE index = 'x'",
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: 'index=x | eval z = f + g',
     nrql: "FROM Log WITH numeric(f) + numeric(g) AS z SELECT * WHERE index = 'x'",
     doc: 'eval-plus-arithmetic-regression',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── EvalArith: top-level comparison + string-concat (Task 5) ──
@@ -3557,19 +3806,19 @@ const cases = [
     spl: '* | eval hi = status >= 400',
     nrql: 'FROM Log WITH numeric(status) >= 400 AS hi SELECT *',
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | eval z = businessDate + " "',
     nrql: "FROM Log WITH concat(businessDate, ' ') AS z SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | eval full = a + " " + b',
     nrql: "FROM Log WITH concat(a, ' ', b) AS full SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── EvalArith: stats function args via unified ladder (Task 6) ──
@@ -3577,19 +3826,19 @@ const cases = [
     spl: '* | stats sum(bytes/1024)',
     nrql: 'FROM Log SELECT sum(numeric(bytes) / 1024)',
     doc: 'stats-agg',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | stats sum(a*2+b)',
     nrql: 'FROM Log SELECT sum(numeric(a) * 2 + numeric(b))',
     doc: 'stats-agg',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | stats avg(tcp.*)',
     nrql: 'FROM Log SELECT average(`tcp.*`)',
     doc: 'stats-agg',
-    verified: false,
+    verified: 'llm',
   },
 
   // ── EvalArith: eval nested in stats arg (Task 7) ──
@@ -3614,97 +3863,97 @@ const cases = [
     spl: '* | eval r = a*2+b',
     nrql: 'FROM Log WITH numeric(a) * 2 + numeric(b) AS r SELECT *',
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'llm',
   },
   // Precedence: parens override
   {
     spl: '* | eval r = (a+b)*c',
     nrql: 'FROM Log WITH (numeric(a) + numeric(b)) * numeric(c) AS r SELECT *',
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'llm',
   },
   // Mixed arithmetic + comparison + boolean
   {
     spl: '* | eval r = if(a*2 > b AND c < 3, "y", "n")',
     nrql: "FROM Log WITH if(numeric(a) * 2 > numeric(b) AND numeric(c) < 3, 'y', 'n') AS r SELECT *",
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'llm',
   },
   // Unary NOT around a function
   {
     spl: '* | eval r = if(NOT isnull(x), 1, 0)',
     nrql: 'FROM Log WITH if(x IS NOT NULL, 1, 0) AS r SELECT *',
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'llm',
   },
   // Unary NOT around a parenthesized boolean
   {
     spl: '* | eval r = if(NOT (a AND b), 1, 0)',
     nrql: 'FROM Log WITH if(NOT (a AND b), 1, 0) AS r SELECT *',
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'llm',
   },
   // Concat via dot
   {
     spl: '* | eval r = a . " " . b',
     nrql: "FROM Log WITH concat(a, ' ', b) AS r SELECT *",
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   // + with numeric literal stays arithmetic
   {
     spl: '* | eval r = field + 5',
     nrql: 'FROM Log WITH numeric(field) + 5 AS r SELECT *',
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'llm',
   },
   // + of two bare fields → arithmetic (corpus default: field+field is numeric)
   {
     spl: '* | eval r = f + g',
     nrql: 'FROM Log WITH numeric(f) + numeric(g) AS r SELECT *',
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'llm',
   },
   // Modulo → mod() (emitter rewrites %)
   {
     spl: '* | eval r = a % b',
     nrql: 'FROM Log WITH mod(numeric(a), numeric(b)) AS r SELECT *',
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'llm',
   },
   // == maps to = (with dual-check on numeric value)
   {
     spl: '* | eval r = if(x==1, "y", "n")',
     nrql: "FROM Log WITH if(x = '1' OR numeric(x) = 1, 'y', 'n') AS r SELECT *",
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'llm',
   },
   // Dual-check regression: eval equality with numeric value
   {
     spl: '* | eval r = if(status=500, 1, 0)',
     nrql: "FROM Log WITH if(status = '500' OR numeric(status) = 500, 1, 0) AS r SELECT *",
     doc: 'eval-conditional',
-    verified: false,
+    verified: 'llm',
   },
   // + with a string-returning function operand → concat (not arithmetic)
   {
     spl: '* | eval z = lower(a) + b',
     nrql: 'FROM Log WITH concat(lower(a), b) AS z SELECT *',
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | eval z = tostring(cost) + suffix',
     nrql: 'FROM Log WITH concat(string(cost), suffix) AS z SELECT *',
     doc: 'eval-string',
-    verified: false,
+    verified: 'llm',
   },
   // round()/if() are NOT string-returning → + stays arithmetic
   {
     spl: '* | eval r = round(a) + 1',
     nrql: 'FROM Log WITH round(a) + 1 AS r SELECT *',
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'llm',
   },
 ];
 
@@ -3753,6 +4002,26 @@ describe('translateSplToNrql', () => {
         }
       }
     });
+  });
+
+  // AI-DEV: This check MUST throw, not warn. Every case MUST carry a `doc:` tag.
+  // The doc generator (afterAll) skips untagged cases (`if (!c.doc) continue`),
+  // so an untagged case silently vanishes from SPL_TO_NRQL.md — its translation
+  // is never surfaced for review. Do NOT add a skip or exception list without
+  // explicit human permission. Fix the cause: add a `doc:` tag (and a matching
+  // <!-- spl-cases: TAG --> sentinel, or list the tag in <!-- spl-table-tags -->).
+  it('every case has a doc: tag', () => {
+    const untagged = [];
+    cases.forEach((c, i) => {
+      if (!c.doc) untagged.push(`[${i}] ${c.spl === null ? 'null' : c.spl}`);
+    });
+    if (untagged.length > 0) {
+      expect.fail(
+        `${untagged.length} test case(s) are missing a doc: tag and would ` +
+          `vanish from SPL_TO_NRQL.md. Add a doc: tag to each:\n` +
+          untagged.join('\n'),
+      );
+    }
   });
 });
 

@@ -318,3 +318,24 @@ These are non-obvious SPL behaviors that cause silent bugs if a translator gets 
 | `host` | Originating host |
 | `_serial` | Event serial number |
 | `linecount` | Number of lines in event |
+
+## Cross-check Parsers (external ground truth)
+
+Our `spl.grammar` is a reconstruction from the customer corpus, not Splunk's official spec, so it can be wrong about what Splunk actually accepts. We can't run Splunk to verify (the Splunk General Terms forbid a competitor from testing its software to characterize functionality — clauses v–vii). Instead, cross-check grammar/charset questions against these three independent open-source SPL parsers. Rule of thumb: trust an agreement of **three**, not two ("never take two compasses to sea").
+
+Clone them locally for direct inspection (kept out of this repo):
+```
+git clone --depth 1 https://github.com/airbus-cert/splunk_antlr_spl.git
+git clone --depth 1 https://github.com/kotlaluk/spl-parser.git
+git clone --depth 1 https://github.com/salspaugh/splparser.git
+```
+
+| Parser | Tech | Token/identifier rule | Notes |
+|---|---|---|---|
+| [airbus-cert/splunk_antlr_spl](https://github.com/airbus-cert/splunk_antlr_spl) | ANTLR4 (`SPL.g4`) | `ID` allows mid-token `. - \ : {` and final `_ }` plus `[a-zA-Z$_0-9]` | Most detailed; fork of ffly1985, used in a real CI/CD pipeline |
+| [kotlaluk/spl-parser](https://github.com/kotlaluk/spl-parser) | Lark (`spl_parser/grammars/pseudo_bnf.lark`) | `RULE_NAME: /[\w-]+/` (word chars + hyphen) | Built from Splunk's official `splunk btool`-generated search-BNF — closest to authoritative |
+| [salspaugh/splparser](https://github.com/salspaugh/splparser) | PLY/lex-yacc (`splparser/regexes/searchregexes.py`) | `id_no_end = [a-zA-Z0-9_"*:-]+` (incl. hyphen, colon) | 2013, parses ~66 of ~132 commands |
+
+**Caveat:** none of these lexes the Simple-XML dashboard `$token$` substitution layer directly — they lex SPL *query* identifiers/fields. Token names mirror field names, so this is a strong proxy, not direct proof. The authoritative source is Splunk's `btool`-generated search-BNF (referenced by kotlaluk); the community post is at community.splunk.com (search "Splunk Query Grammar" / "search-bnf").
+
+**Established finding (2026-06):** all three parsers permit a **hyphen** mid-identifier (and a colon); our original `template_var_name = [a-zA-Z0-9_.]+` was too narrow — a real corpus token `span=$time-span$` proved it. Widened accordingly.

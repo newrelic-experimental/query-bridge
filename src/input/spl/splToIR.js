@@ -117,17 +117,29 @@ export function translateAstToIR(ast) {
 
   // Search clause → WHERE
   if (ast.search) {
-    const { expr, warnings, unsupported, since, until } = translateSearchExpr(
-      ast.search,
-      ir,
-    );
+    const {
+      expr,
+      warnings,
+      unsupported,
+      since,
+      until,
+      sawTimeToken,
+      sawTimeLiteral,
+    } = translateSearchExpr(ast.search, ir);
     if (expr) ir.where.push(expr);
-    if (since) ir.since = since;
-    if (until) ir.until = until;
-    // NRQL requires SINCE < UNTIL; default SINCE is 1h which may overlap UNTIL
-    if (until && !since) {
-      ir.since = '24 hours ago';
-      ir.warnings.push(messages.latest_without_earliest());
+    if (sawTimeToken && sawTimeLiteral) {
+      // Mixed literal+token window: dropping only the token would silently widen
+      // or invert the range. Fail loud and emit no bound at all.
+      ir.unsupported.push(messages.mixed_token_literal_time_unsupported());
+    } else if (until && !since) {
+      // Upper bound with no lower bound. We can't fabricate a safe SINCE: any
+      // fixed default inverts the window when `until` resolves older than it
+      // (NRQL rejects start >= end), and we can't evaluate relative offsets
+      // statically. Fail loud rather than emit a window that may not compile.
+      ir.unsupported.push(messages.latest_without_earliest_unsupported());
+    } else {
+      if (since) ir.since = since;
+      if (until) ir.until = until;
     }
     ir.warnings.push(...warnings);
     ir.unsupported.push(...unsupported);
@@ -202,6 +214,11 @@ export function translateSearchExpr(node, ir) {
   // as a tautology drop, or as unsupported. Distinguishes "consumed, emit no WHERE
   // term" from "produced no IR", so the caller won't re-walk via the eval fallback.
   let consumedTime = false;
+  // True once a dashboard time-range TOKEN ($…$) was seen in a time bound, and
+  // once a LITERAL time bound (earliest=/latest= or where _time) was applied.
+  // A search carrying BOTH is a mixed window the caller escalates to unsupported.
+  let sawTimeToken = false;
+  let sawTimeLiteral = false;
 
   function walk(node) {
     if (!node) return null;
@@ -293,6 +310,7 @@ export function translateSearchExpr(node, ir) {
               warnings.push(messages.where_time_constraints_collapsed());
             }
             if (isLower) {
+              sawTimeLiteral = true;
               since = nrql;
             } else if (isUpper) {
               // A past upper bound (UNTIL <past>) with no lower bound inverts
@@ -485,9 +503,17 @@ export function translateSearchExpr(node, ir) {
       }
 
       case 'TimeConstraint': {
+        if (/\$[^$]+\$/.test(node.value)) {
+          sawTimeToken = true;
+          warnings.push(
+            messages.time_token_bound_dropped(node.param, node.value),
+          );
+          return null; // drop: leave since/until unset
+        }
         const { nrql, warning } = parseSplTime(node.value);
         if (warning) warnings.push(warning);
         if (nrql) {
+          sawTimeLiteral = true;
           if (node.param === 'earliest') since = nrql;
           else until = nrql;
         }
@@ -502,16 +528,21 @@ export function translateSearchExpr(node, ir) {
         return Identifier(nrqlMacro);
       }
 
-      case 'TemplateVariable':
-        if (node.name.endsWith('.earliest')) {
-          since = `{{${node.name}}}`;
-          return null;
+      case 'TemplateVariable': {
+        const isEarliest =
+          node.name === 'earliest' || node.name.endsWith('.earliest');
+        const isLatest =
+          node.name === 'latest' || node.name.endsWith('.latest');
+        if (isEarliest || isLatest) {
+          const param = isEarliest ? 'earliest' : 'latest';
+          sawTimeToken = true;
+          warnings.push(
+            messages.time_token_bound_dropped(param, `$${node.name}$`),
+          );
+          return null; // drop: do NOT set since/until to {{…}}
         }
-        if (node.name.endsWith('.latest')) {
-          until = `{{${node.name}}}`;
-          return null;
-        }
-        return Identifier(`{{${node.name}}}`);
+        return Identifier(`{{${node.name}}}`); // non-time variable: unchanged
+      }
 
       case 'NotSubsearch': {
         const lookupMatch = node.rawText.match(/\|\s*inputlookup\s+([\w.-]+)/);
@@ -568,7 +599,16 @@ export function translateSearchExpr(node, ir) {
   }
 
   const expr = walk(node);
-  return { expr, warnings, unsupported, since, until, consumedTime };
+  return {
+    expr,
+    warnings,
+    unsupported,
+    since,
+    until,
+    consumedTime,
+    sawTimeToken,
+    sawTimeLiteral,
+  };
 }
 
 // ── Command dispatch ─────────────────────────────────────────
