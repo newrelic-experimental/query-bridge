@@ -2,6 +2,8 @@
 
 **Goal:** Make SPL dashboard time tokens — `$tok.earliest$`, `$tok.latest$`, and `$timespan$` (a `span=` argument) — fail loud instead of failing silent or emitting non-compiling NRQL. A token in a time context has no correct static NRQL translation, so the right answer is to DROP the bound and WARN (for `earliest=`/`latest=`/standalone), or `unsupported` (for `$timespan$` in `span=`). No token ever produces a SINCE/UNTIL the user didn't ask for.
 
+**Depends on:** nothing (translator-only; ready to plan). **Blocks:** dashboard importer Phase 2 (`docs/superpowers/specs/2026-06-12-dashboard-importer-design.md`) — Phase 2 ingests time pickers and relies on the translator degrading tokens cleanly. Importer Phase 0/1 has no token surface and is NOT blocked.
+
 **Sibling:** spec A is `docs/superpowers/specs/2026-06-10-where-comparison-rhs-design.md` (the `where _time` comparison path, shipped on `eval/parse-error-burndown`). Spec A scoped dashboard tokens OUT (its deferred gap #6) and pointed here. The discovery trail is `docs/superpowers/specs/2026-06-10-dashboard-time-tokens-HANDOFF.md` — this spec supersedes it.
 
 ## Problem
@@ -82,7 +84,7 @@ So the rule is: **if any time bound in a search has a token AND any sibling boun
 
 ## Non-goals
 
-- **Non-time template variables.** `$x$` as a field value or filter (e.g. `status=$sev$`) already passes through as `{{x}}` into a WHERE/value position, which the dashboard platform resolves. That is correct and out of scope — this spec only touches tokens in TIME contexts (`earliest=`/`latest=`, standalone `.earliest`/`.latest`, `span=`).
+- **Non-time template variables.** `$x$` as a field value or filter (e.g. `status=$sev$`) is out of scope — this spec only touches tokens in TIME contexts (`earliest=`/`latest=`, standalone `.earliest`/`.latest`, `span=`). Note (verified via CLI 2026-06-16): a value-position `$sev$` currently emits `status = '$sev$'` (the token survives as a raw single-quoted literal), NOT `{{sev}}`. Whether it *should* become `{{sev}}` for the dashboard platform to resolve is a separate, untouched question. The Path 2 fix must not alter this — only the `TemplateVariable` time-suffix branches change; the value-position fall-through stays exactly as-is.
 - **A `translateSplToDashboard` mode.** Deferred per the no-mode-flag decision until a concrete dashboard-emission target exists.
 - **Literal snap unification** (`-1d@d` in `earliest=`/`where _time`). That's spec A's deferred gap #4, owned by a future `parseSplTime` change. This spec does not modify `parseSplTime` (other than ensuring tokens never reach it).
 - **Epoch-seconds→ms conversion.** The token value is run-time-only; no static path ever emits a concrete epoch, so the unit mismatch never arises. Noted, not handled.

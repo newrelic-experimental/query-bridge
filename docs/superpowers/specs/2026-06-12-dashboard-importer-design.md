@@ -2,6 +2,8 @@
 
 **Goal:** Import a Splunk dashboard export, translate every panel's SPL to NRQL through the existing bridge, and emit a New Relic dashboard. The importer is a *consumer* of the translator layered on top of it. The output is files for three targets: Terraform (built first), JSON intended for NerdGraph, and JSON intended to be pasted into the NR1 UI.
 
+**Depends on:** dashboard time-tokens (`docs/superpowers/specs/2026-06-11-dashboard-time-tokens-design.md`) for Phase 2+ — Phase 2 ingests time pickers and needs the translator to degrade tokens cleanly. Phase 0/1 (plan: `docs/superpowers/plans/2026-06-16-dashboard-importer-phase-0-1.md`) is independent and can proceed now. **Blocks:** nothing.
+
 ## Scope
 
 **In scope** — everything below is committed work, built across Phases 0–5 (see "Build phases"), not omitted. "In scope" here means *will be built*, just not all at once:
