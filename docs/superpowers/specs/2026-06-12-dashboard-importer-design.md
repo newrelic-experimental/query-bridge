@@ -1,10 +1,10 @@
 # Splunk Dashboard Importer Design
 
-**Goal:** Import a Splunk dashboard export, translate every panel's SPL to NRQL through the existing bridge, and emit a New Relic dashboard. The importer is a *consumer* of the translator layered on top of it — it adds no translation logic and does not touch `src/translate.js` or the IR pipeline. Output is file-based across three targets (Terraform built first; NerdGraph input and UI-paste JSON later); live API push is a deferred phase.
+**Goal:** Import a Splunk dashboard export, translate every panel's SPL to NRQL through the existing bridge, and emit a New Relic dashboard. The importer is a *consumer* of the translator layered on top of it. The output is files for three targets: Terraform (built first), JSON intended for NerdGraph, and JSON intended to be pasted into the NR1 UI.
 
 ## Scope
 
-**In scope (all of it — staged, not dropped):**
+**In scope** — everything below is committed work, built across Phases 0–5 (see "Build phases"), not omitted. "In scope" here means *will be built*, just not all at once:
 - Both Splunk dashboard formats: **Simple XML** (classic `<form>`/`<dashboard version="1.1">`) and **Dashboard Studio** (`<dashboard version="2">` JSON-in-CDATA, and pure-JSON).
 - Both delivery shapes: standalone `.xml` view files, and the Splunk REST API export envelope (`dashboards.json` — `{entry:[{content:{"eai:data":"…"}}]}`).
 - **Three first-class output targets**, all reading the same neutral model: **Terraform** (`newrelic_one_dashboard` + provider/variables skeleton), **NerdGraph `dashboardCreate` input** (the mutation argument), and **NR1-UI-paste JSON** (the blob a human pastes into NR1's "Import dashboard" dialog). These are *not* interchangeable — see Emit targets.
