@@ -1,5 +1,7 @@
 # nr-query-bridge
 
+> **Do not hand-zip / `tar` the working directory to share it.** It sweeps in `node_modules`, `.git`, and the gitignored `docs/local/` (private data that must not leave the repo). Use `npm pack` or `git archive` — see "Packaging & distribution" in README.md.
+
 ## Project Overview
 
 Multi-language query translator. SPL/Lucene/PromQL/PPL → NRQL/Trino. Pure ESM JavaScript, no React, zero runtime dependencies. Publishable as `@datanerd/nr-query-bridge`.
