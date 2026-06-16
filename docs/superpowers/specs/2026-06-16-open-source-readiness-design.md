@@ -52,7 +52,7 @@ nr-query-bridge has today:
 | `LICENSE` (Apache-2.0) | yes (root) | per-package copies needed for npm |
 | `README.md` | yes (root) | needs NR Experimental disclaimer header + Support section; per-package READMEs for npm |
 | `CONTRIBUTING.md` | missing | standard NR text |
-| `CODE_OF_CONDUCT.md` | missing | link to NR org-level CoC |
+| `CODE_OF_CONDUCT.md` | (none) | **must stay absent** — repolinter errors on a local CoC; it's centralized in `newrelic/.github` |
 | `SECURITY.md` | missing | standard NR vuln-reporting text |
 | `cla.md` | missing | NR contributor license agreement |
 | `CHANGELOG.md` (+ workflow `.tpl`) | missing | drives the release workflow |
@@ -61,6 +61,16 @@ nr-query-bridge has today:
 | `.github/workflows/repolinter.yml` | missing | **enforces** the files above |
 | `.github/dependabot.yml` | yes | repoint to public npm; add a per-package ecosystem entry each |
 | `.github/pull_request_template.md` | yes | keep |
+
+**Enforced vs. convention.** The automated gate is `newrelic/repolinter-action` against the
+`new-relic-experimental` ruleset
+(`https://raw.githubusercontent.com/newrelic/.github/main/repolinter-rulesets/new-relic-experimental.yml`,
+read 2026-06-16). It *errors* on only: a LICENSE; a README that **starts with** the experimental
+`<picture>` banner snippet and **contains** a `../../security/policy` link; and the **absence** of a
+local `CODE_OF_CONDUCT` (centralized in `newrelic/.github`). It *warns* on a missing
+`THIRD_PARTY_NOTICES`. Everything else in the table (`CONTRIBUTING.md`, `cla.md`, `SECURITY.md`,
+issue templates, `CHANGELOG.md`) is NR-template convention the OSPO release checklist expects but
+repolinter does not block on — a recommended second tier, not a hard gate.
 
 ## Approach
 
@@ -144,9 +154,10 @@ namespace.
 
 ## Open questions
 
-1. **Pending (Chuck → Emily Weeks, OSPO):** the exact NR OSS third-party-notices tool/Action, and
-   whether `newrelic-experimental` additionally mandates FOSSA-as-a-GHA (the template carries no
-   FOSSA workflow, only repolinter). This thread also covers npm `@newrelic/` publish-access.
+1. **Resolved 2026-06-16 (via the `new-relic-experimental` repolinter ruleset):** notices are
+   generated with `newrelic/newrelic-oss-cli` for JS; `newrelic-experimental` does **not** mandate
+   FOSSA-as-a-GHA — the ruleset's only third-party check is a *warning*-level `THIRD_PARTY_NOTICES`
+   existence rule. **Still for Emily/OSPO:** `@newrelic/` npm publish access for an experimental repo.
 2. **Resolved 2026-06-16:** GitHub Actions do not run on internal GHE — GHA workflows are authored
    but dormant until the public push; `grandcentral.yml` stays the internal gate (see Phase 2).
 3. **Recommended 2026-06-16:** npm names settled to `@newrelic/query-bridge` +
