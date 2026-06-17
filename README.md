@@ -32,16 +32,17 @@ translation, with color-coded warnings and unsupported messages.
 workflow run output for the URL (path: `…/docs/playground/`).
 
 **Local:** the playground imports the translator as a native ES module, so it
-must be _served_ (browsers block module imports over `file://`). From the repo
-root:
+must be _served_ (browsers block module imports over `file://`). From the
+translator package directory (`packages/nr-query-bridge`):
 
 ```bash
+cd packages/nr-query-bridge
 npx serve          # or: python3 -m http.server
 ```
 
 Then open the printed URL with `/docs/playground/` appended. Serve from the
-**repo root**, not from inside `docs/playground/` — the page imports
-`../../src/index.js`.
+**package root** (`packages/nr-query-bridge`), not from inside `docs/playground/`
+— the page imports `../../src/index.js`.
 
 ## API
 

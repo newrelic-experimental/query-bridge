@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SPL → NRQL Playground</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --green: #7fd17f;
+        --amber: #e0b85a;
+        --red: #e06a6a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 14px;
+      }
+      header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 { margin: 0; font-size: 18px; }
+      header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+      .layout { display: flex; min-height: calc(100vh - 70px); }
+      .rail {
+        width: 240px;
+        flex-shrink: 0;
+        border-right: 1px solid var(--border);
+        padding: 12px;
+        overflow-y: auto;
+      }
+      .rail .label {
+        text-transform: uppercase;
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+      }
+      .rail-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 8px 10px;
+        margin-bottom: 6px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .rail-item:hover { border-color: var(--accent); }
+      .main { flex: 1; padding: 16px 20px; overflow-y: auto; }
+      .banner {
+        display: none;
+        background: #3d1d1d;
+        border: 1px solid var(--red);
+        color: var(--red);
+        padding: 10px 12px;
+        border-radius: 6px;
+        margin-bottom: 12px;
+      }
+      .rows { display: flex; flex-direction: column; gap: 10px; }
+      .row {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+      }
+      .row-top { display: flex; gap: 8px; }
+      .row-input {
+        flex: 1;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 8px 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+      }
+      .row-input:focus { outline: none; border-color: var(--accent); }
+      .row-submit {
+        background: var(--accent);
+        border: none;
+        border-radius: 6px;
+        color: #04101f;
+        font-weight: 600;
+        padding: 0 14px;
+        cursor: pointer;
+      }
+      .row-remove {
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 18px;
+        padding: 0 4px;
+      }
+      .row-output {
+        margin-top: 8px;
+        padding: 8px 10px;
+        border-left: 3px solid transparent;
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 0;
+      }
+      .row-output:empty { display: none; }
+      .is-neutral { border-left-color: var(--border); color: var(--muted); }
+      .is-green { border-left-color: var(--green); color: var(--green); }
+      .is-amber { border-left-color: var(--green); color: var(--green); }
+      .is-red { border-left-color: var(--red); color: var(--red); }
+      .warn-line { color: var(--amber); display: block; margin-top: 4px; }
+      .crash-line { color: var(--red); display: block; }
+      .add-line {
+        margin-top: 12px;
+        background: transparent;
+        border: 1px dashed var(--border);
+        border-radius: 6px;
+        color: var(--accent);
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      .add-line:hover { border-color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>SPL → NRQL Playground</h1>
+      <p>Type or pick an SPL line. Green = valid NRQL · amber = read the warning · red = no faithful translation.</p>
+    </header>
+    <div class="layout">
+      <nav class="rail">
+        <div class="label">Examples</div>
+        <div id="rail-items"></div>
+      </nav>
+      <main class="main">
+        <div id="banner" class="banner"></div>
+        <div id="rows" class="rows"></div>
+        <button id="add-line" class="add-line">+ Add line</button>
+      </main>
+    </div>
+    <!-- Classic (non-module) guard: runs even when the module below fails to
+         load. Browsers block ES module imports over file://, which would
+         otherwise leave a blank page with only a console error. -->
+    <script>
+      if (location.protocol === 'file:') {
+        var b = document.getElementById('banner');
+        b.style.display = 'block';
+        b.textContent =
+          'This page must be served, not opened directly. From the repo root run `npx serve` (or `python3 -m http.server`) and open /docs/playground/.';
+      }
+    </script>
+    <script type="module" src="./playground.js"></script>
+  </body>
+</html>
