@@ -2,9 +2,9 @@
 
 # nr-query-bridge
 
-Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino.
+Translate Splunk **SPL** queries into New Relic **NRQL**. Pure ESM JavaScript, zero runtime dependencies, Node 20+.
 
-Pure ESM JavaScript, zero runtime dependencies, Node 20+.
+> **Status — experimental.** Today the bridge translates **SPL → NRQL**. Its internals are built on a language-neutral intermediate representation, so more input languages (Lucene, PromQL, PPL) and output targets (Trino SQL) are on the roadmap — they are **not implemented yet**.
 
 ## Install
 
@@ -59,6 +59,8 @@ if (result.warnings.length) {
   console.warn(result.warnings);
 }
 ```
+
+When a construct has no NRQL equivalent, `result.unsupported` is populated and `result.nrql` is an empty string — the bridge emits no query rather than a wrong one. `result.warnings` flags precision loss where the NRQL is still valid.
 
 ## Test
 
