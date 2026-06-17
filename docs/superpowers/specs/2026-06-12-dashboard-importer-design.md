@@ -334,3 +334,13 @@ The single highest-value pre-build check (settles 1, 2, 3, 4 at once): generate 
 3. **`ds.savedSearch` bodies** — SPL not in the export; would need a second fetch of the saved-search definition (the corpus has `saved_searches.json` alongside — a future cross-reference could resolve these instead of placeholdering them).
 4. **`depends`/`rejects` conditional visibility** — Splunk token-gated panel visibility → NR variable-conditional widgets. Recorded as a caveat in v1, not wired.
 5. **Snap-to time** (`-60m@m`) — snap dropped with a note (NR has no snap); same class as the time-token spec's deferred literal-snap gap.
+
+## Open-source publishing tasks (owed by the importer package)
+
+The open-source readiness effort (`docs/superpowers/specs/2026-06-16-open-source-readiness-design.md`) scaffolded the translator package and the repo root, but **deferred the importer package's OSS files** because `packages/nr-dashboard-importer/` was empty when that work ran. The importer effort owns these:
+
+1. **Switch the translator dependency to its public name.** The readiness work renamed the translator `@datanerd/nr-query-bridge` → `@newrelic/query-bridge`. Update the importer's `package.json` dependency and every `import … from '@datanerd/nr-query-bridge'` to `@newrelic/query-bridge`, or the workspace won't resolve once the readiness branch merges. (The `@datanerd/nr-query-bridge` references in this spec's prose and diagram above predate the rename — read them as `@newrelic/query-bridge`.)
+2. **Set the importer's public publish metadata** in its `package.json`: `name: @newrelic/dashboard-importer`, `repository.directory: packages/nr-dashboard-importer`, and `publishConfig.access: public` (required for a scoped public package). The `@newrelic/` scope is pending OSPO approval; fallback is the unscoped `nr-dashboard-importer`.
+3. **Add the importer's `LICENSE`** (copy the root Apache-2.0) and a short **npm-facing `README.md`** (experimental banner + install line + link back to the monorepo).
+4. **Generate `THIRD_PARTY_NOTICES.md`** with `newrelic/newrelic-oss-cli`. Unlike the zero-dep translator, the importer ships `fast-xml-parser` + its 5 transitive deps, so this is a real file. Re-confirm those transitive licenses are permissive at the same time (the security rules require it — already flagged under Risks).
+5. **Add the importer's dependabot npm entry** — `package-ecosystem: npm`, `directory: /packages/nr-dashboard-importer` in `.github/dependabot.yml` (the readiness PR added only the translator's entry).
