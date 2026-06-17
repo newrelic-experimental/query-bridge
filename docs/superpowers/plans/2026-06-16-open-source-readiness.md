@@ -23,7 +23,7 @@ Tiers A–C executed on branch `oss/readiness` (PR #34). The repolinter gate is 
 Still outstanding:
 
 - **Cross-branch:** the importer branch imports `@datanerd/nr-query-bridge` and must switch to `@newrelic/query-bridge` at merge.
-- **Runbook R1–R5** (repo creation, secret scanning + push protection, branch protection, retire `grandcentral.yml`, `npm publish`) — unchanged; gated on the scrub spec's Phase B and OSPO granting the `@newrelic/` scope.
+- **Runbook R1–R5** (repo creation, secret scanning + push protection, branch protection, retire `grandcentral.yml`, `npm publish`) — unchanged; gated on OSPO approval (GitHub repo creation in `newrelic-experimental` + `@newrelic/` npm scope access). The scrub's Phase B history rewrite is **complete**.
 - **OSPO:** confirm `@newrelic/` npm publish access (else fall back to the unscoped `nr-query-bridge`).
 
 ---
@@ -459,7 +459,7 @@ ASDF_NODEJS_VERSION=24.14.0 git commit -m "ci: add codeql analysis workflow"
 
 These steps are **not** TDD tasks — they are admin/ops actions performed at or after public-repo creation. They are listed for completeness and to be executed in order once their gates clear.
 
-### R1. Create the public repo (gate: scrub spec Phase B history rewrite complete)
+### R1. Create the public repo (gate: OSPO repo-creation approval — scrub Phase B history rewrite is done)
 
 Create `github.com/newrelic-experimental/nr-query-bridge` (via OSPO repo-creation), then push the scrubbed, monorepo-migrated, scaffolded tree.
 
@@ -499,4 +499,4 @@ npm publish --workspace=@newrelic/dashboard-importer
 ## Open items carried from the spec
 
 - **Emily/OSPO:** `@newrelic/` npm publish access for an experimental repo (blocks R5; fallback exists).
-- **Gate:** R1–R5 depend on the scrub spec's Phase B (history rewrite) completing first.
+- **Gate:** R1–R5 depend on OSPO approval (GitHub repo creation + `@newrelic/` scope). The scrub spec's Phase B (history rewrite) is complete.

@@ -1,7 +1,7 @@
 # Open-Source Prep: Scrub Customer Data + Relocate Corpus
 
 **Date:** 2026-06-02
-**Status:** Design — approved for spec, pending user review
+**Status:** Phase A + Phase B complete (2026-06-17) — customer data scrubbed from tree and history, corpus relocated. Historical record.
 
 > **Update 2026-06-16:** Two changes since this was written. (1) Public target moved from the main `newrelic` org to **`newrelic-experimental`** (`github.com/newrelic-experimental/nr-query-bridge`); it can be promoted to `newrelic` later. (2) The repo is becoming an npm-workspaces monorepo (`packages/nr-query-bridge` + `packages/nr-dashboard-importer`) per `docs/superpowers/plans/2026-06-16-dashboard-importer-phase-0-1.md`. Phase A below already ran against the flat layout, so its paths are an accurate historical record and are intentionally left as-is. OSS scaffolding (LICENSE / CONTRIBUTING / README headers / THIRD_PARTY_NOTICES / CI→GHA / repo settings) is specified separately in `docs/superpowers/specs/2026-06-16-open-source-readiness-design.md`.
 
