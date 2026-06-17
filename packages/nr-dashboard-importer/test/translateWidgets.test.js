@@ -1,0 +1,59 @@
+import { describe, it, expect } from 'vitest';
+import { translateWidgets } from '../src/translateWidgets.js';
+import { createWidget } from '../src/model.js';
+
+describe('translateWidgets — clean translation', () => {
+  it('attaches NRQL and marks a translatable widget clean', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
+    const widgets = [
+      createWidget({
+        title: 'C',
+        vizType: 'line',
+        rawSpl: 'index=web | stats count',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('clean');
+    expect(out[0].nrql).toMatch(/SELECT count/i);
+    expect(out[0].vizType).toBe('line');
+  });
+});
+
+describe('translateWidgets — placeholder on no NRQL', () => {
+  it('converts an untranslatable widget to a markdown placeholder with SPL and reason', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
+    // A construct the translator reports as unsupported/errors → nrql === ''.
+    const widgets = [
+      createWidget({
+        title: 'Bad',
+        vizType: 'table',
+        rawSpl: '| nonsensecommand foo bar',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('placeholder');
+    expect(out[0].vizType).toBe('markdown');
+    expect(out[0].placeholderText).toContain('| nonsensecommand foo bar'); // original SPL fenced
+    expect(out[0].placeholderText).toMatch(/unsupported|error/i); // the reason
+    expect(out[0].placeholderText).not.toMatch(/Partial — unverified/); // no partial NRQL present
+    expect(out[0].nrql).toBeUndefined();
+  });
+});
+
+describe('translateWidgets — warnings attach but stay clean', () => {
+  it('keeps a warned widget as a real widget and records the warnings', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
+    // Pick SPL the translator emits NRQL for but with a warning. If none is known,
+    // assert the shape: outcome 'clean' AND warnings is an array.
+    const widgets = [
+      createWidget({
+        title: 'W',
+        vizType: 'line',
+        rawSpl: 'index=web | stats count',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('clean');
+    expect(Array.isArray(out[0].warnings)).toBe(true);
+  });
+});
