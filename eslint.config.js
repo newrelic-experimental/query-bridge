@@ -1,15 +1,18 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 
+// Single ESLint config for the whole monorepo. Flat config is glob-scoped, so
+// one root config lints every package plus the repo-level playground — no
+// per-package configs to keep in sync. `eslint .` from the root covers it all.
 export default [
   {
     ignores: [
-      'src/input/spl/splParser.js',
-      'node_modules/',
-      'dist/',
-      'tmp/',
-      'coverage/',
-      'types/',
+      'packages/nr-query-bridge/src/input/spl/splParser.js', // generated parser
+      '**/node_modules/',
+      '**/dist/',
+      '**/tmp/',
+      '**/coverage/',
+      '**/types/',
     ],
   },
   js.configs.recommended,
@@ -33,7 +36,8 @@ export default [
     },
   },
   {
-    files: ['test/**/*.js'],
+    // Test globals — package test suites and the repo-level playground guard.
+    files: ['packages/*/test/**/*.js', 'playground/**/*.test.js'],
     languageOptions: {
       globals: {
         describe: 'readonly',
@@ -48,7 +52,8 @@ export default [
     },
   },
   {
-    files: ['docs/playground/**/*.js'],
+    // Browser globals — the playground demo runs in the browser.
+    files: ['playground/**/*.js'],
     languageOptions: {
       globals: {
         document: 'readonly',

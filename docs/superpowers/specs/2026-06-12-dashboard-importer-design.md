@@ -78,7 +78,7 @@ Each component is described once, in full, in its own section below; this table 
 | `bin/spl-dashboard.js` | — | single-file, `--account`, `--out` | + bulk dir, report | + `--format` routing-ready | + `--format nerdgraph\|ui-paste` |
 
 **Done-when (phase exit criteria):**
-- **Phase 0:** repo builds as workspaces; translator lives in `packages/nr-query-bridge/`; its 681-test suite is green unchanged; `packages/nr-dashboard-importer/` scaffold exists with a passing trivial test. No importer logic.
+- **Phase 0:** repo builds as workspaces; translator lives in `packages/nr-query-bridge/`; its test suite is green with no behavior change (shipped: package suite 706 + root playground guard 3 = 709 passed | 6 skipped); `packages/nr-dashboard-importer/` scaffold exists with a passing trivial test. No importer logic. (Shipped in PR #33.)
 - **Phase 1:** one real (de-identified) Simple XML file → valid `dashboard.tf` + `versions.tf` + `variables.tf`; `terraform validate` passes (if available in CI); re-run overwrites identically. Line/table/billboard widgets only.
 - **Phase 2:** the de-identified corpus Simple XML subset runs with `threw === 0`; coverage scorecard recorded; variables, base/post-process, all viz types, and placeholders all exercised by tests.
 - **Phase 3:** Studio fixtures (XML-wrapped from corpus + synthetic pure-JSON) produce the same `DashboardModel` shape and valid output; `ds.chain` nesting resolved.
@@ -284,7 +284,7 @@ spl-dashboard <file> --format terraform   # default; also: nerdgraph | ui-paste 
 
 All formats are in scope; this is build order. **Phase 1 is a vertical slice** (thinnest end-to-end path to prove the pipeline); then breadth.
 
-- **Phase 0 — monorepo migration. Its OWN PR, merged before any importer work.** Convert the repo to npm workspaces; move the translator into `packages/nr-query-bridge/`; create the empty `packages/nr-dashboard-importer/` scaffold. Mechanical path/config/CI/hook updates only — the 681-test suite green before and after, no importer logic, no behavior change. A standalone PR keeps the giant path-move diff from tangling with any logic change, so reviewers can see the move *is* just a move.
+- **Phase 0 — monorepo migration. Its OWN PR, merged before any importer work.** Convert the repo to npm workspaces; move the translator into `packages/nr-query-bridge/`; create the empty `packages/nr-dashboard-importer/` scaffold. Mechanical path/config/CI/hook updates only — the test suite green before and after with no behavior change, no importer logic. A standalone PR keeps the giant path-move diff from tangling with any logic change, so reviewers can see the move *is* just a move.
 - **Phase 1 — vertical slice, Terraform-only.** One Simple XML file → `detectFormat` (single-file path) → `parseSimpleXml` (minimal: `<chart>`/`<table>`/`<single>` → `line`/`table`/`billboard`, no variables, no base/post-process) → `translateWidgets` → `emitTerraform` → `<slug>.tf` + `versions.tf` + `variables.tf` skeleton. CLI single-file mode. Proves model + translate + emit end-to-end. Stable filename re-run. One de-identified dashboard fixture + synthetic edge fixtures.
 - **Phase 2 — Simple XML breadth.** All viz types incl. `<html>`/`<map>`/gauges; template variables (static + populating-search); base/post-process resolution; placeholder widgets for unsupported/errors; `defaultTimeRange` → page range; REST-envelope bulk path (skip `isDashboard:false`); per-dashboard + roll-up reports.
 - **Phase 3 — Dashboard Studio.** `parseStudio` for both XML-wrapped (CDATA) and pure-JSON; `ds.search`/`ds.chain`/`ds.savedSearch`; viz/dataSource graph linkage; `layout.structure` px→grid; Studio inputs → variables. Pure-JSON path synthetic (no corpus sample).
@@ -293,7 +293,7 @@ All formats are in scope; this is build order. **Phase 1 is a vertical slice** (
 
 ## Testing
 
-Vitest, in `packages/nr-dashboard-importer/test/` mirroring its `src/`. Pure functions (string/object in → object out) — no mocking, consistent with project-testing rules. Fixtures live in `test/fixtures/`, **de-identified** (corpus carries customer index/host/app names — scrub before committing, per the no-customer-data rule). Phase 0's migration must keep the translator package's existing 681-test suite green unchanged.
+Vitest, in `packages/nr-dashboard-importer/test/` mirroring its `src/`. Pure functions (string/object in → object out) — no mocking, consistent with project-testing rules. Fixtures live in `test/fixtures/`, **de-identified** (corpus carries customer index/host/app names — scrub before committing, per the no-customer-data rule). Phase 0's migration must keep the translator package's test suite green with no behavior change.
 
 - **detectFormat:** one test per input shape — REST envelope (multi-entry, mixed formats, `isDashboard:false` skipped), standalone Simple XML, Studio XML-wrapped (CDATA unwrap), Studio pure-JSON (synthetic, marked non-corpus). Assert correct format routing + count.
 - **parseSimpleXml:** `<label>`→title; each viz element→neutral vizType; `<search base>`→baseRef + fragment; time input→defaultTimeRange; dropdown w/ populating search→variable+sourceQuery; computed layout for N-panel rows.

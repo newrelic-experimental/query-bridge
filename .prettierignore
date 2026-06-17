@@ -1,5 +1,5 @@
-src/input/spl/splParser.js
-test/spl/spl-real-world.json
+packages/nr-query-bridge/src/input/spl/splParser.js
+packages/nr-query-bridge/test/spl/spl-real-world.json
 node_modules/
 dist/
 tmp/

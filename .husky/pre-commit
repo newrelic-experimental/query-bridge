@@ -1,7 +1,8 @@
 npx lint-staged
 
-# Run the full test suite. This also regenerates docs/SPL_TO_NRQL.md via the
-# doc-gen afterAll (local write mode). If that regen changed the doc, stage it
-# so the commit includes the up-to-date docs and the tree stays clean.
+# Run the full test suite. This also regenerates the translator's
+# docs/SPL_TO_NRQL.md via the doc-gen afterAll (local write mode). If that regen
+# changed the doc, stage it so the commit includes the up-to-date docs and the
+# tree stays clean.
 npm test
-git add docs/SPL_TO_NRQL.md
+git add packages/nr-query-bridge/docs/SPL_TO_NRQL.md

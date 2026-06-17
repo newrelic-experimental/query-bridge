@@ -151,6 +151,8 @@ The query must return **non-null, non-zero, non-empty computed values**. None of
 
 If the exact query returns any of the above, adapt it to target real data (use known fields from `nrql-corpus.md`). If you can't get real computed values after 3 attempts, leave it untagged.
 
+**Exception — `numeric()`-wrapped arithmetic.** `numeric(field)` returns null when `field` holds a non-numeric string, but returns the value (and arithmetic works) on an already-numeric field — see `nrql-reference.md`. So `numeric(stringField)` nulls against staging data that isn't a numeric string. That is a **satisfiable** query (feed it numeric-string data and it computes), NOT an impossible one — do not demote it for a null here. If a `numeric()`-wrapped expression nulls, prove the arithmetic *structure* by pointing it at a numeric field (e.g. `numeric(timestamp) * 2 + numeric(timestamp)` → real number) or a numeric-string literal (`numeric('123')` → 123); promote on structure + expert sign-off. Reserve the null/zero failure bar for genuinely impossible queries (inverted time ranges, undefined template vars, contradictory predicates).
+
 ### Workflow
 
 1. **Find matching data**: Use discovery queries to confirm data exists
@@ -177,6 +179,10 @@ After every 5 batches (20 tags), pause for a scorecard checkpoint showing: total
 - **Known FIXMEs**: If a test case has a FIXME comment, note it in the report but still validate current behavior
 - **Cases with only warnings/unsupported**: These are valid — the translator intentionally flags these. Validate the message content is reasonable.
 - **Skipped tests (`skip: true`)**: These are FIXME placeholders for future work. Include them in Mode 2 presentation if they have `verified: 'llm'`, but note they are skipped.
+
+## Scaling to many cases (agent swarm + main-thread MCP)
+
+Subagents usually CANNOT reach the NR MCP (`execute_nrql_query`). For a large backlog, split the work: dispatch parallel Opus expert-review agents (each owns a contiguous block of test-file line ranges, reads only its slice, invokes `spl-knowledge` + `nrql-knowledge`), and have each return a compact per-case block — intent, semantic verdict, an **MCP-ready adapted NRQL** (template tokens/placeholder fields swapped for real values), and a discovery query. The **main thread** then runs every MCP query itself (agents produce queries, never run them). This keeps the giant test file out of your context and parallelizes the slow expert review while you stay the single MCP caller.
 
 ## Batch Size
 

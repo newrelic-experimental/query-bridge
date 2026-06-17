@@ -1,0 +1,44 @@
+{
+  "name": "@datanerd/nr-query-bridge",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino",
+  "main": "src/index.js",
+  "types": "types/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "bin": {
+    "spl2nrql": "./bin/spl2nrql.js"
+  },
+  "files": [
+    "src/",
+    "bin/",
+    "types/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/newrelic/nr-query-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/newrelic/nr-query-bridge/issues"
+  },
+  "homepage": "https://github.com/newrelic/nr-query-bridge#readme",
+  "author": {
+    "name": "Logging Team"
+  },
+  "scripts": {
+    "prepublishOnly": "npm test && npm run build:types",
+    "test": "vitest run",
+    "build:parsers": "peggy -o src/input/spl/splParser.js --format es src/input/spl/spl.grammar",
+    "build:types": "tsc --declaration --emitDeclarationOnly --noEmit false --outDir types",
+    "types:check": "tsc --noEmit"
+  }
+}

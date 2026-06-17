@@ -1,5 +1,5 @@
-// docs/playground/playground.js
-import { translateSplToNrql } from '../../src/index.js';
+// playground/playground.js
+import { translateSplToNrql } from '../packages/nr-query-bridge/src/index.js';
 import { EXAMPLES } from './examples.js';
 
 const DEBOUNCE_MS = 250;
@@ -131,10 +131,7 @@ function init() {
       firstInput.value = spl;
       // Trigger an immediate translation via the row's Submit button (which
       // cancels any pending debounce and re-renders the output).
-      firstInput
-        .closest('.row')
-        .querySelector('.row-submit')
-        .click();
+      firstInput.closest('.row').querySelector('.row-submit').click();
     });
     rail.appendChild(btn);
   }

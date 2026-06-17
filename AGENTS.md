@@ -25,7 +25,7 @@ Executes NRQL queries against New Relic account 1 via MCP. Reports SUCCESS/FAILU
 ## Translation Analysis Process
 
 When analyzing how to translate a new SPL command:
-1. Grep `test/spl/spl-real-world.json` for all queries using the command
+1. Grep `packages/nr-query-bridge/test/spl/spl-real-world.json` for all queries using the command
 2. Pass SPL to spl-expert: determine intent, log structure, why the command is used
 3. Pass intent + structure to nrql-expert: write simplest NRQL for each intent
 4. Identify distinct patterns of usage

@@ -1,6 +1,8 @@
-// test/playground/examples.test.js
-import { EXAMPLES } from '../../docs/playground/examples.js';
-import { translateSplToNrql } from '../../src/index.js';
+// playground/examples.test.js — repo-level guard that the playground demo's
+// color-coding stays honest as the translator evolves (the playground is repo
+// docs, not part of the shipped translator package).
+import { EXAMPLES } from './examples.js';
+import { translateSplToNrql } from '../packages/nr-query-bridge/src/index.js';
 
 // Expected result type per demo, by index (0-based), matching the playground
 // examples ordering.

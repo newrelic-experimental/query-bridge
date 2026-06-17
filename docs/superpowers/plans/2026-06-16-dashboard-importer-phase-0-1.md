@@ -42,7 +42,8 @@ These are the real names/paths/contracts the tasks below rely on. Do not re-deri
   - `test/playground/examples.test.js:2` → `import { EXAMPLES } from '../../docs/playground/examples.js'`.
   - **Decision (this plan):** move the translator's own docs INTO the package so `../../docs/` stays valid unchanged. See Docs split below.
 - **Docs split:**
-  - **Into `packages/nr-query-bridge/docs/`:** `ARCHITECTURE.md`, `CLI.md`, `SPL_TO_NRQL.md`, `playground/{examples.js,index.html,playground.js}`.
+  - **Into `packages/nr-query-bridge/docs/`:** `ARCHITECTURE.md`, `CLI.md`, `SPL_TO_NRQL.md`.
+  - **Repo-root top-level `playground/`** (changed during execution — see below): `examples.js`, `index.html`, `playground.js`, and the co-located guard test `examples.test.js`. The playground is repo-level docs/demo (it'll grow to demo the importer too), not translator-package content, so it lives at the repo root, not under any package. Its test runs via a root `vitest.config.js`.
   - **Stay at repo-root `docs/`:** `superpowers/specs/`, `superpowers/plans/` (this file lives here).
   - `docs/references/` does not exist; code comments citing `docs/references/splunk-to-nr-migration-guide.md` are pre-existing stale refs — do not touch them in this plan.
 - **Husky hooks (root `.husky/`):** `pre-commit` runs `npm test` then `git add docs/SPL_TO_NRQL.md`; `pre-push` runs `npm run lint && npm run types:check`; `commit-msg` runs commitlint. The `git add` path becomes `packages/nr-query-bridge/docs/SPL_TO_NRQL.md`.
@@ -507,8 +508,9 @@ ASDF_NODEJS_VERSION=24.14.0 git commit -m "feat: scaffold nr-dashboard-importer 
 **Files:**
 - Create: `packages/nr-dashboard-importer/src/model.js`
 - Create: `packages/nr-dashboard-importer/tsconfig.json`
-- Create: `packages/nr-dashboard-importer/eslint.config.js`
 - Test: `packages/nr-dashboard-importer/test/model.test.js`
+
+> **ESLint note (changed from original plan):** Phase 0 consolidated to a single root `eslint.config.js` that lints the whole repo. Do NOT create a per-package eslint config. The root config's existing globs (`packages/*/test/**/*.js` for test globals, the default block for everything else) already cover the importer's `src/` and `test/`. Verify with `npx eslint packages/nr-dashboard-importer` after adding source; only touch the root config if a glob genuinely misses the importer.
 
 Phase 1 model is minimal: title/description, a `widgets[]` with the 3 Phase-1 vizTypes, no `variables`/`defaultTimeRange` logic yet (fields exist but stay empty). The neutral enum is the full spec enum (cheap to define now; emitters only handle 3 in Phase 1).
 
@@ -648,7 +650,7 @@ export function createWidget(fields) {
 }
 ```
 
-- [ ] **Step 4: Add the package tsconfig and eslint config**
+- [ ] **Step 4: Add the package tsconfig**
 
 `packages/nr-dashboard-importer/tsconfig.json`:
 
@@ -671,49 +673,7 @@ export function createWidget(fields) {
 }
 ```
 
-`packages/nr-dashboard-importer/eslint.config.js`:
-
-```javascript
-import js from '@eslint/js';
-import prettier from 'eslint-config-prettier';
-
-export default [
-  { ignores: ['node_modules/', 'dist/', 'tmp/', 'coverage/'] },
-  js.configs.recommended,
-  prettier,
-  {
-    languageOptions: {
-      ecmaVersion: 2022,
-      sourceType: 'module',
-      globals: {
-        console: 'readonly',
-        process: 'readonly',
-        URL: 'readonly',
-      },
-    },
-    rules: {
-      'no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
-      ],
-    },
-  },
-  {
-    files: ['test/**/*.js'],
-    languageOptions: {
-      globals: {
-        describe: 'readonly',
-        it: 'readonly',
-        expect: 'readonly',
-        beforeEach: 'readonly',
-        afterEach: 'readonly',
-        beforeAll: 'readonly',
-        afterAll: 'readonly',
-        vi: 'readonly',
-      },
-    },
-  },
-];
+No package eslint config — the root config lints the importer (see the ESLint note above).
 ```
 
 - [ ] **Step 5: Run the test, confirm it passes**
@@ -731,7 +691,7 @@ After the red-green confirmation, add inside each `it()` body:
 `// AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.`
 
 ```bash
-git add packages/nr-dashboard-importer/src/model.js packages/nr-dashboard-importer/test/model.test.js packages/nr-dashboard-importer/tsconfig.json packages/nr-dashboard-importer/eslint.config.js
+git add packages/nr-dashboard-importer/src/model.js packages/nr-dashboard-importer/test/model.test.js packages/nr-dashboard-importer/tsconfig.json
 ASDF_NODEJS_VERSION=24.14.0 git commit -m "feat: add neutral DashboardModel and vizType enum"
 ```
 
@@ -1941,7 +1901,7 @@ ASDF_NODEJS_VERSION=24.14.0 git commit -m "test: end-to-end import of de-identif
 - [ ] **Step 1: Run the whole workspace suite**
 
 Run: `ASDF_NODEJS_VERSION=24.14.0 npm test`
-Expected: translator suite still `681 passed | 6 skipped`; importer suite green (model, detectFormat, parseSimpleXml, translateWidgets, emitTerraform, report, cli, e2e, smoke). No failures.
+Expected: translator package suite still `706 passed | 6 skipped` and root playground guard `3 passed` (709 total, unchanged from Phase 0); importer suite green (model, detectFormat, parseSimpleXml, translateWidgets, emitTerraform, report, cli, e2e, smoke). No failures.
 
 - [ ] **Step 2: Lint and types across both packages**
 
