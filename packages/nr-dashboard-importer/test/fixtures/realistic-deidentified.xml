@@ -1,0 +1,27 @@
+<form>
+  <label>Service Overview</label>
+  <description>De-identified sample for importer e2e test.</description>
+  <row>
+    <panel>
+      <chart>
+        <title>Request rate</title>
+        <search><query>index=app_logs | timechart count by status</query></search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+    <panel>
+      <single>
+        <title>Total errors</title>
+        <search><query>index=app_logs status>=500 | stats count</query></search>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Top endpoints</title>
+        <search><query>index=app_logs | top uri_path</query></search>
+      </table>
+    </panel>
+  </row>
+</form>
