@@ -9,9 +9,9 @@ nr-query-bridge is being open-sourced to `github.com/newrelic-experimental/nr-qu
 (experimental org; can be promoted to the main `newrelic` org later). Two prerequisite efforts
 bracket this one:
 
-- **Customer-data scrub** (`docs/superpowers/specs/2026-06-02-open-source-scrub-design.md`) —
-  Phase A (tree scrub + corpus relocation) and Phase B (history rewrite) are both complete. That spec
-  explicitly deferred "Phase 3 — OSS scaffolding" to a separate spec. **This is that spec.**
+- **Customer-data scrub** — Phase A (tree scrub + corpus relocation) and Phase B (history rewrite)
+  are complete; its spec/plan were retired per the `design-decisions.md` graduation rule (see git
+  history). That effort deferred "Phase 3 — OSS scaffolding" to a separate spec. **This is that spec.**
 - **Monorepo migration** (`docs/superpowers/plans/2026-06-16-dashboard-importer-phase-0-1.md`) —
   converts the flat repo into npm workspaces: `packages/nr-query-bridge` (the zero-dep translator)
   and `packages/nr-dashboard-importer` (carries a real runtime dep, `fast-xml-parser`). This spec
