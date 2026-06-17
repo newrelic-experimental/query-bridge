@@ -1,0 +1,95 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { detectFormat } from '../src/detectFormat.js';
+import { parseSimpleXml } from '../src/parseSimpleXml.js';
+import { translateWidgets } from '../src/translateWidgets.js';
+import { emitTerraform, slugify } from '../src/emitTerraform.js';
+import { buildReport } from '../src/report.js';
+
+const usage = `Usage:
+  spl-dashboard <file.xml>              translate a Splunk Simple XML dashboard to Terraform
+  cat dash.xml | spl-dashboard          read from stdin
+  spl-dashboard <file.xml> --out ./dir  output directory (default: .)
+  spl-dashboard <file.xml> --account 12345  bake a literal account_id`;
+
+/**
+ * Pure pipeline: XML string → { slug, files }. No file I/O — testable directly.
+ * @param {string} xml
+ * @param {{account:number|null}} opts
+ * @returns {{slug:string, files:Record<string,string>}}
+ */
+export function runImport(xml, opts) {
+  detectFormat(xml); // Phase 1: throws loudly for non-simple-xml
+  const model = parseSimpleXml(xml);
+  const translated = translateWidgets(model.widgets);
+  const emitModel = { ...model, widgets: translated };
+  const tf = emitTerraform(emitModel, { accountId: opts.account });
+  const slug = slugify(model.title);
+  const report = buildReport(model.title, translated);
+  return {
+    slug,
+    files: {
+      [`${slug}.tf`]: tf['dashboard.tf'],
+      'versions.tf': tf['versions.tf'],
+      'variables.tf': tf['variables.tf'],
+      [`${slug}.report.md`]: report,
+    },
+  };
+}
+
+function parseArgs(argv) {
+  const opts = { out: '.', account: null, file: null };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--out') opts.out = argv[++i];
+    else if (a === '--account') opts.account = Number(argv[++i]);
+    else if (a === '--format')
+      i++; // accepted, terraform-only in Phase 1
+    else if (!a.startsWith('-')) opts.file = a;
+  }
+  return opts;
+}
+
+function readStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (c) => (data += c));
+    process.stdin.on('end', () => resolve(data));
+  });
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  if (argv.includes('-h') || argv.includes('--help')) {
+    console.log(usage);
+    return;
+  }
+  const opts = parseArgs(argv);
+  const xml = opts.file ? readFileSync(opts.file, 'utf-8') : await readStdin();
+  if (!xml.trim()) {
+    console.log(usage);
+    return;
+  }
+  let out;
+  try {
+    out = runImport(xml, { account: opts.account });
+  } catch (e) {
+    process.stderr.write(`error: ${e.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  mkdirSync(opts.out, { recursive: true });
+  for (const [name, body] of Object.entries(out.files)) {
+    const path = join(opts.out, name);
+    writeFileSync(path, body);
+    process.stdout.write(`${path}\n`);
+  }
+}
+
+// Only run main when invoked as a script, not when imported by tests.
+if (process.argv[1] && process.argv[1].endsWith('spl-dashboard.js')) {
+  main();
+}
