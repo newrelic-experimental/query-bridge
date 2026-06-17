@@ -366,7 +366,7 @@ ASDF_NODEJS_VERSION=24.14.0 git commit -m "chore: add importer third-party notic
 
 # Tier C — GitHub Actions CI (dormant on internal GHE, live once public)
 
-**Exit criteria:** `ci.yml` and `codeql.yml` exist and are well-formed YAML. They cannot execute on internal GHE (no runners) — they run on the first push to github.com. `grandcentral.yml` stays the internal gate and is retired in the runbook below.
+**Exit criteria:** `ci.yml`, `codeql.yml`, and `changelog.yml` exist and are well-formed YAML. They cannot execute on internal GHE (no runners) — they run on the first push to github.com. `grandcentral.yml` stays the internal gate and is retired in the runbook below.
 
 ### Task 9: Author the CI workflow
 
@@ -453,6 +453,60 @@ git add .github/workflows/codeql.yml
 ASDF_NODEJS_VERSION=24.14.0 git commit -m "ci: add codeql analysis workflow"
 ```
 
+### Task 11: Enforce CHANGELOG updates on PRs
+
+**Files:**
+- Create: `.github/workflows/changelog.yml`
+
+A `## Unreleased` block already exists in `CHANGELOG.md` (Task 6). This gate fails a
+PR that doesn't touch `CHANGELOG.md`, unless the author applies a `skip-changelog`
+label — the standard low-friction pattern. **CI, not a pre-commit hook:** a hook
+fires on every commit (including WIP) and has no PR context, so it just trains
+`--no-verify`. Use a dependency-free inline check (no third-party Action to vet),
+in keeping with the repo's zero-dep ethos.
+
+- [ ] **Step 1: Write `changelog.yml`**
+
+```yaml
+name: Changelog
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require a CHANGELOG.md entry
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+        run: |
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qx 'CHANGELOG.md'; then
+            echo "CHANGELOG.md updated."
+          else
+            echo "::error::CHANGELOG.md not updated. Add an entry under '## Unreleased' or apply the 'skip-changelog' label."
+            exit 1
+          fi
+```
+
+- [ ] **Step 2: Verify the YAML is well-formed**
+
+Run: `npx prettier --check .github/workflows/changelog.yml`
+Expected: passes. (The gate runs only on the public repo — GHA does not run on internal GHE.)
+
+- [ ] **Step 3: Create the `skip-changelog` label**
+
+This is a repo-settings action; it belongs with the runbook (label must exist before
+the gate can be bypassed). Recorded in R2 below.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add .github/workflows/changelog.yml
+ASDF_NODEJS_VERSION=24.14.0 git commit -m "ci: enforce changelog updates on prs"
+```
+
 ---
 
 # Runbook — repo settings + publish (manual; gated; not committable)
@@ -473,10 +527,11 @@ Create `github.com/newrelic-experimental/nr-query-bridge` (via OSPO repo-creatio
   ```
 - **Branch protection** on the default branch: require PR review + passing CI + repolinter checks.
 - Enable **CodeQL** + **Dependabot alerts**; set repo description + topics; confirm `is_template: false`.
+- Create the **`skip-changelog`** label (Task 11's gate bypass): `gh label create skip-changelog -d "PR exempt from the CHANGELOG.md gate"`.
 
 ### R3. Confirm CI + repolinter green on the public repo
 
-First push triggers `ci.yml`, `codeql.yml`, and `repolinter.yml`. Confirm all green (this is the first real execution — they were dormant internally).
+First push triggers `ci.yml`, `codeql.yml`, `changelog.yml`, and `repolinter.yml`. Confirm all green (this is the first real execution — they were dormant internally).
 
 ### R4. Retire internal CI
 
