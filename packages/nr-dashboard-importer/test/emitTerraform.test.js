@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { emitTerraform, slugify } from '../src/emitTerraform.js';
 
@@ -136,4 +140,32 @@ describe('slugify — digit-leading resource label', () => {
     // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     expect(slugify('Web Health')).toBe('web-health');
   });
+});
+
+function hasTerraform() {
+  try {
+    execFileSync('terraform', ['version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe('emitTerraform — terraform validate (integration)', () => {
+  it.skipIf(!hasTerraform())(
+    'emitted HCL passes terraform validate',
+    () => {
+      const files = emitTerraform(model, { accountId: 12345 });
+      const dir = mkdtempSync(join(tmpdir(), 'tf-emit-'));
+      for (const [name, body] of Object.entries(files))
+        writeFileSync(join(dir, name), body);
+      execFileSync('terraform', ['init', '-backend=false', '-input=false'], {
+        cwd: dir,
+        stdio: 'ignore',
+      });
+      execFileSync('terraform', ['validate'], { cwd: dir, stdio: 'pipe' });
+      expect(existsSync(join(dir, 'dashboard.tf'))).toBe(true);
+    },
+    60_000,
+  );
 });
