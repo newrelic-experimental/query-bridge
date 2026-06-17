@@ -47,7 +47,7 @@ SELECT <functions/fields>
 
 | Function | Description |
 |---|---|
-| `numeric(field)` | Cast to number |
+| `numeric(field)` | Cast a numeric-format string to a number. Returns **null** when the string is not fully numeric (`'abc'`, `'12abc'`, `''` → null). On an already-numeric field it returns the value and arithmetic works (`numeric(timestamp)+1` is fine), so it's a safe no-op wrapper — it does NOT error on numeric fields. Exception: gauge-format metrics, where `numeric()` won't work — use `latest()`/`min()`/`max()`. Validation note: a `numeric()`-wrapped query is satisfiable, not impossible — it just nulls against non-numeric-string data. |
 | `string(field)` | Cast to string |
 | `if(cond, trueVal, falseVal)` | Conditional |
 | `capture(field, r'regex')` | Regex capture group |
