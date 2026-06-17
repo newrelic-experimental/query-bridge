@@ -39,13 +39,16 @@ export function runImport(xml, opts) {
   };
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const opts = { out: '.', account: null, file: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out') opts.out = argv[++i];
-    else if (a === '--account') opts.account = Number(argv[++i]);
-    else if (a === '--format')
+    else if (a === '--account') {
+      const n = Number(argv[++i]);
+      if (Number.isNaN(n)) throw new Error('--account must be a number');
+      opts.account = n;
+    } else if (a === '--format')
       i++; // accepted, terraform-only in Phase 1
     else if (!a.startsWith('-')) opts.file = a;
   }
@@ -67,14 +70,16 @@ async function main() {
     console.log(usage);
     return;
   }
-  const opts = parseArgs(argv);
-  const xml = opts.file ? readFileSync(opts.file, 'utf-8') : await readStdin();
-  if (!xml.trim()) {
-    console.log(usage);
-    return;
-  }
-  let out;
+  let opts, out;
   try {
+    opts = parseArgs(argv);
+    const xml = opts.file
+      ? readFileSync(opts.file, 'utf-8')
+      : await readStdin();
+    if (!xml.trim()) {
+      console.log(usage);
+      return;
+    }
     out = runImport(xml, { account: opts.account });
   } catch (e) {
     process.stderr.write(`error: ${e.message}\n`);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runImport } from '../bin/spl-dashboard.js';
+import { runImport, parseArgs } from '../bin/spl-dashboard.js';
 
 const xml = `<form><label>CLI Dash</label><row><panel><chart>
   <title>T</title><search><query>index=web | stats count</query></search>
@@ -21,5 +21,22 @@ describe('runImport', () => {
     // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const out = runImport(xml, { account: 999 });
     expect(out.files['cli-dash.tf']).toContain('account_id = 999');
+  });
+});
+
+describe('parseArgs — --account validation', () => {
+  it('throws a clear error when --account is not a number', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
+    expect(() => parseArgs(['x.xml', '--account', 'abc'])).toThrow(
+      /--account must be a number/,
+    );
+  });
+  it('parses a numeric --account', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
+    expect(parseArgs(['x.xml', '--account', '999']).account).toBe(999);
+  });
+  it('defaults account to null when --account is absent', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
+    expect(parseArgs(['x.xml']).account).toBeNull();
   });
 });
