@@ -96,7 +96,7 @@ nr-query-bridge/ (repo root — becomes a workspace root)
       src/ input/ ir/ output/ translate.js
       package.json   (no "dependencies")
     nr-dashboard-importer/          ← NEW package
-      package.json   (dependencies: @datanerd/nr-query-bridge, fast-xml-parser)
+      package.json   (dependencies: @newrelic/query-bridge, fast-xml-parser)
       src/
         detectFormat.js     ← sniff envelope/format, unwrap, route
         parseSimpleXml.js   ← <form>/<dashboard v1> tree-walk → DashboardModel
@@ -112,7 +112,7 @@ nr-query-bridge/ (repo root — becomes a workspace root)
       test/ + test/fixtures/ ← de-identified sample exports
 ```
 
-One-way dependency: `nr-dashboard-importer → @datanerd/nr-query-bridge`, never the reverse. The translator package never imports the importer and keeps an empty `dependencies` block, so a consumer running `npm install @datanerd/nr-query-bridge` still pulls **zero** runtime deps. Workspaces let the importer consume the translator's local source during development (no publish-to-test cycle), while keeping them independently publishable.
+One-way dependency: `nr-dashboard-importer → @newrelic/query-bridge`, never the reverse. The translator package never imports the importer and keeps an empty `dependencies` block, so a consumer running `npm install @newrelic/query-bridge` still pulls **zero** runtime deps. Workspaces let the importer consume the translator's local source during development (no publish-to-test cycle), while keeping them independently publishable.
 
 *Migration note:* moving the existing translator into `packages/nr-query-bridge/` is a path change across the repo (imports, configs, CI, husky hooks, the corpus harness's `../nr-query-bridge` reference). This is real work and is called out as Phase 0 below — do it as a mechanical move with the full test suite green before and after, in its own commit, separate from any importer code.
 
@@ -339,7 +339,7 @@ The single highest-value pre-build check (settles 1, 2, 3, 4 at once): generate 
 
 The open-source readiness effort (`docs/superpowers/specs/2026-06-16-open-source-readiness-design.md`) scaffolded the translator package and the repo root, but **deferred the importer package's OSS files** because `packages/nr-dashboard-importer/` was empty when that work ran. The importer effort owns these:
 
-1. **Switch the translator dependency to its public name.** The readiness work renamed the translator `@datanerd/nr-query-bridge` → `@newrelic/query-bridge`. Update the importer's `package.json` dependency and every `import … from '@datanerd/nr-query-bridge'` to `@newrelic/query-bridge`, or the workspace won't resolve once the readiness branch merges. (The `@datanerd/nr-query-bridge` references in this spec's prose and diagram above predate the rename — read them as `@newrelic/query-bridge`.)
+1. **Switch the translator dependency to its public name.** The readiness work renamed the translator `@datanerd/nr-query-bridge` → `@newrelic/query-bridge`. Update the importer's `package.json` dependency and every `import … from '@datanerd/nr-query-bridge'` to `@newrelic/query-bridge`, or the workspace won't resolve once the readiness branch merges. (This spec's prose and diagram above now use `@newrelic/query-bridge` directly; the Phase 1 plan uses the new name throughout.)
 2. **Set the importer's public publish metadata** in its `package.json`: `name: @newrelic/dashboard-importer`, `repository.directory: packages/nr-dashboard-importer`, and `publishConfig.access: public` (required for a scoped public package). The `@newrelic/` scope is pending OSPO approval; fallback is the unscoped `nr-dashboard-importer`.
 3. **Add the importer's `LICENSE`** (copy the root Apache-2.0) and a short **npm-facing `README.md`** (experimental banner + install line + link back to the monorepo).
 4. **Generate `THIRD_PARTY_NOTICES.md`** with `newrelic/newrelic-oss-cli`. Unlike the zero-dep translator, the importer ships `fast-xml-parser` + its 5 transitive deps, so this is a real file. Re-confirm those transitive licenses are permissive at the same time (the security rules require it — already flagged under Risks).

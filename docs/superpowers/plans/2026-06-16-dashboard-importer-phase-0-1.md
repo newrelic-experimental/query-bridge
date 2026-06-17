@@ -4,9 +4,9 @@
 
 **Goal:** Convert the repo to an npm-workspaces monorepo (Phase 0), then build the thinnest end-to-end slice that turns one Splunk Simple XML dashboard into runnable New Relic Terraform (Phase 1).
 
-**Architecture:** A pipeline of small pure stages — `detectFormat → parseSimpleXml → DashboardModel → translateWidgets → emitTerraform` — living in a new `packages/nr-dashboard-importer` package that depends on the existing translator package `@datanerd/nr-query-bridge`. The translator is a consumer-facing zero-runtime-dep library; the importer carries the XML parser and file I/O. A neutral `DashboardModel` is the seam between Splunk parsing and NR emission.
+**Architecture:** A pipeline of small pure stages — `detectFormat → parseSimpleXml → DashboardModel → translateWidgets → emitTerraform` — living in a new `packages/nr-dashboard-importer` package that depends on the existing translator package `@newrelic/query-bridge`. The translator is a consumer-facing zero-runtime-dep library; the importer carries the XML parser and file I/O. A neutral `DashboardModel` is the seam between Splunk parsing and NR emission.
 
-**Tech Stack:** Pure ESM JavaScript, Node 24 (`ASDF_NODEJS_VERSION=24.14.0`), npm workspaces, Vitest, `fast-xml-parser` 5.8.0 (importer only), `@datanerd/nr-query-bridge` (workspace-local translator). No TypeScript emit; `checkJs` only.
+**Tech Stack:** Pure ESM JavaScript, Node 24 (`ASDF_NODEJS_VERSION=24.14.0`), npm workspaces, Vitest, `fast-xml-parser` 5.8.0 (importer only), `@newrelic/query-bridge` (workspace-local translator). No TypeScript emit; `checkJs` only.
 
 **Source spec:** `docs/superpowers/specs/2026-06-12-dashboard-importer-design.md`
 
@@ -29,7 +29,7 @@ Do not interleave them. The whole point of the split is that the giant path-move
 
 These are the real names/paths/contracts the tasks below rely on. Do not re-derive them; do not guess alternatives.
 
-- **Translator public entry:** `translateSplToNrql(spl)` exported from `src/index.js`. NOT `translate()`. After migration it is imported as `import { translateSplToNrql } from '@datanerd/nr-query-bridge'`.
+- **Translator public entry:** `translateSplToNrql(spl)` exported from `src/index.js`. NOT `translate()`. After migration it is imported as `import { translateSplToNrql } from '@newrelic/query-bridge'`.
 - **Translate result contract:** `{ nrql: string, warnings: string[], unsupported: string[], errors: string[] }`. When `unsupported.length > 0 || errors.length > 0`, `nrql === ''`. Empty/blank input returns `{ nrql: 'FROM Log SELECT *', warnings: [], unsupported: [], errors: [] }` (a sentinel, not an error).
 - **Translator source files that move** (all under `src/`): `index.js`, `translate.js`, `messages.js`, `ir/{nodes,optimize,transform}.js`, `input/spl/{aggregationHandlers,enrichmentHandlers,evalHandlers,extractionHandlers,rowHandlers,splExprUtils,splParser,splTime,splToIR}.js`, `input/spl/spl.grammar`, `output/nrql/{irToNrql,nrqlEncoding}.js`.
 - **Translator test files that move** (all under `test/`): `ir/{nodes,optimize,transform}.test.js`, `output/irToNrql.test.js`, `playground/examples.test.js`, `spl/{spl-fuzz,spl,v2-show}.test.js`, `spl/spl-real-world.json`.
@@ -61,7 +61,7 @@ nr-query-bridge/ (repo root → workspace root)
   vitest.config.js                   ← MODIFY or remove (per-package config preferred)
   packages/
     nr-query-bridge/                 ← the translator, MOVED here, unchanged behavior, zero-dep
-      package.json                   ← MOVED (name @datanerd/nr-query-bridge), paths unprefixed (now package-relative)
+      package.json                   ← MOVED (name @newrelic/query-bridge), paths unprefixed (now package-relative)
       vitest.config.js               ← CREATE (test/**)
       tsconfig.json                  ← MOVED
       eslint.config.js               ← MOVED
@@ -71,7 +71,7 @@ nr-query-bridge/ (repo root → workspace root)
       test/ ...                      ← MOVED
       docs/{ARCHITECTURE,CLI,SPL_TO_NRQL}.md, docs/playground/  ← MOVED (translator docs only)
     nr-dashboard-importer/           ← NEW package (Phase 1 fills src/)
-      package.json                   ← CREATE (deps: @datanerd/nr-query-bridge, fast-xml-parser)
+      package.json                   ← CREATE (deps: @newrelic/query-bridge, fast-xml-parser)
       vitest.config.js               ← CREATE
       src/
         detectFormat.js              ← CREATE (Phase 1: single-file Simple XML only)
@@ -152,8 +152,8 @@ Replace the entire `package.json` with:
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "types:check": "npm run types:check --workspaces --if-present",
-    "build:parsers": "npm run build:parsers --workspace=@datanerd/nr-query-bridge",
-    "build:types": "npm run build:types --workspace=@datanerd/nr-query-bridge",
+    "build:parsers": "npm run build:parsers --workspace=@newrelic/query-bridge",
+    "build:types": "npm run build:types --workspace=@newrelic/query-bridge",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -256,7 +256,7 @@ This is the OLD root package.json with paths made package-relative (they already
 
 ```json
 {
-  "name": "@datanerd/nr-query-bridge",
+  "name": "@newrelic/query-bridge",
   "version": "0.1.0",
   "type": "module",
   "description": "Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino",
@@ -338,12 +338,12 @@ Expected: deletion staged. (Root `npm test` now fans out to workspaces via `--wo
 - [ ] **Step 1: Install with workspaces**
 
 Run: `ASDF_NODEJS_VERSION=24.14.0 npm install`
-Expected: npm links `@datanerd/nr-query-bridge` into `node_modules/@datanerd/`, regenerates `package-lock.json` for the workspace layout, exits 0.
+Expected: npm links `@newrelic/query-bridge` into `node_modules/@newrelic/`, regenerates `package-lock.json` for the workspace layout, exits 0.
 
 - [ ] **Step 2: Run the translator suite from root via workspaces**
 
 Run: `ASDF_NODEJS_VERSION=24.14.0 npm test`
-Expected: the `@datanerd/nr-query-bridge` workspace runs vitest and reports `Tests  681 passed | 6 skipped (687)` — identical to the Task 1 baseline. If the count differs, STOP: a path coupling broke. Do not adjust counts; fix the path.
+Expected: the `@newrelic/query-bridge` workspace runs vitest and reports `Tests  681 passed | 6 skipped (687)` — identical to the Task 1 baseline. If the count differs, STOP: a path coupling broke. Do not adjust counts; fix the path.
 
 - [ ] **Step 3: Run lint + types via workspaces**
 
@@ -413,7 +413,7 @@ Expected: all green; `681 passed | 6 skipped`. **Phase 0 done.** Do NOT push or 
 
 **Depends on:** PR 1 merged. All Phase 1 work happens inside `packages/nr-dashboard-importer/`.
 
-**Convention for these tasks:** every code step shows the full file content or the exact addition. Tests use Vitest `describe/it/expect` (globals on, per the package vitest config). Run a single test file with `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- <relpath>`.
+**Convention for these tasks:** every code step shows the full file content or the exact addition. Tests use Vitest `describe/it/expect` (globals on, per the package vitest config). Run a single test file with `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- <relpath>`.
 
 ### Task 10: Scaffold the importer package and verify fast-xml-parser
 
@@ -433,7 +433,7 @@ Expected: `name = fast-xml-parser`, `version = 5.8.0`, `license = MIT`. If the v
 
 ```json
 {
-  "name": "@datanerd/nr-dashboard-importer",
+  "name": "@newrelic/dashboard-importer",
   "version": "0.0.1",
   "type": "module",
   "private": true,
@@ -451,7 +451,7 @@ Expected: `name = fast-xml-parser`, `version = 5.8.0`, `license = MIT`. If the v
     "types:check": "tsc --noEmit"
   },
   "dependencies": {
-    "@datanerd/nr-query-bridge": "*",
+    "@newrelic/query-bridge": "*",
     "fast-xml-parser": "5.8.0"
   }
 }
@@ -489,7 +489,7 @@ describe('importer package harness', () => {
 - [ ] **Step 5: Install and run the smoke test**
 
 Run: `ASDF_NODEJS_VERSION=24.14.0 npm install`
-Then: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer`
+Then: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer`
 Expected: `fast-xml-parser` installs into the importer's tree; smoke test passes (`1 passed`).
 
 - [ ] **Step 5b: Confirm the translator stayed zero-dep**
@@ -565,7 +565,7 @@ describe('VIZ_TYPES', () => {
 
 - [ ] **Step 2: Run the test, confirm it fails**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- model`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- model`
 Expected: FAIL — `Cannot find module '../src/model.js'`.
 
 - [ ] **Step 3: Write model.js**
@@ -678,7 +678,7 @@ No package eslint config — the root config lints the importer (see the ESLint 
 
 - [ ] **Step 5: Run the test, confirm it passes**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- model`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- model`
 Expected: PASS (3 tests).
 
 - [ ] **Step 6: Confirm the model test catches regressions**
@@ -746,7 +746,7 @@ describe('detectFormat', () => {
 
 - [ ] **Step 2: Run the test, confirm it fails**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- detectFormat`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- detectFormat`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write detectFormat.js**
@@ -799,7 +799,7 @@ export function detectFormat(input) {
 
 - [ ] **Step 4: Run the test, confirm it passes**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- detectFormat`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- detectFormat`
 Expected: PASS (5 tests).
 
 - [ ] **Step 5: Confirm regression coverage**
@@ -878,7 +878,7 @@ describe('parseSimpleXml — title and a single chart', () => {
 
 - [ ] **Step 3: Run the test, confirm it fails**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- parseSimpleXml`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- parseSimpleXml`
 Expected: FAIL — module not found.
 
 - [ ] **Step 4: Write parseSimpleXml.js (minimal — single chart path)**
@@ -993,7 +993,7 @@ export function parseSimpleXml(xml) {
 
 - [ ] **Step 5: Run the test, confirm it passes**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- parseSimpleXml`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- parseSimpleXml`
 Expected: PASS (2 tests).
 
 - [ ] **Step 6: Commit (markers added at the end of Task 14 once table/single/default-line are proven)**
@@ -1078,7 +1078,7 @@ describe('parseSimpleXml — viz types and layout', () => {
 
 - [ ] **Step 3: Run, confirm pass (code already handles these)**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- parseSimpleXml`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- parseSimpleXml`
 Expected: PASS. If the layout test fails because the single-panel row computed width differs, reconcile the assertion with the actual `Math.floor(12/1)=12` — the expected value above is already 12 for the single. If a real bug surfaces, fix `parseSimpleXml.js`, not the test.
 
 - [ ] **Step 4: Confirm regression coverage on the default-line branch**
@@ -1157,7 +1157,7 @@ describe('translateWidgets — warnings attach but stay clean', () => {
 
 - [ ] **Step 2: Run, confirm fail**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- translateWidgets`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- translateWidgets`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write translateWidgets.js**
@@ -1165,7 +1165,7 @@ Expected: FAIL — module not found.
 `packages/nr-dashboard-importer/src/translateWidgets.js`:
 
 ```javascript
-import { translateSplToNrql } from '@datanerd/nr-query-bridge';
+import { translateSplToNrql } from '@newrelic/query-bridge';
 
 /**
  * @typedef {import('./model.js').Widget} Widget
@@ -1228,7 +1228,7 @@ export function translateWidgets(widgets) {
 
 - [ ] **Step 4: Run, confirm pass**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- translateWidgets`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- translateWidgets`
 Expected: PASS (3 tests). If the placeholder test's SPL `| nonsensecommand foo bar` actually translates (no error), swap it for a construct the translator genuinely rejects — run `node packages/nr-query-bridge/bin/spl2nrql.js "| nonsensecommand foo bar"` and confirm it prints an `error:`/`unsupported:` line and no NRQL; if it unexpectedly succeeds, pick another rejected construct and update the fixture SPL in the test.
 
 - [ ] **Step 5: Confirm regression coverage on the placeholder branch**
@@ -1329,7 +1329,7 @@ describe('emitTerraform — versions.tf and variables.tf', () => {
 
 - [ ] **Step 2: Run, confirm fail**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- emitTerraform`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- emitTerraform`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write emitTerraform.js**
@@ -1460,7 +1460,7 @@ export function emitTerraform(model, opts) {
 
 - [ ] **Step 4: Run, confirm pass**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- emitTerraform`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- emitTerraform`
 Expected: PASS (8 tests). If the `query      =` alignment in the test differs from the emitter's spacing, make them match (the emitter is the source of truth for whitespace; adjust the test's expected substring to the emitter's actual output rather than fighting alignment).
 
 - [ ] **Step 5: Confirm regression coverage on the markdown/nrql fork**
@@ -1514,7 +1514,7 @@ describe('emitTerraform — terraform validate (integration)', () => {
 
 - [ ] **Step 2: Run it**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- emitTerraform`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- emitTerraform`
 Expected: if terraform is installed, the validate test runs and passes (the provider downloads on init); if not, it is skipped (shown as skipped, not failed). If `terraform validate` reports a schema mismatch (e.g. a field name the provider rejects), FIX the emitter to match the real provider schema and re-run — this is the task where the `[assumed]` field nesting gets confirmed against reality.
 
 - [ ] **Step 3: Commit**
@@ -1572,7 +1572,7 @@ describe('buildReport', () => {
 
 - [ ] **Step 2: Run, confirm fail**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- report`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- report`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write report.js**
@@ -1623,7 +1623,7 @@ export function buildReport(title, translated) {
 
 - [ ] **Step 4: Run, confirm pass**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- report`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- report`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Confirm regression coverage on the warned count**
@@ -1677,7 +1677,7 @@ describe('runImport', () => {
 
 - [ ] **Step 2: Run, confirm fail**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- cli`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- cli`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write the bin**
@@ -1783,7 +1783,7 @@ if (process.argv[1] && process.argv[1].endsWith('spl-dashboard.js')) {
 
 - [ ] **Step 4: Run, confirm pass**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- cli`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- cli`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Confirm regression coverage on slug-keyed filenames**
@@ -1884,7 +1884,7 @@ describe('end-to-end: realistic Simple XML → Terraform', () => {
 
 - [ ] **Step 3: Run, confirm pass**
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@datanerd/nr-dashboard-importer -- e2e`
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm test --workspace=@newrelic/dashboard-importer -- e2e`
 Expected: PASS (4 tests). The idempotency test proves the stable-filename re-run claim; the de-identification guard proves the fixture is clean.
 
 - [ ] **Step 4: Add AI-DEV markers and commit**
