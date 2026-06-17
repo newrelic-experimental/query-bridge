@@ -1,7 +1,7 @@
 # Open-Source Readiness: OSS Scaffolding + CI Migration
 
 **Date:** 2026-06-16
-**Status:** Design — pending user review
+**Status:** Tiers A–C executed 2026-06-17 (PR #34); runbook (Phase 3–4) and importer-package files outstanding — see the plan's "Execution status" section.
 
 ## Context
 

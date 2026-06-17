@@ -12,6 +12,22 @@
 
 ---
 
+## Execution status — 2026-06-17
+
+Tiers A–C executed on branch `oss/readiness` (PR #34). The repolinter gate is verified green locally (5/5 ERROR rules pass). Deviations from the tasks below:
+
+- **The package rename rippled further than Task 7/8 anticipated.** Renaming the translator to `@newrelic/query-bridge` broke the root `build:parsers`/`build:types` `--workspace=` refs, the lockfile, and `CLAUDE.md`. All synced; local usage re-proven (706 tests pass — the baseline grew from 681).
+- **Importer-package files deferred.** `packages/nr-dashboard-importer/` is empty on `master`/`oss/readiness` — its source lives in the `feature/dashboard-importer-phase-1` worktree. So Task 7's importer LICENSE/README/`package.json`, Task 8's importer `THIRD_PARTY_NOTICES`, and the importer dependabot npm entry are NOT done here; they land with the importer.
+- **CONTRIBUTING CoC links repointed** to the centralized `newrelic/.github` CoC — the template assumed a local `./CODE_OF_CONDUCT.md`, which the experimental ruleset forbids.
+
+Still outstanding:
+
+- **Cross-branch:** the importer branch imports `@datanerd/nr-query-bridge` and must switch to `@newrelic/query-bridge` at merge.
+- **Runbook R1–R5** (repo creation, secret scanning + push protection, branch protection, retire `grandcentral.yml`, `npm publish`) — unchanged; gated on the scrub spec's Phase B and OSPO granting the `@newrelic/` scope.
+- **OSPO:** confirm `@newrelic/` npm publish access (else fall back to the unscoped `nr-query-bridge`).
+
+---
+
 ## Preconditions
 
 This plan assumes the **monorepo migration has landed** (`docs/superpowers/plans/2026-06-16-dashboard-importer-phase-0-1.md`, Phase 0). It targets the post-migration layout:
