@@ -1,0 +1,15 @@
+<form>
+  <label>Web Health</label>
+  <description>Synthetic fixture</description>
+  <row>
+    <panel>
+      <chart>
+        <title>Requests over time</title>
+        <search>
+          <query>index=web | timechart count</query>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+</form>
