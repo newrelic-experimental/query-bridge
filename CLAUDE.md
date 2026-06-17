@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Multi-language query translator. SPL/Lucene/PromQL/PPL → NRQL/Trino. Pure ESM JavaScript, no React, zero runtime dependencies. Publishable as `@datanerd/nr-query-bridge`.
+Multi-language query translator. SPL/Lucene/PromQL/PPL → NRQL/Trino. Pure ESM JavaScript, no React, zero runtime dependencies. Publishable as `@newrelic/query-bridge`.
 
 ## Rules
 
