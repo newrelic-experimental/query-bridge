@@ -1,3 +1,5 @@
+<a href="https://opensource.newrelic.com/oss-category/#new-relic-experimental"><picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/dark/Experimental.png"><source media="(prefers-color-scheme: light)" srcset="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/Experimental.png"><img alt="New Relic Open Source experimental project banner." src="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/Experimental.png"></picture></a>
+
 # nr-query-bridge
 
 Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino.
@@ -85,6 +87,10 @@ private data that must never leave the repo. Use a method that ships only what b
 
 Both `npm pack` and `git archive` exclude gitignored paths automatically, so
 `docs/local/` stays out without manual excludes.
+
+## A note about vulnerabilities
+
+As noted in our [security policy](../../security/policy), New Relic is committed to the privacy and security of our customers and their data. If you believe you have found a security vulnerability, report it to New Relic through [HackerOne](https://hackerone.com/newrelic).
 
 ## License
 
