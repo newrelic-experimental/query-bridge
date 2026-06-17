@@ -1,5 +1,5 @@
 {
-  "name": "@datanerd/nr-query-bridge",
+  "name": "@newrelic/query-bridge",
   "version": "0.1.0",
   "type": "module",
   "description": "Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino",
@@ -25,12 +25,16 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/newrelic/nr-query-bridge.git"
+    "url": "git+https://github.com/newrelic-experimental/nr-query-bridge.git",
+    "directory": "packages/nr-query-bridge"
   },
   "bugs": {
-    "url": "https://github.com/newrelic/nr-query-bridge/issues"
+    "url": "https://github.com/newrelic-experimental/nr-query-bridge/issues"
   },
-  "homepage": "https://github.com/newrelic/nr-query-bridge#readme",
+  "homepage": "https://github.com/newrelic-experimental/nr-query-bridge#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "author": {
     "name": "Logging Team"
   },

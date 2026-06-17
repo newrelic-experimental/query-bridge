@@ -9,7 +9,7 @@ Pure ESM JavaScript, zero runtime dependencies, Node 20+.
 ## Install
 
 ```
-npm install @datanerd/nr-query-bridge
+npm install @newrelic/query-bridge
 ```
 
 ## CLI
@@ -49,7 +49,7 @@ Then open the printed URL with `/docs/playground/` appended. Serve from the
 ## API
 
 ```js
-import { translateSplToNrql } from '@datanerd/nr-query-bridge';
+import { translateSplToNrql } from '@newrelic/query-bridge';
 
 const result = translateSplToNrql('index=web status=500 | stats count by host');
 console.log(result.nrql);
