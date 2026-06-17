@@ -674,7 +674,6 @@ export function createWidget(fields) {
 ```
 
 No package eslint config — the root config lints the importer (see the ESLint note above).
-```
 
 - [ ] **Step 5: Run the test, confirm it passes**
 
