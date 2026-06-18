@@ -6,7 +6,7 @@ Architectural choices that affect how code should be written and modified.
 
 ## IR & Optimization
 - **DualCheck IR node**: `SPL: status=500` → `DualCheck` node → expanded by optimizer to `status = '500' OR numeric(status) = 500`. Consolidates dual-check logic from 2 call sites into 1 expansion pass.
-- **Subquery wrapping**: Stats-after-stats wraps as `SubquerySource`. `wrapAsSubquery` carries expand/timeseries into inner query and clears _fieldReplacements.
+- **Subquery wrapping**: Stats-after-stats (and eval-after-stats) wraps the current query as a `SubquerySource` via `wrapAsSubquery` — inner takes `dataSource/bindings/select/where/facet/limit`; outer keeps `timeseries/orderBy/limit/since/until/_fieldReplacements`. Whether that inner/outer split is correct in every case has open questions — see `docs/superpowers/specs/2026-06-18-subquery-wrapping-design.md`.
 - **WHERE as condition list**: `ir.where` is `IRNode[]`, not a single tree. Handlers `push()` conditions; emitter joins with AND. No null checks needed.
 - **Field replacement scoping**: `applyFieldReplacements` only replaces in select/where/facet/orderBy — NOT in bindings/expand/dataSource. Prevents corrupting WITH/EXPAND source expressions.
 
