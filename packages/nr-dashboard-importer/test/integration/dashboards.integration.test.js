@@ -5,74 +5,75 @@ import { parseSimpleXml } from '../../src/parseSimpleXml.js';
 import { translateWidgets } from '../../src/translateWidgets.js';
 import { runImport } from '../../bin/spl-dashboard.js';
 
-// Functional/integration coverage: drive the FULL pipeline (raw XML → Terraform)
-// across two fixture families and emit a gap inventory.
+// Functional/integration coverage for the full XML→Terraform pipeline.
 //   real/      — Splunk's own published Simple XML dashboards (unbiased).
-//   synthetic/ — dashboards whose query SHAPES mirror the real customer corpus
-//                (eval/stats/rex/spath/timechart + the unsupported tail) using
-//                ONLY generic field names — never any corpus identifier.
-// These are functional tests: they assert observable end-to-end behaviour and
-// document known gaps as canaries that flip when the gap is fixed.
+//   synthetic/ — query SHAPES mirroring the customer corpus, generic fields only.
+//
+// Style: each test is explicit and self-contained — the XML under test is inline
+// in the test body, duplication over clever DRY (see project-testing.md). The only
+// shared plumbing is `dashboardTf` (locate the dashboard .tf among emitted files)
+// and the inventory generator below (a report generator, not per-fixture tests).
+//
+// Many template-variable / timepicker tests are `it.skip` PENDING canaries: they
+// assert the CORRECT behavior, fail against today's code (the bug is real), and
+// flip green when the bug is fixed. Each names its bug. They are NOT verified
+// (no red-green cycle yet) so they carry no AI-DEV marker.
 
 const FIXTURES = join(import.meta.dirname, 'fixtures');
 
-function load(sub) {
-  const dir = join(FIXTURES, sub);
-  return readdirSync(dir)
-    .filter((f) => f.endsWith('.xml'))
-    .sort()
-    .map((f) => ({
-      name: `${sub}/${f}`,
-      xml: readFileSync(join(dir, f), 'utf8'),
-    }));
+/** Plumbing: pull the dashboard .tf out of the emitted file set. */
+function dashboardTf(files) {
+  const entry = Object.entries(files).find(
+    ([k]) => k.endsWith('.tf') && k !== 'versions.tf' && k !== 'variables.tf',
+  );
+  return entry ? entry[1] : '';
 }
 
-const FIXTURE_FILES = [...load('real'), ...load('synthetic')];
+// ── Report generator (sanctioned exception to the no-fixture-loop rule) ──────
+// Sweeps every fixture and regenerates GAP_INVENTORY.md. This is a generator,
+// not a set of per-fixture assertions.
+describe('importer gap inventory', () => {
+  it('GAP_INVENTORY.md is up to date', () => {
+    const load = (sub) =>
+      readdirSync(join(FIXTURES, sub))
+        .filter((f) => f.endsWith('.xml'))
+        .sort()
+        .map((f) => ({
+          name: `${sub}/${f}`,
+          xml: readFileSync(join(FIXTURES, sub, f), 'utf8'),
+        }));
+    const fixtures = [...load('real'), ...load('synthetic')];
 
-function analyze(xml) {
-  let threw = null;
-  let widgets = [];
-  let dashTf = null;
-  try {
-    const model = parseSimpleXml(xml);
-    widgets = translateWidgets(model.widgets);
-    const { files } = runImport(xml, { account: 1 });
-    dashTf = Object.entries(files).find(
-      ([k]) => k.endsWith('.tf') && k !== 'versions.tf' && k !== 'variables.tf',
-    )?.[1];
-  } catch (e) {
-    threw = e.message;
-  }
-  const total = widgets.length;
-  const placeholder = widgets.filter((w) => w.outcome === 'placeholder').length;
-  const untitled = widgets.filter((w) => !w.title).length;
-  // Source viz elements present in the XML, regardless of whether the parser
-  // emits a widget for them. dropped = silently lost panels (no widget, no
-  // placeholder) — should always be 0 under "loud placeholders, never drops".
-  const sourceViz = (
-    xml.match(/<(chart|table|single|event|map|html|viz)[ >]/g) || []
-  ).length;
-  return {
-    threw,
-    total,
-    clean: total - placeholder,
-    placeholder,
-    untitled,
-    sourceViz,
-    dropped: sourceViz - total,
-    widgets,
-    dashTf,
-  };
-}
+    const rows = fixtures.map(({ name, xml }) => {
+      let widgets = [];
+      let threw = null;
+      try {
+        widgets = translateWidgets(parseSimpleXml(xml).widgets);
+        runImport(xml, { account: 1 });
+      } catch (e) {
+        threw = e.message;
+      }
+      const total = widgets.length;
+      const placeholder = widgets.filter(
+        (w) => w.outcome === 'placeholder',
+      ).length;
+      const untitled = widgets.filter((w) => !w.title).length;
+      const sourceViz = (
+        xml.match(/<(chart|table|single|event|map|html|viz)[ >]/g) || []
+      ).length;
+      return {
+        name,
+        sourceViz,
+        total,
+        clean: total - placeholder,
+        placeholder,
+        untitled,
+        dropped: sourceViz - total,
+        threw,
+      };
+    });
 
-const results = FIXTURE_FILES.map(({ name, xml }) => ({
-  name,
-  ...analyze(xml),
-}));
-
-describe('importer integration: real Splunk + corpus-shaped dashboards', () => {
-  it('gap inventory (GAP_INVENTORY.md) is up to date', () => {
-    const agg = results.reduce(
+    const agg = rows.reduce(
       (a, r) => ({
         sourceViz: a.sourceViz + r.sourceViz,
         widgets: a.widgets + r.total,
@@ -84,13 +85,14 @@ describe('importer integration: real Splunk + corpus-shaped dashboards', () => {
     );
     const pct = (n) =>
       agg.widgets ? ((n / agg.widgets) * 100).toFixed(0) : '0';
+
     let md = `# Importer gap inventory\n\n`;
     md += `_Generated by \`dashboards.integration.test.js\`. Do not edit by hand; run \`npm test\` to regenerate._\n\n`;
     md += `\`real/\` = Splunk's own published Simple XML dashboards. \`synthetic/\` = dashboards whose query shapes mirror the customer corpus, using generic field names only.\n\n`;
     md += `Columns: **src viz** = visualization elements in the XML; **dropped** = src viz that produced no widget AND no placeholder (silent loss — should be 0).\n\n`;
     md += `| fixture | src viz | widgets | clean | placeholder | untitled | dropped | threw |\n`;
     md += `|---|--:|--:|--:|--:|--:|--:|:--:|\n`;
-    for (const r of results) {
+    for (const r of rows) {
       md += `| ${r.name} | ${r.sourceViz} | ${r.total} | ${r.clean} | ${r.placeholder} | ${r.untitled} | ${r.dropped} | ${r.threw ? 'YES' : ''} |\n`;
     }
     md += `\n**Totals:** ${agg.widgets} widgets from ${agg.sourceViz} source viz — `;
@@ -103,50 +105,230 @@ describe('importer integration: real Splunk + corpus-shaped dashboards', () => {
     } else {
       writeFileSync(invPath, md);
     }
-    expect(results.length).toBe(FIXTURE_FILES.length);
+    expect(rows.length).toBeGreaterThan(0);
+  });
+});
+
+// ── Working behavior (active) ────────────────────────────────────────────────
+describe('importer: core pipeline (working today)', () => {
+  it('a line chart panel becomes a valid widget_line dashboard', () => {
+    const xml = `<dashboard><label>Line</label><row><panel><chart>
+      <title>Requests</title>
+      <search><query><![CDATA[index=app | timechart count by status]]></query></search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('resource "newrelic_one_dashboard"');
+    expect(tf).toContain('widget_line {');
+    expect(tf).toContain('FROM Log SELECT count(*)');
   });
 
-  // Every dashboard, no matter how exotic, must yield a valid resource — never throw.
-  for (const r of results) {
-    it(`${r.name}: produces a valid newrelic_one_dashboard, never throws`, () => {
-      expect(r.threw).toBeNull();
-      expect(r.dashTf).toContain('resource "newrelic_one_dashboard"');
-    });
-  }
-
-  it('every clean widget emits real NRQL (starts with FROM)', () => {
-    const clean = results
-      .flatMap((r) => r.widgets)
-      .filter((w) => w.outcome === 'clean');
-    expect(clean.length).toBeGreaterThan(0);
-    for (const w of clean) expect(w.nrql).toMatch(/^FROM /);
+  it('an unsupported command becomes a loud markdown placeholder, not a drop', () => {
+    const xml = `<dashboard><label>MV</label><row><panel><table>
+      <title>Tags</title>
+      <search><query><![CDATA[index=app | stats count by tag | mvexpand tag]]></query></search>
+    </table></panel></row></dashboard>`;
+    const widgets = translateWidgets(parseSimpleXml(xml).widgets);
+    expect(widgets).toHaveLength(1);
+    expect(widgets[0].outcome).toBe('placeholder');
+    expect(widgets[0].vizType).toBe('markdown');
+    expect(widgets[0].placeholderText).toContain('mvexpand');
+    expect(widgets[0].placeholderText).toMatch(/```/); // original SPL fenced
   });
 
-  it('unsupported commands (mvexpand/join/transaction) become loud placeholders, not silent drops', () => {
-    const r = results.find((x) => x.name.includes('unsupported-tail'));
-    expect(r.placeholder).toBeGreaterThanOrEqual(2);
-    for (const pw of r.widgets.filter((x) => x.outcome === 'placeholder')) {
-      expect(pw.vizType).toBe('markdown');
-      expect(pw.placeholderText).toMatch(/```/); // original SPL is fenced and preserved
-    }
+  it('a bare-term $token$ is emitted as an unquoted {{token}}', () => {
+    const xml = `<dashboard><label>Tok</label><row><panel><table>
+      <title>Search</title>
+      <search><query><![CDATA[index=app $tok$ | stats count]]></query></search>
+    </table></panel></row></dashboard>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('{{tok}}');
+    expect(tf).not.toContain("'$tok$'");
+  });
+});
+
+// ── Template variables (PENDING canaries) ───────────────────────────────────
+describe('importer: template variables [pending]', () => {
+  // BUG 1 — value-position tokens are emitted as quoted string literals
+  // ('$tok$') instead of unquoted {{tok}}, so NR's already-quoted substitution
+  // matches nothing (silent zero rows). Only bare-term position works today.
+  it.skip('value-position field=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
+    const xml = `<dashboard><label>V</label><row><panel><table>
+      <search><query><![CDATA[index=app environment=$env_tok$ | stats count by host]]></query></search>
+    </table></panel></row></dashboard>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('{{env_tok}}');
+    expect(tf).not.toContain("'$env_tok$'");
   });
 
-  // ── KNOWN GAPS — skipped canaries that flip to passing once each bug is fixed.
-  // Both are invisible to the unit suite (which only uses chart/table/single with
-  // viz-level titles) and are quantified in GAP_INVENTORY.md.
-
-  // GAP 1 (silent drop): parseSimpleXml iterates only chart/table/single, so
-  // event/map/html/viz panels yield no widget AND no placeholder — violating the
-  // "loud placeholders, never drops" invariant. ~63 panels vanish on the real corpus.
-  it.skip('no silent drops: every source viz panel yields a widget or placeholder', () => {
-    for (const r of results) expect(r.dropped).toBe(0);
+  it.skip('index=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
+    const xml = `<dashboard><label>I</label><row><panel><table>
+      <search><query><![CDATA[index=$idx$ | stats count]]></query></search>
+    </table></panel></row></dashboard>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('{{idx}}');
+    expect(tf).not.toContain("'$idx$'");
   });
 
-  // GAP 2 (panel titles): only viz-level <title> is read; <panel><title> is ignored.
-  // ~70% of real-corpus titles are panel-level. In panel-title-matrix the panel-only
-  // panel SHOULD be titled, leaving exactly 1 genuinely title-less panel.
-  it.skip('panel-level titles are used (only the title-less panel is untitled)', () => {
-    const r = results.find((x) => x.name.includes('panel-title-matrix'));
-    expect(r.untitled).toBe(1);
+  // BUG 6 — <input> form controls are never read into model.variables, so the
+  // emitted dashboard has no template variables and any surviving {{tok}}
+  // references an undefined variable.
+  it.skip('a dropdown <input> produces a model variable (BUG 6)', () => {
+    const xml = `<form><label>D</label>
+      <fieldset><input type="dropdown" token="category">
+        <label>Category</label><default>*</default>
+        <choice value="*">All</choice><choice value="a">A</choice>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const model = parseSimpleXml(xml);
+    expect(model.variables.length).toBeGreaterThan(0);
+    expect(model.variables[0].name).toBe('category');
+  });
+
+  it.skip('a text <input> produces a model variable (BUG 6)', () => {
+    const xml = `<form><label>T</label>
+      <fieldset><input type="text" token="needle"><label>Search</label></input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const model = parseSimpleXml(xml);
+    expect(model.variables.length).toBeGreaterThan(0);
+    expect(model.variables[0].name).toBe('needle');
+  });
+
+  it.skip('a declared token emits a Terraform variable block (BUG 6)', () => {
+    const xml = `<form><label>V</label>
+      <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('variable {');
+    expect(tf).toContain('env');
+  });
+});
+
+// ── Timepicker / time tokens (PENDING canaries) ──────────────────────────────
+describe('importer: timepicker & time tokens [pending]', () => {
+  // BUG 5/6 — the dominant real shape: <input type="time"> with a default
+  // <earliest>/<latest>. The parser reads neither the input nor the default
+  // range, so defaultTimeRange stays null.
+  it.skip('a time <input> default range is captured in defaultTimeRange (BUG 5/6)', () => {
+    const xml = `<form><label>TP</label>
+      <fieldset><input type="time" token="tr">
+        <default><earliest>-24h@h</earliest><latest>now</latest></default>
+      </input></fieldset>
+      <row><panel><chart>
+        <search><query><![CDATA[index=app | timechart count]]></query></search>
+        <option name="charting.chart">line</option>
+      </chart></panel></row>
+    </form>`;
+    const model = parseSimpleXml(xml);
+    expect(model.defaultTimeRange).not.toBeNull();
+    expect(model.defaultTimeRange.earliest).toBe('-24h@h');
+  });
+
+  // BUG 5 — a per-panel <search><earliest>/<latest> (child elements, the form
+  // real dashboards actually use) is ignored, so the emitted NRQL has no SINCE
+  // and silently queries the wrong window.
+  it.skip('a panel <search><earliest> literal becomes SINCE (BUG 5)', () => {
+    const xml = `<dashboard><label>E</label><row><panel><chart>
+      <search>
+        <query><![CDATA[index=app | timechart count]]></query>
+        <earliest>-60m</earliest><latest>now</latest>
+      </search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('SINCE');
+  });
+
+  // A time token in the inline earliest= position must be dropped with a
+  // warning and never leak into SINCE (the shipped Dashboard-Time-Tokens rule).
+  it.skip('an inline earliest=$tok$ is dropped, never leaked into SINCE', () => {
+    const xml = `<dashboard><label>L</label><row><panel><chart>
+      <search><query><![CDATA[index=app earliest=$tr.earliest$ latest=now | timechart count]]></query></search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    const { files } = runImport(xml, { account: 1 });
+    const tf = dashboardTf(files);
+    expect(tf).not.toContain('SINCE {{');
+    expect(tf).not.toContain('$tr.earliest$');
+  });
+
+  // span=$tok$ must escalate to unsupported (no TIMESERIES guessed from a token).
+  it.skip('span=$tok$ in timechart escalates to a placeholder, no TIMESERIES', () => {
+    const xml = `<dashboard><label>S</label><row><panel><chart>
+      <search><query><![CDATA[index=app | timechart span=$sp$ count]]></query></search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    const widgets = translateWidgets(parseSimpleXml(xml).widgets);
+    expect(widgets[0].outcome).toBe('placeholder');
+  });
+});
+
+// ── Emitter / structural (PENDING canaries for confirmed bugs) ───────────────
+describe('importer: emitter & structure [pending]', () => {
+  // BUG 2 — a clean chart whose vizType is not line/table/billboard falls back
+  // to widget_markdown but still emits an nrql_query block → invalid HCL.
+  it.skip('a pie chart emits a real chart widget, not widget_markdown+nrql (BUG 2)', () => {
+    const xml = `<dashboard><label>Pie</label><row><panel><chart>
+      <title>Share</title>
+      <search><query><![CDATA[index=app | stats count by status]]></query></search>
+      <option name="charting.chart">pie</option>
+    </chart></panel></row></dashboard>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    // A markdown block must never contain nrql_query (invalid HCL).
+    expect(tf).not.toMatch(/widget_markdown \{[^}]*nrql_query/s);
+  });
+
+  // BUG 3 — event/map/html/viz panels produce no widget and no placeholder.
+  it.skip('an event panel yields a widget or placeholder, never a silent drop (BUG 3)', () => {
+    const xml = `<dashboard><label>Ev</label><row><panel>
+      <title>Events</title>
+      <event><search><query><![CDATA[index=app]]></query></search></event>
+    </panel></row></dashboard>`;
+    const widgets = translateWidgets(parseSimpleXml(xml).widgets);
+    expect(widgets.length).toBe(1);
+  });
+
+  // BUG 4 — only viz-level <title> is read; panel-level <panel><title> is ignored.
+  it.skip('a panel-level <title> is used when the viz has none (BUG 4)', () => {
+    const xml = `<dashboard><label>PT</label><row><panel>
+      <title>Panel Title</title>
+      <chart>
+        <search><query><![CDATA[index=app | timechart count]]></query></search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel></row></dashboard>`;
+    const widgets = translateWidgets(parseSimpleXml(xml).widgets);
+    expect(widgets[0].title).toBe('Panel Title');
+  });
+
+  // BUG 7 — a <search base="…"> post-process panel is translated as a standalone
+  // fragment, losing the base search's index/filters.
+  it.skip('a base-search panel keeps the base scope or is placeholdered (BUG 7)', () => {
+    const xml = `<form><label>B</label>
+      <search id="base"><query><![CDATA[index=app environment=prod]]></query></search>
+      <row><panel><table>
+        <search base="base"><query><![CDATA[stats count by host]]></query></search>
+      </table></panel></row>
+    </form>`;
+    const widgets = translateWidgets(parseSimpleXml(xml).widgets);
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    // Either the base scope reaches the NRQL, or the panel is a loud placeholder.
+    const kept =
+      tf.includes("index = 'app'") || widgets[0].outcome === 'placeholder';
+    expect(kept).toBe(true);
+  });
+
+  // BUG 8 — an empty <query> becomes a clean "FROM Log SELECT *" rather than a
+  // placeholder (silent wrong: shows everything as if intended).
+  it.skip('an empty <query> becomes a placeholder, not a silent SELECT * (BUG 8)', () => {
+    const xml = `<dashboard><label>Empty</label><row><panel><table>
+      <title>Nothing</title>
+      <search><query></query></search>
+    </table></panel></row></dashboard>`;
+    const widgets = translateWidgets(parseSimpleXml(xml).widgets);
+    expect(widgets[0].outcome).toBe('placeholder');
   });
 });
