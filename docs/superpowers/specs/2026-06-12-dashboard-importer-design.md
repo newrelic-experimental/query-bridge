@@ -303,6 +303,13 @@ Vitest, in `packages/nr-dashboard-importer/test/` mirroring its `src/`. Pure fun
 - **Corpus gate (Phase 2+):** run the importer over the de-identified corpus sample; assert `threw === 0` (no dashboard crashes the importer — every failure is a placeholder, never an exception), and a coverage scorecard (clean/warned/placeholder counts) that must not regress.
 - **AI-DEV markers** added to confirmed tests after the red-green-refactor cycle, per `llm-test-verification.md`.
 
+## Verified gaps — 2026-06-18 integration sweep
+
+A functional sweep (`test/integration/`: 10 fixtures — Splunk's own published Simple XML dashboards + corpus-SHAPED synthetics using generic field names only; results regenerated into `test/integration/GAP_INVENTORY.md`) surfaced two real bugs the unit suite misses because it only exercises chart/table/single with viz-level titles. Both are `it.skip` canaries that flip green when fixed. Neither crashes — emitted HCL still `terraform validate`s — so both are usefulness/fidelity gaps, not blockers.
+
+1. **Silent viz-type drop — violates "loud placeholders, never drops" (priority: data loss).** `parseSimpleXml` iterates only `chart`/`table`/`single` (`parseSimpleXml.js:77-84`), so `event`/`map`/`html`/`viz` panels yield NO widget and NO placeholder — they vanish, grid slot included. ~63 such panels on the real corpus (49 html, 10 event, 4 map). The Testing section's "each viz element → neutral vizType" is aspirational, not shipped. **Fix:** iterate every viz tag; an unsupported viz TYPE that has a query → markdown placeholder (title + fenced SPL + reason); `<html>` (no query) → static markdown widget. Only then does the never-drops invariant actually hold.
+2. **Panel-level titles dropped (priority: cosmetic, but pervasive).** Only the viz-level `<title>` is read; `<panel><title>` is ignored. On the real corpus ~70% of titles are panel-level (935 vs 406 viz-level), so the importer blanks the majority of widget titles (~48% untitled across the fixtures). Confirmed valid + common in Splunk's Simple XML reference (panel `<title>` is `0..1`, distinct from the per-viz title). **Fix:** in `parseSimpleXml`, use the viz title if present, else fall back to the panel-level `<title>`.
+
 ## Risks
 
 - **Dependency tree growth.** `fast-xml-parser` + 5 transitive deps. Isolated in the `nr-dashboard-importer` package, so the translator package keeps its empty `dependencies` block and zero-dep guarantee for translate-only consumers. Verifying the package is genuine: done. Re-confirm all transitive licenses are permissive before merge — run the license check the security rules require.
