@@ -337,7 +337,7 @@ The single highest-value pre-build check (settles 1, 2, 3, 4 at once): generate 
 
 ## Open-source publishing tasks (owed by the importer package)
 
-The open-source readiness effort (`docs/superpowers/specs/2026-06-16-open-source-readiness-design.md`) scaffolded the translator package and the repo root, but **deferred the importer package's OSS files** because `packages/nr-dashboard-importer/` was empty when that work ran. The importer effort owns these:
+The open-source readiness effort (PR #34; remaining publish runbook tracked in Jira NR-578293) scaffolded the translator package and the repo root, but **deferred the importer package's OSS files** because `packages/nr-dashboard-importer/` was empty when that work ran. The importer effort owned these (all landed in the importer PR):
 
 1. **Switch the translator dependency to its public name.** The readiness work renamed the translator `@datanerd/nr-query-bridge` → `@newrelic/query-bridge`. Update the importer's `package.json` dependency and every `import … from '@datanerd/nr-query-bridge'` to `@newrelic/query-bridge`, or the workspace won't resolve once the readiness branch merges. (This spec's prose and diagram above now use `@newrelic/query-bridge` directly; the Phase 1 plan uses the new name throughout.)
 2. **Set the importer's public publish metadata** in its `package.json`: `name: @newrelic/dashboard-importer`, `repository.directory: packages/nr-dashboard-importer`, and `publishConfig.access: public` (required for a scoped public package). The `@newrelic/` scope is pending OSPO approval; fallback is the unscoped `nr-dashboard-importer`.
