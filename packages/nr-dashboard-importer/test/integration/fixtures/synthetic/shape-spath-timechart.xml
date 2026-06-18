@@ -1,0 +1,25 @@
+<dashboard>
+  <label>Corpus Shape: spath + timechart + rename + where</label>
+  <description>Synthetic; generic field names only.</description>
+  <row>
+    <panel>
+      <title>Response codes over time</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=svc | spath path=payload.code output=code | timechart count by code]]></query>
+        </search>
+        <option name="charting.chart">area</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Slowest endpoints</title>
+        <search>
+          <query><![CDATA[index=svc | stats avg(latencyMs) as avg_latency by endpoint | rename endpoint as ep | where avg_latency > 250 | sort -avg_latency]]></query>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>

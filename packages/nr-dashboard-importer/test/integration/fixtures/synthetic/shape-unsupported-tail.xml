@@ -1,0 +1,33 @@
+<dashboard>
+  <label>Corpus Shape: unsupported tail</label>
+  <description>Synthetic; mvexpand / join+subsearch / transaction — expected to become loud placeholders. Generic field names only.</description>
+  <row>
+    <panel>
+      <title>Expand tags</title>
+      <table>
+        <search>
+          <query><![CDATA[index=app | stats count by tag | mvexpand tag]]></query>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <title>Join with metadata</title>
+      <table>
+        <search>
+          <query><![CDATA[index=app | join host [search index=meta | fields host, region] | stats count by region]]></query>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Sessionize</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=app | transaction sessionId maxspan=30m | stats count]]></query>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>

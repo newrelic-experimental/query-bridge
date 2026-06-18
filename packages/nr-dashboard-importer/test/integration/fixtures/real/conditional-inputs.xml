@@ -1,0 +1,35 @@
+<form>
+  <label>Use tokens with input choices to capture input labels and values</label>
+  <init>
+    <set token="date_label">Last 7 Days</set>
+    <set token="earliest_tok">-7d@d</set>
+  </init>
+  <fieldset submitButton="false">
+    <input type="radio" token="period_tok">
+      <label>Select a time range</label>
+      <choice value="-24h@h">Last 24 Hours</choice>
+      <choice value="-7d@d">Last 7 Days</choice>
+      <choice value="-30d@d">Last 30 Days</choice>
+      <default>Last 7 Days</default>
+      <change>
+        <set token="date_label">$label$</set>
+        <set token="earliest_tok">$value$</set>
+      </change>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Conditional Inputs</title>
+      <chart>
+        <title>Source Type by $date_label$</title>
+        <search>
+          <query>index = _internal | timechart count by sourcetype</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,22 @@
+<dashboard>
+  <label>Corpus Shape: post-aggregation eval and where</label>
+  <description>Synthetic; exercises eval-after-stats (known bug shape) and where-after-stats (correct path).</description>
+  <row>
+    <panel>
+      <title>Error percentage (eval after stats)</title>
+      <single>
+        <search>
+          <query><![CDATA[index=app | stats count(eval(status>=500)) as errors, count as total by host | eval pct=round(errors*100/total, 2)]]></query>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Busy hosts (where after stats)</title>
+      <table>
+        <search>
+          <query><![CDATA[index=app | stats count as total by host | where total > 1000]]></query>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>
