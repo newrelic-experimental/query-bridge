@@ -14,7 +14,6 @@ const translated = [
 
 describe('buildReport', () => {
   it('counts clean, warned, and placeholder widgets', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const md = buildReport('Web Health', translated);
     expect(md).toContain('Web Health');
     expect(md).toContain('3 widgets');
@@ -24,13 +23,11 @@ describe('buildReport', () => {
   });
 
   it('lists each placeholder with its title', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const md = buildReport('Web Health', translated);
     expect(md).toContain('C');
   });
 
   it('states the validate-is-syntax-only caveat', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const md = buildReport('Web Health', translated);
     expect(md).toMatch(/valid.*does not.*working|syntax.*not.*semantic/i);
   });

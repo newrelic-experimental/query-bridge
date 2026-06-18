@@ -7,7 +7,6 @@ const fixture = (name) =>
 
 describe('parseSimpleXml — title and a single chart', () => {
   it('reads the label as the model title', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const m = parseSimpleXml(fixture('single-chart.xml'));
     expect(m.title).toBe('Web Health');
     expect(m.description).toBe('Synthetic fixture');
@@ -15,7 +14,6 @@ describe('parseSimpleXml — title and a single chart', () => {
   });
 
   it('produces one line widget carrying the query SPL', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const m = parseSimpleXml(fixture('single-chart.xml'));
     expect(m.widgets).toHaveLength(1);
     expect(m.widgets[0].vizType).toBe('line');
@@ -26,14 +24,12 @@ describe('parseSimpleXml — title and a single chart', () => {
 
 describe('parseSimpleXml — viz types and layout', () => {
   it('defaults a <chart> with no charting.chart option to line', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const m = parseSimpleXml(fixture('multi-panel.xml'));
     const chart = m.widgets.find((w) => w.title === 'No explicit type');
     expect(chart.vizType).toBe('line');
   });
 
   it('maps <table> to table and <single> to billboard', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const m = parseSimpleXml(fixture('multi-panel.xml'));
     expect(m.widgets.find((w) => w.title === 'Top hosts').vizType).toBe(
       'table',
@@ -44,7 +40,6 @@ describe('parseSimpleXml — viz types and layout', () => {
   });
 
   it('computes a 12-col layout from row and panel position', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const m = parseSimpleXml(fixture('multi-panel.xml'));
     // Row 0 has 2 panels → each width 6; row 1 has 1 panel → width 6 (12/1 floored is 12).
     const chart = m.widgets.find((w) => w.title === 'No explicit type');

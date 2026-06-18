@@ -9,12 +9,10 @@ const xml = readFileSync(
 
 describe('end-to-end: realistic Simple XML → Terraform', () => {
   it('never throws — every dashboard produces output', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     expect(() => runImport(xml, { account: 12345 })).not.toThrow();
   });
 
   it('emits one resource, three widgets, and a report', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const out = runImport(xml, { account: 12345 });
     const tf = out.files[`${out.slug}.tf`];
     expect(tf).toContain('resource "newrelic_one_dashboard"');
@@ -23,14 +21,12 @@ describe('end-to-end: realistic Simple XML → Terraform', () => {
   });
 
   it('re-running produces byte-identical output (idempotent)', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const a = runImport(xml, { account: 12345 });
     const b = runImport(xml, { account: 12345 });
     expect(a.files).toEqual(b.files);
   });
 
   it('contains no customer-identifying names (de-identification guard)', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const all = Object.values(runImport(xml, { account: 12345 }).files).join(
       '\n',
     );

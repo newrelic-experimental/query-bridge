@@ -8,7 +8,6 @@ const xml = `<form><label>CLI Dash</label><row><panel><chart>
 
 describe('runImport', () => {
   it('produces the three tf files and a report keyed by slug', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const out = runImport(xml, { account: null });
     expect(out.files['versions.tf']).toContain('newrelic/newrelic');
     expect(out.files['variables.tf']).toContain('variable "account_id"');
@@ -18,7 +17,6 @@ describe('runImport', () => {
   });
 
   it('bakes the account id when --account is given', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const out = runImport(xml, { account: 999 });
     expect(out.files['cli-dash.tf']).toContain('account_id = 999');
   });
@@ -26,17 +24,14 @@ describe('runImport', () => {
 
 describe('parseArgs — --account validation', () => {
   it('throws a clear error when --account is not a number', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     expect(() => parseArgs(['x.xml', '--account', 'abc'])).toThrow(
       /--account must be a number/,
     );
   });
   it('parses a numeric --account', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     expect(parseArgs(['x.xml', '--account', '999']).account).toBe(999);
   });
   it('defaults account to null when --account is absent', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     expect(parseArgs(['x.xml']).account).toBeNull();
   });
 });

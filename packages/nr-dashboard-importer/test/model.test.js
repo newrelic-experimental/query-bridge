@@ -3,7 +3,6 @@ import { createDashboardModel, createWidget, VIZ_TYPES } from '../src/model.js';
 
 describe('createDashboardModel', () => {
   it('builds a model with defaults for omitted fields', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const m = createDashboardModel({ title: 'My Dash' });
     expect(m.title).toBe('My Dash');
     expect(m.description).toBe('');
@@ -16,7 +15,6 @@ describe('createDashboardModel', () => {
 
 describe('createWidget', () => {
   it('builds a widget carrying vizType, rawSpl, and layout', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const w = createWidget({
       title: 'Errors',
       vizType: 'line',
@@ -34,7 +32,6 @@ describe('createWidget', () => {
 
 describe('VIZ_TYPES', () => {
   it('is the frozen neutral enum', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     expect(VIZ_TYPES).toContain('line');
     expect(VIZ_TYPES).toContain('table');
     expect(VIZ_TYPES).toContain('billboard');

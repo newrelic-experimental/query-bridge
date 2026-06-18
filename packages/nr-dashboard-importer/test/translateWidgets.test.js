@@ -4,7 +4,6 @@ import { createWidget } from '../src/model.js';
 
 describe('translateWidgets — clean translation', () => {
   it('attaches NRQL and marks a translatable widget clean', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const widgets = [
       createWidget({
         title: 'C',
@@ -21,7 +20,6 @@ describe('translateWidgets — clean translation', () => {
 
 describe('translateWidgets — placeholder on no NRQL', () => {
   it('converts an untranslatable widget to a markdown placeholder with SPL and reason', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     // A construct the translator reports as unsupported/errors → nrql === ''.
     const widgets = [
       createWidget({
@@ -42,7 +40,6 @@ describe('translateWidgets — placeholder on no NRQL', () => {
 
 describe('translateWidgets — warnings attach but stay clean', () => {
   it('keeps a warned widget as a real widget and records the warnings', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     // Pick SPL the translator emits NRQL for but with a warning. If none is known,
     // assert the shape: outcome 'clean' AND warnings is an array.
     const widgets = [

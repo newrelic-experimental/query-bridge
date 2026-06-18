@@ -30,7 +30,6 @@ const model = {
 
 describe('emitTerraform — file set', () => {
   it('returns dashboard.tf, versions.tf, and variables.tf', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const files = emitTerraform(model, { accountId: null });
     expect(Object.keys(files).sort()).toEqual([
       'dashboard.tf',
@@ -42,14 +41,12 @@ describe('emitTerraform — file set', () => {
 
 describe('emitTerraform — dashboard.tf', () => {
   it('emits a newrelic_one_dashboard resource with the dashboard name', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const { 'dashboard.tf': tf } = emitTerraform(model, { accountId: null });
     expect(tf).toContain('resource "newrelic_one_dashboard"');
     expect(tf).toContain('name = "Web Health"');
   });
 
   it('emits a widget_line with an nrql_query carrying account_id and the NRQL', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const { 'dashboard.tf': tf } = emitTerraform(model, { accountId: null });
     expect(tf).toContain('widget_line {');
     expect(tf).toContain('account_id = var.account_id');
@@ -57,7 +54,6 @@ describe('emitTerraform — dashboard.tf', () => {
   });
 
   it('emits a widget_markdown with text and NO nrql_query for placeholders', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const { 'dashboard.tf': tf } = emitTerraform(model, { accountId: null });
     const markdownBlock = tf.slice(tf.indexOf('widget_markdown {'));
     expect(markdownBlock).toContain('text =');
@@ -67,7 +63,6 @@ describe('emitTerraform — dashboard.tf', () => {
   });
 
   it('bakes a literal account_id when provided', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const { 'dashboard.tf': tf } = emitTerraform(model, { accountId: 12345 });
     expect(tf).toContain('account_id = 12345');
     expect(tf).not.toContain('account_id = var.account_id');
@@ -76,14 +71,12 @@ describe('emitTerraform — dashboard.tf', () => {
 
 describe('emitTerraform — versions.tf and variables.tf', () => {
   it('pins the newrelic provider in versions.tf', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const { 'versions.tf': v } = emitTerraform(model, { accountId: null });
     expect(v).toContain('newrelic/newrelic');
     expect(v).toContain('required_providers');
   });
 
   it('declares a sensitive api key var and NO literal key in variables.tf', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const { 'variables.tf': vars } = emitTerraform(model, { accountId: null });
     expect(vars).toContain('variable "newrelic_api_key"');
     expect(vars).toContain('sensitive   = true');
@@ -93,7 +86,6 @@ describe('emitTerraform — versions.tf and variables.tf', () => {
   });
 
   it("emits no backend block (state config is the user's)", () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const files = emitTerraform(model, { accountId: null });
     for (const tf of Object.values(files)) {
       expect(tf).not.toContain('backend "');
@@ -103,7 +95,6 @@ describe('emitTerraform — versions.tf and variables.tf', () => {
 
 describe('emitTerraform — hclString HCL template interpolation escaping', () => {
   it('escapes ${ and %{ in widget title and markdown text so Terraform does not interpolate them', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     const templateModel = {
       title: 'Dashboard ${env}',
       description: 'desc',
@@ -131,13 +122,11 @@ describe('emitTerraform — hclString HCL template interpolation escaping', () =
 
 describe('slugify — digit-leading resource label', () => {
   it('prefixes an underscore when the slug starts with a digit', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     expect(slugify('2024 Dashboard')).toMatch(/^[A-Za-z_]/);
     expect(slugify('2024 Dashboard')).toBe('_2024-dashboard');
   });
 
   it('leaves a normal title slug unchanged', () => {
-    // AI-DEV: AI **MUST NOT** touch this test. If the test is failing, it is because you removed or broke code.
     expect(slugify('Web Health')).toBe('web-health');
   });
 });
