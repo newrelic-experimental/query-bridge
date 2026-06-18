@@ -1,16 +1,38 @@
+<a href="https://opensource.newrelic.com/oss-category/#new-relic-experimental"><picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/dark/Experimental.png"><source media="(prefers-color-scheme: light)" srcset="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/Experimental.png"><img alt="New Relic Open Source experimental project banner." src="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/Experimental.png"></picture></a>
+
 # nr-query-bridge
 
-Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino.
+Translate Splunk **SPL** queries into New Relic **NRQL**. Pure ESM JavaScript, zero runtime dependencies, Node 20+.
 
-Pure ESM JavaScript, zero runtime dependencies, Node 20+.
+> **Status — experimental.** Today the bridge translates **SPL → NRQL**. Its internals are built on a language-neutral intermediate representation, so more input languages (Lucene, PromQL, PPL) and output targets (Trino SQL) are on the roadmap — they are **not implemented yet**.
 
-## Install
+## Installation
 
 ```
-npm install @datanerd/nr-query-bridge
+npm install @newrelic/query-bridge
 ```
 
-## CLI
+## Getting Started
+
+Translate an SPL query from the command line:
+
+```bash
+spl2nrql "index=web status=500 | stats count by host"
+```
+
+Or call the translator from JavaScript:
+
+```js
+import { translateSplToNrql } from '@newrelic/query-bridge';
+
+const result = translateSplToNrql('index=web status=500 | stats count by host');
+console.log(result.nrql);
+// FROM Log SELECT count(*) WHERE index = 'web' AND status = '500' OR numeric(status) = 500 FACET host
+```
+
+## Usage
+
+The CLI reads a query as an argument, from stdin, or interactively:
 
 ```bash
 # Translate a query
@@ -21,6 +43,14 @@ echo "index=web | stats count" | spl2nrql
 
 # Interactive REPL
 spl2nrql -i
+```
+
+The result object carries three fields. When a construct has no NRQL equivalent, `result.unsupported` is populated and `result.nrql` is an empty string — the bridge emits no query rather than a wrong one. `result.warnings` flags precision loss where the NRQL is still valid.
+
+```js
+if (result.warnings.length) {
+  console.warn(result.warnings);
+}
 ```
 
 ## Playground
@@ -44,21 +74,7 @@ Then open the printed URL with `/docs/playground/` appended. Serve from the
 **package root** (`packages/nr-query-bridge`), not from inside `docs/playground/`
 — the page imports `../../src/index.js`.
 
-## API
-
-```js
-import { translateSplToNrql } from '@datanerd/nr-query-bridge';
-
-const result = translateSplToNrql('index=web status=500 | stats count by host');
-console.log(result.nrql);
-// FROM Log SELECT count(*) WHERE index = 'web' AND status = '500' OR numeric(status) = 500 FACET host
-
-if (result.warnings.length) {
-  console.warn(result.warnings);
-}
-```
-
-## Test
+## Testing
 
 ```
 npm test
@@ -86,6 +102,20 @@ private data that must never leave the repo. Use a method that ships only what b
 Both `npm pack` and `git archive` exclude gitignored paths automatically, so
 `docs/local/` stays out without manual excludes.
 
+## Support
+
+New Relic has open-sourced this project. This project is provided AS-IS WITHOUT WARRANTY OR DEDICATED SUPPORT. Issues and contributions should be reported to the project here on GitHub.
+
+We encourage you to bring your experiences and questions to the [Explorers Hub](https://discuss.newrelic.com) where our community members collaborate on solutions and new ideas.
+
+## Contributing
+
+We encourage your contributions to improve nr-query-bridge! Keep in mind that when you submit your pull request, you'll need to sign the CLA via the click-through using CLA-Assistant. You only have to sign the CLA one time per project. If you have any questions, or to execute our corporate CLA (required if your contribution is on behalf of a company), please drop us an email at opensource@newrelic.com. See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+
+**A note about vulnerabilities**
+
+As noted in our [security policy](../../security/policy), New Relic is committed to the privacy and security of our customers and their data. If you believe you have found a security vulnerability, report it to New Relic through [HackerOne](https://hackerone.com/newrelic).
+
 ## License
 
-Apache-2.0
+nr-query-bridge is licensed under the [Apache 2.0](http://apache.org/licenses/LICENSE-2.0.txt) License.

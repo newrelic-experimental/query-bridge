@@ -19,8 +19,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "types:check": "npm run types:check --workspaces --if-present",
-    "build:parsers": "npm run build:parsers --workspace=@datanerd/nr-query-bridge",
-    "build:types": "npm run build:types --workspace=@datanerd/nr-query-bridge",
+    "build:parsers": "npm run build:parsers --workspace=@newrelic/query-bridge",
+    "build:types": "npm run build:types --workspace=@newrelic/query-bridge",
     "prepare": "husky"
   },
   "devDependencies": {

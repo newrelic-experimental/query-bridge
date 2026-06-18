@@ -1,7 +1,7 @@
 # Open-Source Readiness: OSS Scaffolding + CI Migration
 
 **Date:** 2026-06-16
-**Status:** Design — pending user review
+**Status:** Tiers A–C executed 2026-06-17 (PR #34); runbook (Phase 3–4) and importer-package files outstanding — see the plan's "Execution status" section.
 
 ## Context
 
@@ -9,9 +9,9 @@ nr-query-bridge is being open-sourced to `github.com/newrelic-experimental/nr-qu
 (experimental org; can be promoted to the main `newrelic` org later). Two prerequisite efforts
 bracket this one:
 
-- **Customer-data scrub** (`docs/superpowers/specs/2026-06-02-open-source-scrub-design.md`) —
-  Phase A (tree scrub + corpus relocation) is done; Phase B (history rewrite) is gated. That spec
-  explicitly deferred "Phase 3 — OSS scaffolding" to a separate spec. **This is that spec.**
+- **Customer-data scrub** — Phase A (tree scrub + corpus relocation) and Phase B (history rewrite)
+  are complete; its spec/plan were retired per the `design-decisions.md` graduation rule (see git
+  history). That effort deferred "Phase 3 — OSS scaffolding" to a separate spec. **This is that spec.**
 - **Monorepo migration** (`docs/superpowers/plans/2026-06-16-dashboard-importer-phase-0-1.md`) —
   converts the flat repo into npm workspaces: `packages/nr-query-bridge` (the zero-dep translator)
   and `packages/nr-dashboard-importer` (carries a real runtime dep, `fast-xml-parser`). This spec
@@ -37,7 +37,7 @@ not yet been pushed to github.com.
 - GitHub repo settings OSPO requires, including **secret scanning + push protection**.
 
 **Out of scope:**
-- The customer-data scrub and history rewrite (its own spec; must complete before the public push).
+- The customer-data scrub and history rewrite (its own spec — both phases now complete).
 - The importer's feature work (its own plan).
 - Promotion from `newrelic-experimental` to `newrelic`.
 
@@ -111,7 +111,7 @@ Repo settings, not committable files — they run at/after public repo creation 
 
 ### Phase 4 — Publish
 
-Gated on the scrub spec's **Phase B** (history rewrite) completing. Push the monorepo to
+The scrub spec's **Phase B** (history rewrite) is complete. Push the monorepo to
 `github.com/newrelic-experimental/nr-query-bridge`, confirm repolinter is green, then publish both
 packages to npm under the `@newrelic/` scope (see npm naming below). Use `npm pack` / `git archive` for
 any pre-publish inspection — never hand-zip (sweeps in `node_modules`, `.git`, gitignored
@@ -167,4 +167,4 @@ namespace.
 
 Phase 1 (files) and Phase 2 (GHA workflows) can land on the internal repo right after the monorepo
 migration. Phase 3 (settings) and Phase 4 (publish) happen at/after public repo creation, and the
-public push is gated on the scrub spec's Phase B.
+public push is gated on OSPO approval (the scrub spec's Phase B is complete).

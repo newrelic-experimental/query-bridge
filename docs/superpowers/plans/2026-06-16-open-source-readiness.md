@@ -12,6 +12,22 @@
 
 ---
 
+## Execution status — 2026-06-17
+
+Tiers A–C executed on branch `oss/readiness` (PR #34). The repolinter gate is verified green locally (5/5 ERROR rules pass). Deviations from the tasks below:
+
+- **The package rename rippled further than Task 7/8 anticipated.** Renaming the translator to `@newrelic/query-bridge` broke the root `build:parsers`/`build:types` `--workspace=` refs, the lockfile, and `CLAUDE.md`. All synced; local usage re-proven (706 tests pass — the baseline grew from 681).
+- **Importer-package files deferred.** `packages/nr-dashboard-importer/` is empty on `master`/`oss/readiness` — its source lives in the `feature/dashboard-importer-phase-1` worktree. So Task 7's importer LICENSE/README/`package.json`, Task 8's importer `THIRD_PARTY_NOTICES`, and the importer dependabot npm entry are NOT done here; they land with the importer.
+- **CONTRIBUTING CoC links repointed** to the centralized `newrelic/.github` CoC — the template assumed a local `./CODE_OF_CONDUCT.md`, which the experimental ruleset forbids.
+
+Still outstanding:
+
+- **Cross-branch:** the importer branch imports `@datanerd/nr-query-bridge` and must switch to `@newrelic/query-bridge` at merge.
+- **Runbook R1–R5** (repo creation, secret scanning + push protection, branch protection, retire `grandcentral.yml`, `npm publish`) — unchanged; gated on OSPO approval (GitHub repo creation in `newrelic-experimental` + `@newrelic/` npm scope access). The scrub's Phase B history rewrite is **complete**.
+- **OSPO:** confirm `@newrelic/` npm publish access (else fall back to the unscoped `nr-query-bridge`).
+
+---
+
 ## Preconditions
 
 This plan assumes the **monorepo migration has landed** (`docs/superpowers/plans/2026-06-16-dashboard-importer-phase-0-1.md`, Phase 0). It targets the post-migration layout:
@@ -350,7 +366,7 @@ ASDF_NODEJS_VERSION=24.14.0 git commit -m "chore: add importer third-party notic
 
 # Tier C — GitHub Actions CI (dormant on internal GHE, live once public)
 
-**Exit criteria:** `ci.yml` and `codeql.yml` exist and are well-formed YAML. They cannot execute on internal GHE (no runners) — they run on the first push to github.com. `grandcentral.yml` stays the internal gate and is retired in the runbook below.
+**Exit criteria:** `ci.yml`, `codeql.yml`, and `changelog.yml` exist and are well-formed YAML. They cannot execute on internal GHE (no runners) — they run on the first push to github.com. `grandcentral.yml` stays the internal gate and is retired in the runbook below.
 
 ### Task 9: Author the CI workflow
 
@@ -437,13 +453,67 @@ git add .github/workflows/codeql.yml
 ASDF_NODEJS_VERSION=24.14.0 git commit -m "ci: add codeql analysis workflow"
 ```
 
+### Task 11: Enforce CHANGELOG updates on PRs
+
+**Files:**
+- Create: `.github/workflows/changelog.yml`
+
+A `## Unreleased` block already exists in `CHANGELOG.md` (Task 6). This gate fails a
+PR that doesn't touch `CHANGELOG.md`, unless the author applies a `skip-changelog`
+label — the standard low-friction pattern. **CI, not a pre-commit hook:** a hook
+fires on every commit (including WIP) and has no PR context, so it just trains
+`--no-verify`. Use a dependency-free inline check (no third-party Action to vet),
+in keeping with the repo's zero-dep ethos.
+
+- [ ] **Step 1: Write `changelog.yml`**
+
+```yaml
+name: Changelog
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require a CHANGELOG.md entry
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+        run: |
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qx 'CHANGELOG.md'; then
+            echo "CHANGELOG.md updated."
+          else
+            echo "::error::CHANGELOG.md not updated. Add an entry under '## Unreleased' or apply the 'skip-changelog' label."
+            exit 1
+          fi
+```
+
+- [ ] **Step 2: Verify the YAML is well-formed**
+
+Run: `npx prettier --check .github/workflows/changelog.yml`
+Expected: passes. (The gate runs only on the public repo — GHA does not run on internal GHE.)
+
+- [ ] **Step 3: Create the `skip-changelog` label**
+
+This is a repo-settings action; it belongs with the runbook (label must exist before
+the gate can be bypassed). Recorded in R2 below.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add .github/workflows/changelog.yml
+ASDF_NODEJS_VERSION=24.14.0 git commit -m "ci: enforce changelog updates on prs"
+```
+
 ---
 
 # Runbook — repo settings + publish (manual; gated; not committable)
 
 These steps are **not** TDD tasks — they are admin/ops actions performed at or after public-repo creation. They are listed for completeness and to be executed in order once their gates clear.
 
-### R1. Create the public repo (gate: scrub spec Phase B history rewrite complete)
+### R1. Create the public repo (gate: OSPO repo-creation approval — scrub Phase B history rewrite is done)
 
 Create `github.com/newrelic-experimental/nr-query-bridge` (via OSPO repo-creation), then push the scrubbed, monorepo-migrated, scaffolded tree.
 
@@ -457,10 +527,11 @@ Create `github.com/newrelic-experimental/nr-query-bridge` (via OSPO repo-creatio
   ```
 - **Branch protection** on the default branch: require PR review + passing CI + repolinter checks.
 - Enable **CodeQL** + **Dependabot alerts**; set repo description + topics; confirm `is_template: false`.
+- Create the **`skip-changelog`** label (Task 11's gate bypass): `gh label create skip-changelog -d "PR exempt from the CHANGELOG.md gate"`.
 
 ### R3. Confirm CI + repolinter green on the public repo
 
-First push triggers `ci.yml`, `codeql.yml`, and `repolinter.yml`. Confirm all green (this is the first real execution — they were dormant internally).
+First push triggers `ci.yml`, `codeql.yml`, `changelog.yml`, and `repolinter.yml`. Confirm all green (this is the first real execution — they were dormant internally).
 
 ### R4. Retire internal CI
 
@@ -483,4 +554,4 @@ npm publish --workspace=@newrelic/dashboard-importer
 ## Open items carried from the spec
 
 - **Emily/OSPO:** `@newrelic/` npm publish access for an experimental repo (blocks R5; fallback exists).
-- **Gate:** R1–R5 depend on the scrub spec's Phase B (history rewrite) completing first.
+- **Gate:** R1–R5 depend on OSPO approval (GitHub repo creation + `@newrelic/` scope). The scrub spec's Phase B (history rewrite) is complete.
