@@ -15,13 +15,6 @@ Architectural choices that affect how code should be written and modified.
 - **Eval expression representation (SHIPPED)**: One unified typed ladder (`u_expr` and below in `spl.grammar`). All four call sites — eval func args, top-level eval assignment, stats function args, and stats `fn(eval(...))` inner — reference `u_expr` directly. The grammar produces typed `EvalArith`/`EvalBoolOp`/`EvalComparison`/`EvalNot` nodes; `walkEvalExpr` handles them in a switch. No flat-string round-trip; `buildArithmeticExpr` and `tryParseDotConcat` deleted. The `u_atom_stats_extra` rule handles stats wildcard tokens (`count(*)`, `app.*`) with a `![0-9]` guard to prevent `a*2` from being swallowed as a wildcard. **Known deferred (corpus demand confirmed):** infix `LIKE`, `IN`, and `if(cond,1,0)`→plain-predicate unwrap are not yet in the ladder — `LIKE`/`IN` inside `eval()` currently hard-error.
 - **Stats vs eval `sum()`**: In stats context, `sum(x)` is aggregation (via `resolveStatsFunc`). In eval context, `sum(x)` is multivalue sum on one event (via `resolveEvalFunc`). The walker strategy parameter handles this.
 
-## EXPAND (mvexpand Translation)
-- **EXPAND is Limited Preview**: Not GA — only use when no alternative exists. For simple array membership, prefer `contains(jparse(...))`.
-- **Grammar**: `by_field` rule detects `{}` in field names, producing `ArrayField` nodes with `array` and `subfield` properties.
-- **Naming**: `field_parsed` for jparse WITH bindings, `field_expanded` for EXPAND aliases. No leading underscores (NRQL rejects them). Alias must differ from WITH binding name.
-- **Clause ordering**: NRQL requires `FROM ... WITH ... EXPAND ... SELECT`. WITH before EXPAND (EXPAND references WITH aliases). Inline expressions in EXPAND fail — always WITH-bind first.
-- **Cascading**: Second mvexpand wraps current query as subquery, adds new EXPAND to outer. `wrapAsSubquery` carries expand into inner query.
-
 ## WHERE Comparison RHS
 - **RHS eval tier**: `where_comparison` parses its RHS at the `u_add` tier (not `u_expr`); widening to `u_expr` would let `where a > b AND c < d` greedily swallow the `AND`. The `u_add` alternative must precede the bare `where_value` fallback, which stays last (reversing it breaks arithmetic RHS like `a > b + 1`).
 - **Relative time → SINCE/UNTIL**: `_time`/`timestamp` compared to `relative_time()`/`now()` emits `ir.since`/`ir.until`, never inline WHERE (NRQL rejects relative-time in WHERE) — and produces no `BinOp`.
