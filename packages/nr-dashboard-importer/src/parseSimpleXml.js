@@ -100,6 +100,9 @@ export function parseSimpleXml(xml) {
         w: Math.floor(12 / panelCount),
         h: 3,
       };
+      // Splunk panels may title at the panel level instead of the viz level;
+      // a viz's own <title> wins, falling back to the panel's (BUG4).
+      const panelTitle = titleOf(panel);
       // A panel can hold chart/table/single children in document order.
       for (const [
         tag,
@@ -117,7 +120,7 @@ export function parseSimpleXml(xml) {
           }
           widgets.push(
             createWidget({
-              title: titleOf(vizEl),
+              title: titleOf(vizEl) || panelTitle,
               vizType: resolvedType,
               rawSpl: queryOf(vizEl),
               layout,
@@ -131,7 +134,7 @@ export function parseSimpleXml(xml) {
         for (const vizEl of asArray(panel[tag])) {
           widgets.push(
             createWidget({
-              title: titleOf(vizEl),
+              title: titleOf(vizEl) || panelTitle,
               vizType,
               rawSpl: queryOf(vizEl),
               unsupportedReason: `${tag} panels are not supported`,

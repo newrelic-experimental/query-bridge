@@ -294,7 +294,9 @@ describe('importer: emitter & structure [pending]', () => {
   });
 
   // BUG 4 — only viz-level <title> is read; panel-level <panel><title> is ignored.
-  it.skip('a panel-level <title> is used when the viz has none (BUG 4)', () => {
+  it('a panel-level <title> is used when the viz has none (BUG 4)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the panel-title
+    // fallback (BUG4) regressed — fix the code, not the test.
     const xml = `<dashboard><label>PT</label><row><panel>
       <title>Panel Title</title>
       <chart>

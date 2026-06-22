@@ -80,3 +80,25 @@ describe('parseSimpleXml — unsupported viz tags never silently drop', () => {
     expect(m.widgets[0].unsupportedReason).toBe('map panels are not supported');
   });
 });
+
+describe('parseSimpleXml — panel-level title fallback', () => {
+  const chart = (vizTitle) =>
+    `<chart>${vizTitle}<search><query><![CDATA[index=app | timechart count]]></query></search><option name="charting.chart">line</option></chart>`;
+
+  it('uses the viz <title> when present', () => {
+    const xml = `<dashboard><label>D</label><row><panel><title>Panel</title>${chart('<title>Viz</title>')}</panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].title).toBe('Viz');
+  });
+
+  it('falls back to the panel <title> when the viz has none', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the panel-title
+    // fallback (BUG4) regressed — fix the code, not the test.
+    const xml = `<dashboard><label>D</label><row><panel><title>Panel</title>${chart('')}</panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].title).toBe('Panel');
+  });
+
+  it('is empty when neither viz nor panel has a title', () => {
+    const xml = `<dashboard><label>D</label><row><panel>${chart('')}</panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].title).toBe('');
+  });
+});
