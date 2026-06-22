@@ -367,6 +367,47 @@ describe('emitTerraform — terraform validate (integration)', () => {
   );
 
   it.skipIf(!hasTerraform())(
+    'a type="nrql" variable block passes terraform validate',
+    () => {
+      const nrqlVarModel = {
+        title: 'NV',
+        description: '',
+        widgets: [
+          {
+            title: 'W',
+            vizType: 'line',
+            outcome: 'clean',
+            nrql: 'FROM Log SELECT count(*)',
+            warnings: [],
+            layout: { x: 0, y: 0, w: 6, h: 3 },
+          },
+        ],
+        variables: [
+          {
+            name: 'host',
+            type: 'nrql',
+            defaultValue: '',
+            choices: [],
+            multi: false,
+            sourceQuery: 'FROM Log SELECT count(*) FACET host',
+          },
+        ],
+      };
+      const files = emitTerraform(nrqlVarModel, { accountId: 12345 });
+      const dir = mkdtempSync(join(tmpdir(), 'tf-nrqlvar-'));
+      for (const [name, body] of Object.entries(files))
+        writeFileSync(join(dir, name), body);
+      execFileSync('terraform', ['init', '-backend=false', '-input=false'], {
+        cwd: dir,
+        stdio: 'ignore',
+      });
+      execFileSync('terraform', ['validate'], { cwd: dir, stdio: 'pipe' });
+      expect(existsSync(join(dir, 'dashboard.tf'))).toBe(true);
+    },
+    60_000,
+  );
+
+  it.skipIf(!hasTerraform())(
     'area/bar/pie widget blocks pass terraform validate',
     () => {
       const chartsModel = {

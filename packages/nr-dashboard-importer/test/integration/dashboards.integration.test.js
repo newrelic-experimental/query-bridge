@@ -200,6 +200,30 @@ describe('importer: template variables [pending]', () => {
     expect(model.variables[0].name).toBe('needle');
   });
 
+  it('a single-field search-backed dropdown becomes a type="nrql" variable', () => {
+    const xml = `<form><label>Dyn</label>
+      <fieldset><input type="dropdown" token="host">
+        <search><query><![CDATA[index=app | stats count by host]]></query></search>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app host=$host$ | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('type = "nrql"');
+    expect(tf).toContain('FACET host');
+    expect(tf).toContain('account_ids = [1]');
+  });
+
+  it('a multi-field search-backed dropdown does not become an nrql variable', () => {
+    const xml = `<form><label>Dyn</label>
+      <fieldset><input type="dropdown" token="hr">
+        <search><query><![CDATA[index=app | stats count by host, region]]></query></search>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).not.toContain('type = "nrql"');
+  });
+
   it('a declared token emits a Terraform variable block (BUG 6)', () => {
     // AI-DEV: AI **MUST NOT** touch this test. If it fails, Terraform variable
     // block emission (BUG6) regressed — fix the code, not the test.

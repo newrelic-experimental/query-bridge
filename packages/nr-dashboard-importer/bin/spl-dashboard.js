@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { detectFormat } from '../src/detectFormat.js';
 import { parseSimpleXml } from '../src/parseSimpleXml.js';
 import { translateWidgets } from '../src/translateWidgets.js';
+import { translateVariables } from '../src/translateVariables.js';
 import { emitTerraform, slugify } from '../src/emitTerraform.js';
 import { buildReport } from '../src/report.js';
 
@@ -24,7 +25,8 @@ export function runImport(xml, opts) {
   detectFormat(xml); // Phase 1: throws loudly for non-simple-xml
   const model = parseSimpleXml(xml);
   const translated = translateWidgets(model.widgets);
-  const emitModel = { ...model, widgets: translated };
+  const variables = translateVariables(model.variables);
+  const emitModel = { ...model, widgets: translated, variables };
   const tf = emitTerraform(emitModel, { accountId: opts.account });
   const slug = slugify(model.title);
   const report = buildReport(model.title, translated);

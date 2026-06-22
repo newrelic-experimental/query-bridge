@@ -89,6 +89,8 @@ function variableBlock(v, accountId) {
   lines.push(`    title = "${hclString(v.name)}"`);
   if (v.type === 'nrql') {
     lines.push(`    type = "nrql"`);
+    lines.push(`    is_multi_selection = ${v.multi}`);
+    lines.push(`    replacement_strategy = "${replacementStrategy(v)}"`);
     lines.push(`    nrql_query {`);
     lines.push(`      ${accountIdsLine(accountId)}`);
     lines.push(`      query = "${hclString(v.sourceQuery ?? '')}"`);
