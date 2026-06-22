@@ -1,4 +1,5 @@
 import { translateSplToNrql } from '@newrelic/query-bridge';
+import { EMITTABLE_VIZ_TYPES } from './emitTerraform.js';
 
 /**
  * @typedef {import('./model.js').Widget} Widget
@@ -69,6 +70,23 @@ export function translateWidgets(widgets) {
         vizType: 'markdown',
         outcome: 'placeholder',
         placeholderText: placeholderBody(widget, result),
+        warnings: result.warnings,
+      };
+    }
+    // The SPL translated, but the viz type has no New Relic widget block
+    // (scatter, map, unknown). Placeholder it — keeping the valid NRQL as a
+    // partial — rather than emit an invalid block. EMITTABLE_VIZ_TYPES is the
+    // single source of truth, shared with the emitter.
+    if (!EMITTABLE_VIZ_TYPES.has(widget.vizType)) {
+      return {
+        ...widget,
+        vizType: 'markdown',
+        outcome: 'placeholder',
+        placeholderText: placeholderBody(widget, {
+          nrql: result.nrql,
+          unsupported: [`no New Relic equivalent for ${widget.vizType} charts`],
+          errors: [],
+        }),
         warnings: result.warnings,
       };
     }

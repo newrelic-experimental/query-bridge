@@ -3,7 +3,11 @@ import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { emitTerraform, slugify } from '../src/emitTerraform.js';
+import {
+  emitTerraform,
+  slugify,
+  EMITTABLE_VIZ_TYPES,
+} from '../src/emitTerraform.js';
 
 const model = {
   title: 'Web Health',
@@ -66,6 +70,61 @@ describe('emitTerraform — dashboard.tf', () => {
     const { 'dashboard.tf': tf } = emitTerraform(model, { accountId: 12345 });
     expect(tf).toContain('account_id = 12345');
     expect(tf).not.toContain('account_id = var.account_id');
+  });
+});
+
+describe('emitTerraform — chart widget blocks', () => {
+  const chartModel = (vizType) => ({
+    title: 'Charts',
+    description: '',
+    widgets: [
+      {
+        title: vizType,
+        vizType,
+        outcome: 'clean',
+        nrql: 'FROM Log SELECT count(*) FACET status',
+        warnings: [],
+        layout: { x: 0, y: 0, w: 6, h: 3 },
+      },
+    ],
+  });
+
+  it('emits widget_pie with an nrql_query, never widget_markdown, for a pie chart', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the area/bar/pie
+    // widget blocks (BUG2) regressed — fix the code, not the test.
+    const { 'dashboard.tf': tf } = emitTerraform(chartModel('pie'), {
+      accountId: 1,
+    });
+    expect(tf).toContain('widget_pie {');
+    expect(tf).toContain('nrql_query {');
+    expect(tf).not.toContain('widget_markdown');
+  });
+
+  it('maps area→widget_area, bar→widget_bar, and column→widget_bar', () => {
+    expect(
+      emitTerraform(chartModel('area'), { accountId: 1 })['dashboard.tf'],
+    ).toContain('widget_area {');
+    expect(
+      emitTerraform(chartModel('bar'), { accountId: 1 })['dashboard.tf'],
+    ).toContain('widget_bar {');
+    expect(
+      emitTerraform(chartModel('column'), { accountId: 1 })['dashboard.tf'],
+    ).toContain('widget_bar {');
+  });
+
+  it('throws loudly when a non-emittable vizType reaches the emitter', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. The chokepoint placeholders
+    // scatter/map/unknown upstream; one reaching emit is a pipeline bug.
+    expect(() =>
+      emitTerraform(chartModel('scatter'), { accountId: 1 }),
+    ).toThrow(/unmappable vizType/);
+  });
+
+  it('excludes scatter, map, and unknown from EMITTABLE_VIZ_TYPES', () => {
+    expect(EMITTABLE_VIZ_TYPES.has('pie')).toBe(true);
+    expect(EMITTABLE_VIZ_TYPES.has('scatter')).toBe(false);
+    expect(EMITTABLE_VIZ_TYPES.has('map')).toBe(false);
+    expect(EMITTABLE_VIZ_TYPES.has('unknown')).toBe(false);
   });
 });
 
@@ -146,6 +205,35 @@ describe('emitTerraform — terraform validate (integration)', () => {
     () => {
       const files = emitTerraform(model, { accountId: 12345 });
       const dir = mkdtempSync(join(tmpdir(), 'tf-emit-'));
+      for (const [name, body] of Object.entries(files))
+        writeFileSync(join(dir, name), body);
+      execFileSync('terraform', ['init', '-backend=false', '-input=false'], {
+        cwd: dir,
+        stdio: 'ignore',
+      });
+      execFileSync('terraform', ['validate'], { cwd: dir, stdio: 'pipe' });
+      expect(existsSync(join(dir, 'dashboard.tf'))).toBe(true);
+    },
+    60_000,
+  );
+
+  it.skipIf(!hasTerraform())(
+    'area/bar/pie widget blocks pass terraform validate',
+    () => {
+      const chartsModel = {
+        title: 'Charts',
+        description: '',
+        widgets: ['area', 'bar', 'column', 'pie'].map((vizType, i) => ({
+          title: vizType,
+          vizType,
+          outcome: 'clean',
+          nrql: 'FROM Log SELECT count(*) FACET status',
+          warnings: [],
+          layout: { x: (i % 2) * 6, y: Math.floor(i / 2) * 3, w: 6, h: 3 },
+        })),
+      };
+      const files = emitTerraform(chartsModel, { accountId: 12345 });
+      const dir = mkdtempSync(join(tmpdir(), 'tf-charts-'));
       for (const [name, body] of Object.entries(files))
         writeFileSync(join(dir, name), body);
       execFileSync('terraform', ['init', '-backend=false', '-input=false'], {

@@ -270,7 +270,9 @@ describe('importer: timepicker & time tokens [pending]', () => {
 describe('importer: emitter & structure [pending]', () => {
   // BUG 2 — a clean chart whose vizType is not line/table/billboard falls back
   // to widget_markdown but still emits an nrql_query block → invalid HCL.
-  it.skip('a pie chart emits a real chart widget, not widget_markdown+nrql (BUG 2)', () => {
+  it('a pie chart emits a real chart widget, not widget_markdown+nrql (BUG 2)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the area/bar/pie
+    // widget blocks (BUG2) regressed — fix the code, not the test.
     const xml = `<dashboard><label>Pie</label><row><panel><chart>
       <title>Share</title>
       <search><query><![CDATA[index=app | stats count by status]]></query></search>

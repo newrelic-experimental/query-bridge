@@ -68,6 +68,28 @@ describe('translateWidgets — pre-translation placeholders', () => {
   });
 });
 
+describe('translateWidgets — non-emittable viz types placeholder', () => {
+  it('placeholders a scatter widget (no NR block) but keeps its valid NRQL', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the non-emittable
+    // chokepoint branch (BUG2) regressed — fix the code, not the test.
+    const widgets = [
+      createWidget({
+        title: 'S',
+        vizType: 'scatter',
+        rawSpl: 'index=web | stats count by host',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('placeholder');
+    expect(out[0].vizType).toBe('markdown');
+    expect(out[0].placeholderText).toMatch(
+      /no New Relic equivalent for scatter/,
+    );
+    expect(out[0].placeholderText).toMatch(/SELECT count/i); // valid NRQL kept as partial
+    expect(out[0].nrql).toBeUndefined();
+  });
+});
+
 describe('translateWidgets — warnings attach but stay clean', () => {
   it('keeps a warned widget as a real widget and records the warnings', () => {
     // Pick SPL the translator emits NRQL for but with a warning. If none is known,
