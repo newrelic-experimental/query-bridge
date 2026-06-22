@@ -256,7 +256,7 @@ describe('importer: timepicker & time tokens [pending]', () => {
   });
 
   // span=$tok$ must escalate to unsupported (no TIMESERIES guessed from a token).
-  it.skip('span=$tok$ in timechart escalates to a placeholder, no TIMESERIES', () => {
+  it('span=$tok$ in timechart escalates to a placeholder, no TIMESERIES', () => {
     const xml = `<dashboard><label>S</label><row><panel><chart>
       <search><query><![CDATA[index=app | timechart span=$sp$ count]]></query></search>
       <option name="charting.chart">line</option>
@@ -323,7 +323,7 @@ describe('importer: emitter & structure [pending]', () => {
 
   // BUG 8 — an empty <query> becomes a clean "FROM Log SELECT *" rather than a
   // placeholder (silent wrong: shows everything as if intended).
-  it.skip('an empty <query> becomes a placeholder, not a silent SELECT * (BUG 8)', () => {
+  it('an empty <query> becomes a placeholder, not a silent SELECT * (BUG 8)', () => {
     const xml = `<dashboard><label>Empty</label><row><panel><table>
       <title>Nothing</title>
       <search><query></query></search>

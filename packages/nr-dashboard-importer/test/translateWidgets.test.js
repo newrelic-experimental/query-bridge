@@ -38,6 +38,36 @@ describe('translateWidgets — placeholder on no NRQL', () => {
   });
 });
 
+describe('translateWidgets — pre-translation placeholders', () => {
+  it('placeholders an empty query instead of translating it to SELECT *', () => {
+    const widgets = [
+      createWidget({ title: 'Empty', vizType: 'table', rawSpl: '   ' }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('placeholder');
+    expect(out[0].vizType).toBe('markdown');
+    expect(out[0].placeholderText).toMatch(/empty query/i);
+    expect(out[0].nrql).toBeUndefined();
+  });
+
+  it('placeholders a widget the parser flagged with unsupportedReason, before translating', () => {
+    // rawSpl IS translatable, but the parser-set reason takes precedence.
+    const widgets = [
+      createWidget({
+        title: 'Event',
+        vizType: 'unknown',
+        rawSpl: 'index=app',
+        unsupportedReason: 'event panels are not supported',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('placeholder');
+    expect(out[0].vizType).toBe('markdown');
+    expect(out[0].placeholderText).toContain('event panels are not supported');
+    expect(out[0].nrql).toBeUndefined();
+  });
+});
+
 describe('translateWidgets — warnings attach but stay clean', () => {
   it('keeps a warned widget as a real widget and records the warnings', () => {
     // Pick SPL the translator emits NRQL for but with a warning. If none is known,

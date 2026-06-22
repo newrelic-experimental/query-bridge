@@ -38,6 +38,29 @@ function placeholderBody(widget, result) {
  */
 export function translateWidgets(widgets) {
   return widgets.map((widget) => {
+    // Pre-translation placeholders: a parser-flagged unsupported widget (e.g. an
+    // event/map panel, or an unresolvable base search) or an empty query cannot
+    // produce a clean widget. Placeholder loudly rather than translate '' into a
+    // silent `FROM Log SELECT *`.
+    const preReason =
+      widget.unsupportedReason ||
+      (widget.rawSpl.trim() === ''
+        ? 'empty query — no SPL to translate'
+        : null);
+    if (preReason) {
+      return {
+        ...widget,
+        vizType: 'markdown',
+        outcome: 'placeholder',
+        placeholderText: placeholderBody(widget, {
+          nrql: '',
+          unsupported: [preReason],
+          errors: [],
+        }),
+        warnings: [],
+      };
+    }
+
     const result = translateSplToNrql(widget.rawSpl);
     const failed = result.unsupported.length > 0 || result.errors.length > 0;
     if (failed) {

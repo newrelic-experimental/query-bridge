@@ -23,6 +23,7 @@
  * @property {VizType} vizType
  * @property {string} rawSpl
  * @property {string|null} baseRef
+ * @property {string|null} unsupportedReason
  * @property {Record<string, unknown>} options
  * @property {{x:number,y:number,w:number,h:number}} layout
  *
@@ -69,6 +70,7 @@ export function createWidget(fields) {
     vizType: fields.vizType,
     rawSpl: fields.rawSpl ?? '',
     baseRef: fields.baseRef ?? null,
+    unsupportedReason: fields.unsupportedReason ?? null,
     options: fields.options ?? {},
     layout: fields.layout ?? { x: 0, y: 0, w: 12, h: 3 },
   };
