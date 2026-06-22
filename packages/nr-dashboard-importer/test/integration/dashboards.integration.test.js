@@ -230,7 +230,9 @@ describe('importer: timepicker & time tokens [pending]', () => {
   // BUG 5 — a per-panel <search><earliest>/<latest> (child elements, the form
   // real dashboards actually use) is ignored, so the emitted NRQL has no SINCE
   // and silently queries the wrong window.
-  it.skip('a panel <search><earliest> literal becomes SINCE (BUG 5)', () => {
+  it('a panel <search><earliest> literal becomes SINCE (BUG 5)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the per-panel time
+    // fold (BUG5) regressed — fix the code, not the test.
     const xml = `<dashboard><label>E</label><row><panel><chart>
       <search>
         <query><![CDATA[index=app | timechart count]]></query>

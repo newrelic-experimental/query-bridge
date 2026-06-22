@@ -55,6 +55,33 @@ function titleOf(vizEl) {
   return vizEl.title?.['#text'] ?? '';
 }
 
+/** Read a <search><earliest>/<latest> sibling (string or #text), or '' when absent. */
+function searchTimeBound(vizEl, which) {
+  const v = vizEl.search?.[which];
+  if (typeof v === 'string') return v.trim();
+  if (v && typeof v['#text'] === 'string') return v['#text'].trim();
+  return '';
+}
+
+/**
+ * Fold a panel <search>'s literal <earliest>/<latest> into the SPL base search so
+ * the translator emits SINCE/UNTIL (BUG5). Prepended as `earliest=… latest=…`
+ * (Splunk time modifiers belong in the base search and are position-independent).
+ * A `$tok$` value rides the translator's time-token drop — it never leaks into
+ * SINCE. Returns the query unchanged when neither sibling is present.
+ */
+function foldSearchTime(query, vizEl) {
+  const earliest = searchTimeBound(vizEl, 'earliest');
+  const latest = searchTimeBound(vizEl, 'latest');
+  const mods = [
+    earliest && `earliest=${earliest}`,
+    latest && `latest=${latest}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return mods ? `${mods} ${query}`.trim() : query;
+}
+
 /**
  * Splunk viz tags we recognize but cannot emit as a New Relic chart. They must
  * still produce a widget (carrying an unsupportedReason) so the chokepoint can
@@ -122,7 +149,7 @@ export function parseSimpleXml(xml) {
             createWidget({
               title: titleOf(vizEl) || panelTitle,
               vizType: resolvedType,
-              rawSpl: queryOf(vizEl),
+              rawSpl: foldSearchTime(queryOf(vizEl), vizEl),
               layout,
             }),
           );

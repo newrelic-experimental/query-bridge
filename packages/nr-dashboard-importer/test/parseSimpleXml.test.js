@@ -102,3 +102,28 @@ describe('parseSimpleXml — panel-level title fallback', () => {
     expect(parseSimpleXml(xml).widgets[0].title).toBe('');
   });
 });
+
+describe('parseSimpleXml — per-panel search time folds into the base search', () => {
+  it('prepends literal <search><earliest>/<latest> as time modifiers', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the per-panel time
+    // fold (BUG5) regressed — fix the code, not the test.
+    const xml = `<dashboard><label>E</label><row><panel><chart>
+      <search><query><![CDATA[index=app | timechart count]]></query>
+        <earliest>-60m</earliest><latest>now</latest></search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].rawSpl).toBe(
+      'earliest=-60m latest=now index=app | timechart count',
+    );
+  });
+
+  it('leaves the query unchanged when there are no time siblings', () => {
+    const xml = `<dashboard><label>E</label><row><panel><chart>
+      <search><query><![CDATA[index=app | timechart count]]></query></search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].rawSpl).toBe(
+      'index=app | timechart count',
+    );
+  });
+});
