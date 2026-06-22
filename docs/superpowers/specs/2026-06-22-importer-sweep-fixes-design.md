@@ -286,3 +286,31 @@ Before promoting any new output past `verified:'llm'`: run `terraform validate` 
 emitted dashboard with area/bar/pie + one static + one `type="nrql"` variable, and live
 NRQL checks for `WHERE index = {{idx}}` / `WHERE environment = {{env}}` (expect "undefined
 template variable" = compiles) and the actual dynamic-variable source NRQL.
+
+### Post-build close-out (2026-06-22)
+
+**Shipped, refining "embedded/partial tokens stay quoted-literal" above.** Affixed tokens are
+no longer left as silent literals. A *wildcard-only* token (`"*$tok$*"`, `"$tok$*"`, `"*$tok$"`)
+→ `field LIKE {{tok}}` plus a `wildcard_token_like` warning; a *literal-affixed* token
+(`"*fps-$id$*"`, `"$id$-suffix"`) → `affixed_token_unsupported` placeholder. Verified: New Relic
+substitutes `{{tok}}` in value position only, never inside a string literal (dashboardCreate +
+NRQL execution, staging acct 1).
+
+**Auto-wrap enhancement — deferred, ticket-worthy (NOT ~0, as first assumed).** For a wildcard
+token bound to a *static-choice* dropdown, the importer could inject `%` into that variable's
+enum values so `LIKE {{tok}}` becomes a transparent substring match (dropping the warning).
+Free-text and search-backed variable values arrive at run time and cannot be wrapped. Corpus
+sizing (grep — the `rg` multiline correlation gave a false 0 and was discarded): 176 distinct
+wildcard-token names / 1465 occurrences; 131 are `<input>` tokens → 96 text (not wrappable),
+52 dropdown-type. The 52 is a name-level upper bound that still includes search-backed
+dropdowns, so the genuinely auto-wrappable subset (wildcard token bound to a *static-choice*
+dropdown in the *same* dashboard) is smaller and was not precisely measured — it needs a
+per-dashboard structural parse, not grep. **Decision:** defer. The shipped "+warning" is
+correct-with-instruction (not silent-wrong), so auto-wrap is polish, not a bug; quantify the
+static-choice subset before building it.
+
+**Live validation (the open item above): done.** Provider staging targeting is
+`region = "Staging"` (a newrelic-client-go region → `staging-api.newrelic.com`); an
+`--region US|EU|JP|Staging` flag was added to the importer. `dashboardCreate` and
+`terraform apply` were both verified end-to-end against staging acct 1, and 9/9 emitted
+token-free widget queries execute as valid NRQL.
