@@ -1,0 +1,34 @@
+<dashboard>
+  <label>Corpus Shape: stats + eval + rex</label>
+  <description>Synthetic; generic field names only — mirrors the dominant eval/stats/rex pipeline shape, NOT any real corpus content.</description>
+  <row>
+    <panel>
+      <title>Errors by host</title>
+      <chart>
+        <title>Error rate</title>
+        <search>
+          <query><![CDATA[index=app sourcetype=applog | eval is_error=if(status>=500, 1, 0) | stats sum(is_error) as errors, count as total by host | eval error_pct=round(errors*100/total, 2)]]></query>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>Top users by request count</title>
+        <search>
+          <query><![CDATA[index=app | rex field=message "user=(?<userId>\w+)" | stats count by userId | sort -count | head 20]]></query>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Distinct sessions</title>
+        <search>
+          <query><![CDATA[index=app | stats dc(sessionId) as sessions]]></query>
+        </search>
+      </single>
+    </panel>
+  </row>
+</dashboard>

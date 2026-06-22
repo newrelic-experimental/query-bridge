@@ -1975,7 +1975,7 @@ NRQL: FROM Log WITH if(numeric(skuCount) > numeric(FCQuantity), 'yes', 'no') AS 
 ```
 
 ```
-🤖 Confirmed by LLM
+❓ Not confirmed
 SPL:  * | stats count | eval x = round(total/count, 2)
 NRQL: FROM Log WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT count(*)
 ```

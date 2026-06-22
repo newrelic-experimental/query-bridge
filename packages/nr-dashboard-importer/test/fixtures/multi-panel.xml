@@ -1,0 +1,25 @@
+<form>
+  <label>Mixed Panels</label>
+  <row>
+    <panel>
+      <chart>
+        <title>No explicit type</title>
+        <search><query>index=web | stats count by status</query></search>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>Top hosts</title>
+        <search><query>index=web | top host</query></search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Total</title>
+        <search><query>index=web | stats count</query></search>
+      </single>
+    </panel>
+  </row>
+</form>

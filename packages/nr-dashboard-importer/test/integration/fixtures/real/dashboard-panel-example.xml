@@ -1,0 +1,39 @@
+<dashboard version="1.1">
+  <label>Dashboard Panel Example</label>
+  <description>Two visualizations grouped in a single panel.</description>
+  <row>
+    <panel>
+      <chart>
+        <title>Chart grouping</title>
+        <search>
+          <query>index=_internal source="*splunkd.log" ( log_level=ERROR OR log_level=WARN* OR log_level=FATAL OR log_level=CRITICAL ) | stats count as log_events | rangemap field=log_events low=1-100 elevated=101-300 default=severe</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">radialGauge</option>
+      </chart>
+      <chart>
+        <search>
+          <query>index=_internal source="*splunkd.log" ( log_level=ERROR OR log_level=WARN* OR log_level=FATAL OR log_level=CRITICAL ) | stats count as log_events | rangemap field=log_events low=1-100 elevated=101-300 default=severe</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">markerGauge</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Single value grouping</title>
+        <search>
+          <query>index=_internal source="*splunkd.log" log_level=ERROR | stats count as log_events</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="beforeLabel">Found</option>
+        <option name="afterLabel">errors</option>
+      </single>
+    </panel>
+  </row>
+</dashboard>

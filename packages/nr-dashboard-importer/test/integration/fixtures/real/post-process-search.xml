@@ -1,0 +1,29 @@
+<dashboard version="1.1">
+  <label>Dashboard with post-process search</label>
+  <description>A global base search feeding two post-process panels.</description>
+  <search id="baseSearch">
+    <query>index=_internal source=*splunkd.log | stats count by component, log_level</query>
+    <earliest>-30d</earliest>
+    <latest>now</latest>
+  </search>
+  <row>
+    <panel>
+      <chart>
+        <title>Post-process 1: Event count by log level</title>
+        <search base="baseSearch">
+          <query>stats sum(count) AS count by log_level</query>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Post-process 2: Error count by component</title>
+        <search base="baseSearch">
+          <query>search log_level=error | stats sum(count) AS count by component</query>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>

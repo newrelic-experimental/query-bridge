@@ -1,0 +1,35 @@
+<form>
+  <label>Service Health (form-shaped)</label>
+  <description>Synthetic; mirrors the DOMINANT real shape from the corpus: form + input token + panel-level titles + global base search + post-process panels. Generic field names only.</description>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="env_tok">
+      <label>Environment</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <search id="base">
+    <query><![CDATA[index=app environment=$env_tok$ | fields status, host, latencyMs]]></query>
+    <earliest>-24h</earliest>
+    <latest>now</latest>
+  </search>
+  <row>
+    <panel>
+      <title>Requests by status</title>
+      <chart>
+        <search base="base">
+          <query><![CDATA[stats count by status]]></query>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>p95 latency by host</title>
+      <table>
+        <search base="base">
+          <query><![CDATA[stats perc95(latencyMs) as p95 by host | sort -p95]]></query>
+        </search>
+      </table>
+    </panel>
+  </row>
+</form>

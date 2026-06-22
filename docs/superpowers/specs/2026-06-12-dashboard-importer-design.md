@@ -96,7 +96,7 @@ nr-query-bridge/ (repo root — becomes a workspace root)
       src/ input/ ir/ output/ translate.js
       package.json   (no "dependencies")
     nr-dashboard-importer/          ← NEW package
-      package.json   (dependencies: @datanerd/nr-query-bridge, fast-xml-parser)
+      package.json   (dependencies: @newrelic/query-bridge, fast-xml-parser)
       src/
         detectFormat.js     ← sniff envelope/format, unwrap, route
         parseSimpleXml.js   ← <form>/<dashboard v1> tree-walk → DashboardModel
@@ -112,7 +112,7 @@ nr-query-bridge/ (repo root — becomes a workspace root)
       test/ + test/fixtures/ ← de-identified sample exports
 ```
 
-One-way dependency: `nr-dashboard-importer → @datanerd/nr-query-bridge`, never the reverse. The translator package never imports the importer and keeps an empty `dependencies` block, so a consumer running `npm install @datanerd/nr-query-bridge` still pulls **zero** runtime deps. Workspaces let the importer consume the translator's local source during development (no publish-to-test cycle), while keeping them independently publishable.
+One-way dependency: `nr-dashboard-importer → @newrelic/query-bridge`, never the reverse. The translator package never imports the importer and keeps an empty `dependencies` block, so a consumer running `npm install @newrelic/query-bridge` still pulls **zero** runtime deps. Workspaces let the importer consume the translator's local source during development (no publish-to-test cycle), while keeping them independently publishable.
 
 *Migration note:* moving the existing translator into `packages/nr-query-bridge/` is a path change across the repo (imports, configs, CI, husky hooks, the corpus harness's `../nr-query-bridge` reference). This is real work and is called out as Phase 0 below — do it as a mechanical move with the full test suite green before and after, in its own commit, separate from any importer code.
 
@@ -303,6 +303,13 @@ Vitest, in `packages/nr-dashboard-importer/test/` mirroring its `src/`. Pure fun
 - **Corpus gate (Phase 2+):** run the importer over the de-identified corpus sample; assert `threw === 0` (no dashboard crashes the importer — every failure is a placeholder, never an exception), and a coverage scorecard (clean/warned/placeholder counts) that must not regress.
 - **AI-DEV markers** added to confirmed tests after the red-green-refactor cycle, per `llm-test-verification.md`.
 
+## Verified gaps — 2026-06-18 integration sweep
+
+A functional sweep (`test/integration/`: 10 fixtures — Splunk's own published Simple XML dashboards + corpus-SHAPED synthetics using generic field names only; results regenerated into `test/integration/GAP_INVENTORY.md`) surfaced two real bugs the unit suite misses because it only exercises chart/table/single with viz-level titles. Both are `it.skip` canaries that flip green when fixed. Neither crashes — emitted HCL still `terraform validate`s — so both are usefulness/fidelity gaps, not blockers.
+
+1. **Silent viz-type drop — violates "loud placeholders, never drops" (priority: data loss).** `parseSimpleXml` iterates only `chart`/`table`/`single` (`parseSimpleXml.js:77-84`), so `event`/`map`/`html`/`viz` panels yield NO widget and NO placeholder — they vanish, grid slot included. ~63 such panels on the real corpus (49 html, 10 event, 4 map). The Testing section's "each viz element → neutral vizType" is aspirational, not shipped. **Fix:** iterate every viz tag; an unsupported viz TYPE that has a query → markdown placeholder (title + fenced SPL + reason); `<html>` (no query) → static markdown widget. Only then does the never-drops invariant actually hold.
+2. **Panel-level titles dropped (priority: cosmetic, but pervasive).** Only the viz-level `<title>` is read; `<panel><title>` is ignored. On the real corpus ~70% of titles are panel-level (935 vs 406 viz-level), so the importer blanks the majority of widget titles (~48% untitled across the fixtures). Confirmed valid + common in Splunk's Simple XML reference (panel `<title>` is `0..1`, distinct from the per-viz title). **Fix:** in `parseSimpleXml`, use the viz title if present, else fall back to the panel-level `<title>`.
+
 ## Risks
 
 - **Dependency tree growth.** `fast-xml-parser` + 5 transitive deps. Isolated in the `nr-dashboard-importer` package, so the translator package keeps its empty `dependencies` block and zero-dep guarantee for translate-only consumers. Verifying the package is genuine: done. Re-confirm all transitive licenses are permissive before merge — run the license check the security rules require.
@@ -334,3 +341,13 @@ The single highest-value pre-build check (settles 1, 2, 3, 4 at once): generate 
 3. **`ds.savedSearch` bodies** — SPL not in the export; would need a second fetch of the saved-search definition (the corpus has `saved_searches.json` alongside — a future cross-reference could resolve these instead of placeholdering them).
 4. **`depends`/`rejects` conditional visibility** — Splunk token-gated panel visibility → NR variable-conditional widgets. Recorded as a caveat in v1, not wired.
 5. **Snap-to time** (`-60m@m`) — snap dropped with a note (NR has no snap); same class as the time-token spec's deferred literal-snap gap.
+
+## Open-source publishing tasks (owed by the importer package)
+
+The open-source readiness effort (PR #34; remaining publish runbook tracked in Jira NR-578293) scaffolded the translator package and the repo root, but **deferred the importer package's OSS files** because `packages/nr-dashboard-importer/` was empty when that work ran. The importer effort owned these (all landed in the importer PR):
+
+1. **Switch the translator dependency to its public name.** The readiness work renamed the translator `@datanerd/nr-query-bridge` → `@newrelic/query-bridge`. Update the importer's `package.json` dependency and every `import … from '@datanerd/nr-query-bridge'` to `@newrelic/query-bridge`, or the workspace won't resolve once the readiness branch merges. (This spec's prose and diagram above now use `@newrelic/query-bridge` directly; the Phase 1 plan uses the new name throughout.)
+2. **Set the importer's public publish metadata** in its `package.json`: `name: @newrelic/dashboard-importer`, `repository.directory: packages/nr-dashboard-importer`, and `publishConfig.access: public` (required for a scoped public package). The `@newrelic/` scope is pending OSPO approval; fallback is the unscoped `nr-dashboard-importer`.
+3. **Add the importer's `LICENSE`** (copy the root Apache-2.0) and a short **npm-facing `README.md`** (experimental banner + install line + link back to the monorepo).
+4. **Generate `THIRD_PARTY_NOTICES.md`** with `newrelic/newrelic-oss-cli`. Unlike the zero-dep translator, the importer ships `fast-xml-parser` + its 5 transitive deps, so this is a real file. Re-confirm those transitive licenses are permissive at the same time (the security rules require it — already flagged under Risks).
+5. **Add the importer's dependabot npm entry** — `package-ecosystem: npm`, `directory: /packages/nr-dashboard-importer` in `.github/dependabot.yml` (the readiness PR added only the translator's entry).

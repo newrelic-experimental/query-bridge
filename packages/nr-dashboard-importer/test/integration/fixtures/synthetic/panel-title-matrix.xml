@@ -1,0 +1,36 @@
+<dashboard>
+  <label>Panel Title Matrix</label>
+  <description>Synthetic; isolates the 4 title-placement cases. On the real corpus ~70% of titles are panel-level, which the importer currently ignores. Generic fields only.</description>
+  <row>
+    <panel>
+      <title>Panel-level title only</title>
+      <chart>
+        <search><query><![CDATA[index=app | timechart count]]></query></search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Viz-level title only</title>
+        <search><query><![CDATA[index=app | timechart count]]></query></search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Panel title (group label)</title>
+      <chart>
+        <title>Viz title (specific)</title>
+        <search><query><![CDATA[index=app | timechart count]]></query></search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <search><query><![CDATA[index=app | timechart count]]></query></search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>

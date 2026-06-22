@@ -990,10 +990,18 @@ const cases = [
   },
   // ── EvalArith: arithmetic inside function args (Task 4) ──
   {
+    // PENDING eval-after-stats fix — see Fix 1 in
+    // docs/superpowers/specs/2026-06-18-subquery-wrapping-design.md.
+    // The translator currently emits this eval as a PRE-aggregation WITH over
+    // fields that don't exist post-stats (silent wrong result). The `nrql` below
+    // is the wrapped TARGET, so this case is RED until handleEval wraps like
+    // handleWhere. When fixing: confirm the real output, update nrql to match,
+    // remove `skip`. Only a human may restore a verified level.
     spl: '* | stats count | eval x = round(total/count, 2)',
-    nrql: 'FROM Log WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT count(*)',
+    nrql: 'FROM (FROM Log SELECT count(*)) WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT *',
     doc: 'eval-conditional',
-    verified: 'llm',
+    verified: false,
+    skip: true,
   },
   {
     spl: '* | eval x = if(a > b+1, "hi", "lo")',

@@ -1,5 +1,10 @@
 npx lint-staged
 
+# Type-check the whole workspace before committing. lint-staged covers ESLint on
+# staged files, but checkJs type errors otherwise only surface at pre-push/CI —
+# this closes that gap so a type error cannot land in a commit.
+npm run types:check
+
 # Run the full test suite. This also regenerates the translator's
 # docs/SPL_TO_NRQL.md via the doc-gen afterAll (local write mode). If that regen
 # changed the doc, stage it so the commit includes the up-to-date docs and the

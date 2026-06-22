@@ -17,6 +17,14 @@ These replace conflicting guidance from the universal testing standards (`.claud
 - **NRQL validation:** Use `validate-test-cases` skill to validate translated NRQL via MCP before accepting
 - **No e2e tests:** This is a pure library — no UI, no Playwright
 
+## Test authoring style (explicit over clever)
+
+Applies to functional/integration and new behavior tests. (The translator's data-driven `cases` array in `spl.test.js` is the sanctioned exception — it predates this and is documented in CLAUDE.md; don't retrofit it.)
+
+- **No fixture loops.** Do NOT iterate a directory/array of fixtures to generate one test per entry, and do NOT precompute a shared `results`-for-all-fixtures array and assert against it. Write each test explicitly, one scenario per `it()`.
+- **Duplication is fine — preferred over clever DRY.** A little copy-paste beats a shared helper that hides what the test does.
+- **Relevant setup goes in the test body.** If the thing under test (the XML, the query, the model) is the point of the test, write it inline in the test body. Only boilerplate that merely *gets you to* the test (auth/login, resolving a fixtures dir) belongs in a common block (top-of-file const / `beforeEach`).
+
 ## LLM Test Verification
 
-See `@.claude/rules/llm-test-verification.md` for the full verification process.
+See `@.claude/rules/llm-test-verification.md` for the full verification process. **AI-DEV markers go on a test ONLY after it has passed the full red-green (or mutation) cycle — never cargo-culted onto fresh, unverified tests.**

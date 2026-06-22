@@ -159,7 +159,7 @@ the token outright. Verified against account 1 (2026-06-10):
 | **`UNTIL {{v}}`** | ✗ | `unexpected '{'` |
 | **`TIMESERIES {{v}}`** | ✗ | `unexpected '{'` |
 
-**Rule:** `{{var}}` goes anywhere a value, identifier, or expression goes — but NOT in the time/interval clauses (`SINCE`, `UNTIL`, `TIMESERIES`), which accept only concrete literals (relative `N units ago`, epoch ms, or datetime string). This is why an SPL dashboard time token (`$tok.earliest$`) has no valid `{{...}}` passthrough into SINCE/UNTIL — see the dashboard-time-tokens spec (B).
+**Rule:** `{{var}}` goes anywhere a value, identifier, or expression goes — but NOT in the time/interval clauses (`SINCE`, `UNTIL`, `TIMESERIES`), which accept only concrete literals (relative `N units ago`, epoch ms, or datetime string). This is why an SPL dashboard time token (`$tok.earliest$`) has no valid `{{...}}` passthrough into SINCE/UNTIL — see **Dashboard Time Tokens** in `.claude/rules/design-decisions.md`.
 
 ## Subqueries
 

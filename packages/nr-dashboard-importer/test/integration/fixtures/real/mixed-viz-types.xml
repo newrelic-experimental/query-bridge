@@ -1,0 +1,46 @@
+<dashboard version="1.1">
+  <label>Mixed Visualization Types</label>
+  <description>event, map, and static html panels alongside a table.</description>
+  <row>
+    <panel>
+      <title>Events in the last 24 hours</title>
+      <event>
+        <search>
+          <query>index=_internal</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">20</option>
+      </event>
+    </panel>
+    <panel>
+      <title>Choropleth map</title>
+      <map>
+        <search>
+          <query>index=_internal | iplocation clientip | stats count by City | geom geo_us_states</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="mapping.type">choropleth</option>
+      </map>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h2>Static notes</h2>
+        <p>This panel is static HTML with no search behind it.</p>
+      </html>
+    </panel>
+    <panel>
+      <table>
+        <title>Top source types</title>
+        <search>
+          <query>index=_internal | top limit=10 sourcetype</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>

@@ -1,0 +1,42 @@
+{
+  "name": "@newrelic/dashboard-importer",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "description": "Import Splunk dashboard exports into New Relic via the @newrelic/query-bridge translator.",
+  "bin": {
+    "spl-dashboard": "./bin/spl-dashboard.js"
+  },
+  "files": [
+    "src/",
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/newrelic-experimental/nr-query-bridge.git",
+    "directory": "packages/nr-dashboard-importer"
+  },
+  "bugs": {
+    "url": "https://github.com/newrelic-experimental/nr-query-bridge/issues"
+  },
+  "homepage": "https://github.com/newrelic-experimental/nr-query-bridge#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": {
+    "name": "Logging Team"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint .",
+    "types:check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@newrelic/query-bridge": "*",
+    "fast-xml-parser": "5.8.0"
+  }
+}
