@@ -244,7 +244,10 @@ describe('importer: timepicker & time tokens [pending]', () => {
 
   // A time token in the inline earliest= position must be dropped with a
   // warning and never leak into SINCE (the shipped Dashboard-Time-Tokens rule).
-  it.skip('an inline earliest=$tok$ is dropped, never leaked into SINCE', () => {
+  it('an inline earliest=$tok$ is dropped, never leaked into SINCE', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the time-token drop
+    // (Dashboard-Time-Tokens rule) regressed and a $tok$ is leaking into SINCE —
+    // fix the code (splToIR TimeConstraint/TemplateVariable drop), not the test.
     const xml = `<dashboard><label>L</label><row><panel><chart>
       <search><query><![CDATA[index=app earliest=$tr.earliest$ latest=now | timechart count]]></query></search>
       <option name="charting.chart">line</option>

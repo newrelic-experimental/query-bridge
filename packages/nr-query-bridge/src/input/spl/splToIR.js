@@ -516,6 +516,10 @@ export function translateSearchExpr(node, ir) {
       }
 
       case 'TimeConstraint': {
+        // AI-DEV: a dashboard time token (earliest=$tok$ / latest=$tok$) **MUST**
+        // be dropped with a warning, never emitted into SINCE/UNTIL — NRQL rejects
+        // a {{var}} in a time clause and a wrong window is silent-wrong. Do not
+        // "improve" this to pass the token through. (Dashboard-Time-Tokens rule.)
         if (/\$[^$]+\$/.test(node.value)) {
           sawTimeToken = true;
           warnings.push(
@@ -547,6 +551,10 @@ export function translateSearchExpr(node, ir) {
         const isLatest =
           node.name === 'latest' || node.name.endsWith('.latest');
         if (isEarliest || isLatest) {
+          // AI-DEV: a time-range template variable **MUST** be dropped with a
+          // warning, never emitted as {{var}} into SINCE/UNTIL (NRQL rejects it
+          // and a wrong window is silent-wrong). Only NON-time variables pass
+          // through as {{name}} below. (Dashboard-Time-Tokens rule.)
           const param = isEarliest ? 'earliest' : 'latest';
           sawTimeToken = true;
           warnings.push(
