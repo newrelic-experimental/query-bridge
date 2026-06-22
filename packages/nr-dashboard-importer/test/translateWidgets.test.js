@@ -38,6 +38,89 @@ describe('translateWidgets — placeholder on no NRQL', () => {
   });
 });
 
+describe('translateWidgets — pre-translation placeholders', () => {
+  it('placeholders an empty query instead of translating it to SELECT *', () => {
+    const widgets = [
+      createWidget({ title: 'Empty', vizType: 'table', rawSpl: '   ' }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('placeholder');
+    expect(out[0].vizType).toBe('markdown');
+    expect(out[0].placeholderText).toMatch(/empty query/i);
+    expect(out[0].nrql).toBeUndefined();
+  });
+
+  it('placeholders a widget the parser flagged with unsupportedReason, before translating', () => {
+    // rawSpl IS translatable, but the parser-set reason takes precedence.
+    const widgets = [
+      createWidget({
+        title: 'Event',
+        vizType: 'unknown',
+        rawSpl: 'index=app',
+        unsupportedReason: 'event panels are not supported',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('placeholder');
+    expect(out[0].vizType).toBe('markdown');
+    expect(out[0].placeholderText).toContain('event panels are not supported');
+    expect(out[0].nrql).toBeUndefined();
+  });
+});
+
+describe('translateWidgets — non-emittable viz types placeholder', () => {
+  it('placeholders a scatter widget (no NR block) but keeps its valid NRQL', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the non-emittable
+    // chokepoint branch (BUG2) regressed — fix the code, not the test.
+    const widgets = [
+      createWidget({
+        title: 'S',
+        vizType: 'scatter',
+        rawSpl: 'index=web | stats count by host',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('placeholder');
+    expect(out[0].vizType).toBe('markdown');
+    expect(out[0].placeholderText).toMatch(
+      /no New Relic equivalent for scatter/,
+    );
+    expect(out[0].placeholderText).toMatch(/SELECT count/i); // valid NRQL kept as partial
+    expect(out[0].nrql).toBeUndefined();
+  });
+});
+
+describe('translateWidgets — multiselect comparison rewrite', () => {
+  it('rewrites field = {{tok}} to field IN ({{tok}}) for a multiselect token', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. NR expands a multi-var to a comma
+    // list, so `=` must become `IN` or the NRQL is invalid. Fix code, not test.
+    const widgets = [
+      createWidget({
+        title: 'M',
+        vizType: 'table',
+        rawSpl: 'index=app host=$hosts$ | stats count',
+      }),
+    ];
+    const out = translateWidgets(widgets, {
+      multiSelectTokens: new Set(['hosts']),
+    });
+    expect(out[0].nrql).toContain('host IN ({{hosts}})');
+    expect(out[0].nrql).not.toMatch(/host = \{\{hosts\}\}/);
+  });
+
+  it('leaves a non-multiselect token comparison as equality', () => {
+    const widgets = [
+      createWidget({
+        title: 'S',
+        vizType: 'table',
+        rawSpl: 'index=app host=$h$ | stats count',
+      }),
+    ];
+    const out = translateWidgets(widgets, { multiSelectTokens: new Set() });
+    expect(out[0].nrql).toContain('host = {{h}}');
+  });
+});
+
 describe('translateWidgets — warnings attach but stay clean', () => {
   it('keeps a warned widget as a real widget and records the warnings', () => {
     // Pick SPL the translator emits NRQL for but with a warning. If none is known,

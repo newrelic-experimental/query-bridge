@@ -50,3 +50,214 @@ describe('parseSimpleXml — viz types and layout', () => {
     expect(single.layout).toEqual({ x: 0, y: 3, w: 12, h: 3 });
   });
 });
+
+describe('parseSimpleXml — unsupported viz tags never silently drop', () => {
+  it('emits an event panel as a widget carrying an unsupportedReason', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the parser stopped
+    // classifying unsupported viz tags (BUG3 regression) — fix the code, not the test.
+    const xml = `<dashboard><label>Ev</label><row><panel>
+      <event><title>Stream</title><search><query><![CDATA[index=app]]></query></search></event>
+    </panel></row></dashboard>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets).toHaveLength(1);
+    expect(m.widgets[0].unsupportedReason).toBe(
+      'event panels are not supported',
+    );
+    expect(m.widgets[0].vizType).toBe('unknown');
+    expect(m.widgets[0].title).toBe('Stream');
+    expect(m.widgets[0].rawSpl).toBe('index=app');
+  });
+
+  it('keeps a <map> panel as a map-typed widget with an unsupportedReason', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the parser stopped
+    // classifying unsupported viz tags (BUG3 regression) — fix the code, not the test.
+    const xml = `<dashboard><label>M</label><row><panel>
+      <map><search><query><![CDATA[index=app | geostats count]]></query></search></map>
+    </panel></row></dashboard>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets).toHaveLength(1);
+    expect(m.widgets[0].vizType).toBe('map');
+    expect(m.widgets[0].unsupportedReason).toBe('map panels are not supported');
+  });
+});
+
+describe('parseSimpleXml — panel-level title fallback', () => {
+  const chart = (vizTitle) =>
+    `<chart>${vizTitle}<search><query><![CDATA[index=app | timechart count]]></query></search><option name="charting.chart">line</option></chart>`;
+
+  it('uses the viz <title> when present', () => {
+    const xml = `<dashboard><label>D</label><row><panel><title>Panel</title>${chart('<title>Viz</title>')}</panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].title).toBe('Viz');
+  });
+
+  it('falls back to the panel <title> when the viz has none', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the panel-title
+    // fallback (BUG4) regressed — fix the code, not the test.
+    const xml = `<dashboard><label>D</label><row><panel><title>Panel</title>${chart('')}</panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].title).toBe('Panel');
+  });
+
+  it('is empty when neither viz nor panel has a title', () => {
+    const xml = `<dashboard><label>D</label><row><panel>${chart('')}</panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].title).toBe('');
+  });
+});
+
+describe('parseSimpleXml — per-panel search time folds into the base search', () => {
+  it('prepends literal <search><earliest>/<latest> as time modifiers', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the per-panel time
+    // fold (BUG5) regressed — fix the code, not the test.
+    const xml = `<dashboard><label>E</label><row><panel><chart>
+      <search><query><![CDATA[index=app | timechart count]]></query>
+        <earliest>-60m</earliest><latest>now</latest></search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].rawSpl).toBe(
+      'earliest=-60m latest=now index=app | timechart count',
+    );
+  });
+
+  it('leaves the query unchanged when there are no time siblings', () => {
+    const xml = `<dashboard><label>E</label><row><panel><chart>
+      <search><query><![CDATA[index=app | timechart count]]></query></search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets[0].rawSpl).toBe(
+      'index=app | timechart count',
+    );
+  });
+});
+
+describe('parseSimpleXml — dashboard time picker default', () => {
+  it('captures a <input type="time"> default earliest/latest into defaultTimeRange', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, time-input default
+    // capture (BUG5/6) regressed — fix the code, not the test.
+    const xml = `<form><label>TP</label>
+      <fieldset><input type="time" token="tr">
+        <default><earliest>-24h@h</earliest><latest>now</latest></default>
+      </input></fieldset>
+      <row><panel><chart><search><query><![CDATA[index=app | timechart count]]></query></search></chart></panel></row>
+    </form>`;
+    const m = parseSimpleXml(xml);
+    expect(m.defaultTimeRange).toEqual({ earliest: '-24h@h', latest: 'now' });
+  });
+
+  it('leaves defaultTimeRange null when there is no time input', () => {
+    const xml = `<dashboard><label>D</label><row><panel><chart>
+      <search><query><![CDATA[index=app | timechart count]]></query></search>
+    </chart></panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).defaultTimeRange).toBeNull();
+  });
+});
+
+describe('parseSimpleXml — fieldset inputs become model variables', () => {
+  it('parses a static dropdown into an enum variable with choices and default', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, fieldset-input
+    // parsing (BUG6) regressed — fix the code, not the test.
+    const xml = `<form><label>D</label>
+      <fieldset><input type="dropdown" token="category">
+        <label>Category</label><default>*</default>
+        <choice value="*">All</choice><choice value="a">A</choice>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const v = parseSimpleXml(xml).variables;
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({
+      name: 'category',
+      type: 'enum',
+      defaultValue: '*',
+      multi: false,
+      sourceQuery: null,
+    });
+    expect(v[0].choices).toEqual([
+      { value: '*', title: 'All' },
+      { value: 'a', title: 'A' },
+    ]);
+  });
+
+  it('parses a text input into a string variable', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, fieldset-input
+    // parsing (BUG6) regressed — fix the code, not the test.
+    const xml = `<form><label>T</label>
+      <fieldset><input type="text" token="needle"><label>Search</label><default>err</default></input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const v = parseSimpleXml(xml).variables;
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({
+      name: 'needle',
+      type: 'string',
+      defaultValue: 'err',
+    });
+  });
+
+  it('keeps a search-backed dropdown query as sourceQuery', () => {
+    const xml = `<form><label>S</label>
+      <fieldset><input type="dropdown" token="host">
+        <search><query><![CDATA[index=app | stats count by host]]></query></search>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const v = parseSimpleXml(xml).variables;
+    expect(v[0].sourceQuery).toBe('index=app | stats count by host');
+  });
+
+  it('does not treat a time input as a variable', () => {
+    const xml = `<form><label>TP</label>
+      <fieldset><input type="time" token="tr"><default><earliest>-24h</earliest><latest>now</latest></default></input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    expect(parseSimpleXml(xml).variables).toHaveLength(0);
+  });
+});
+
+describe('parseSimpleXml — base search resolution', () => {
+  const baseDash = (baseQuery, postQuery, baseAttrs = '') =>
+    `<form><label>B</label>
+      <search id="base" ${baseAttrs}><query><![CDATA[${baseQuery}]]></query></search>
+      <row><panel><table>
+        <search base="base"><query><![CDATA[${postQuery}]]></query></search>
+      </table></panel></row>
+    </form>`;
+
+  it('composes a non-transforming base with its post-process pipeline', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, base-search
+    // composition (BUG7) regressed — fix the code, not the test.
+    const m = parseSimpleXml(
+      baseDash('index=app environment=prod', 'stats count by host'),
+    );
+    expect(m.widgets[0].rawSpl).toBe(
+      'index=app environment=prod | stats count by host',
+    );
+    expect(m.widgets[0].baseRef).toBe('base');
+    expect(m.widgets[0].unsupportedReason).toBeNull();
+  });
+
+  it('placeholders a transforming base (stats) instead of composing', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the transforming-base
+    // guard (BUG7) regressed — fix the code, not the test.
+    const m = parseSimpleXml(
+      baseDash('index=app | stats count by host', 'sort - count'),
+    );
+    expect(m.widgets[0].unsupportedReason).toMatch(/transforming/);
+    expect(m.widgets[0].baseRef).toBe('base');
+  });
+
+  it('placeholders when the base id is missing', () => {
+    const xml = `<form><label>B</label>
+      <row><panel><table>
+        <search base="ghost"><query><![CDATA[stats count]]></query></search>
+      </table></panel></row>
+    </form>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets[0].unsupportedReason).toMatch(/not found/);
+  });
+
+  it('placeholders a saved-search ref base', () => {
+    const m = parseSimpleXml(
+      baseDash('index=app', 'stats count', 'ref="my_saved_search"'),
+    );
+    expect(m.widgets[0].unsupportedReason).toMatch(/chained or saved-search/);
+  });
+});

@@ -12,17 +12,19 @@
  * @property {Widget[]} widgets
  *
  * @typedef {object} Variable
- * @property {string} name
- * @property {'enum'|'string'} type
- * @property {string} defaultValue
- * @property {string[]} choices
- * @property {string|null} sourceQuery
+ * @property {string} name           the Splunk input token, e.g. "category"
+ * @property {'enum'|'string'|'nrql'} type
+ * @property {string} defaultValue   the <default> value ('' when none)
+ * @property {{value:string,title:string}[]} choices  enum items (empty otherwise)
+ * @property {boolean} multi         multiselect (NR is_multi_selection)
+ * @property {string|null} sourceQuery  inner search SPL for a search-backed dropdown
  *
  * @typedef {object} Widget
  * @property {string} title
  * @property {VizType} vizType
  * @property {string} rawSpl
  * @property {string|null} baseRef
+ * @property {string|null} unsupportedReason
  * @property {Record<string, unknown>} options
  * @property {{x:number,y:number,w:number,h:number}} layout
  *
@@ -60,6 +62,21 @@ export function createDashboardModel(fields) {
 }
 
 /**
+ * @param {Partial<Variable> & {name: string, type: Variable['type']}} fields
+ * @returns {Variable}
+ */
+export function createVariable(fields) {
+  return {
+    name: fields.name,
+    type: fields.type,
+    defaultValue: fields.defaultValue ?? '',
+    choices: fields.choices ?? [],
+    multi: fields.multi ?? false,
+    sourceQuery: fields.sourceQuery ?? null,
+  };
+}
+
+/**
  * @param {Partial<Widget> & {title: string, vizType: VizType}} fields
  * @returns {Widget}
  */
@@ -69,6 +86,7 @@ export function createWidget(fields) {
     vizType: fields.vizType,
     rawSpl: fields.rawSpl ?? '',
     baseRef: fields.baseRef ?? null,
+    unsupportedReason: fields.unsupportedReason ?? null,
     options: fields.options ?? {},
     layout: fields.layout ?? { x: 0, y: 0, w: 12, h: 3 },
   };

@@ -371,6 +371,56 @@ export function translateSearchExpr(node, ir) {
 
         let { field, value, operator: op } = node;
 
+        // Dashboard template variable in value position (field=$tok$): emit
+        // `field = {{tok}}` unquoted. The token is a placeholder filled at
+        // dashboard render time, so it must be neither string-quoted nor
+        // numeric()-coerced. `value` is a typed node only for a complete $name$
+        // (the grammar's !search_value_char lookahead); embedded tokens stay literal.
+        if (
+          value &&
+          typeof value === 'object' &&
+          value.type === 'TemplateVariable'
+        ) {
+          return BinOp(op, Identifier(field), Identifier(`{{${value.name}}}`));
+        }
+
+        // A fully-quoted standalone token, e.g. `index="$env$"` — the grammar
+        // strips the quotes leaving the literal string `$env$`. Treat it exactly
+        // like an unquoted token (NR substitutes {{env}} at render time); a quoted
+        // literal '$env$' would match nothing. Only a body that is EXACTLY $name$
+        // qualifies — an embedded/affixed token (`"*x-$id$*"`, `"$id$-suffix"`)
+        // stays literal and is handled by the wildcard/buildComparison paths below.
+        if (typeof value === 'string') {
+          const tokenOnly = /^\$([A-Za-z0-9_.:-]+)\$$/.exec(value);
+          if (tokenOnly) {
+            return BinOp(
+              op,
+              Identifier(field),
+              Identifier(`{{${tokenOnly[1]}}}`),
+            );
+          }
+        }
+
+        // A token EMBEDDED in a quoted value (the standalone $tok$ case returned above).
+        // New Relic substitutes {{tok}} only in value position — never inside a string
+        // literal/pattern (verified against staging acct 1, 2026-06-22). So:
+        //   - wildcard-ONLY wrap (`*$tok$*`, `$tok$*`, `*$tok$`) → `field LIKE {{tok}}`; the
+        //     % wildcards must live in the variable's values (see wildcard_token_like).
+        //   - any literal affix (`*fps-$tok$*`, `$tok$-suffix`) → unsupported: emitting the
+        //     literal $tok$ would silently never substitute (loud failure over silent-wrong).
+        if (typeof value === 'string' && /\$[A-Za-z0-9_.:-]+\$/.test(value)) {
+          const wildcardToken = /^\*?\$([A-Za-z0-9_.:-]+)\$\*?$/.exec(value);
+          if (wildcardToken && value.includes('*')) {
+            warnings.push(
+              messages.wildcard_token_like(field, wildcardToken[1]),
+            );
+            const like = Like(Identifier(field), `{{${wildcardToken[1]}}}`);
+            return op === '!=' ? Not(like) : like;
+          }
+          unsupported.push(messages.affixed_token_unsupported(field, value));
+          return null;
+        }
+
         // Reversed operands: `.25 > count` parses `.25` into the field slot and
         // `count` into the value slot. When the left is a numeric literal and the
         // right is a field name, emit `<number> op numeric(<field>)` rather than
@@ -503,6 +553,10 @@ export function translateSearchExpr(node, ir) {
       }
 
       case 'TimeConstraint': {
+        // AI-DEV: a dashboard time token (earliest=$tok$ / latest=$tok$) **MUST**
+        // be dropped with a warning, never emitted into SINCE/UNTIL — NRQL rejects
+        // a {{var}} in a time clause and a wrong window is silent-wrong. Do not
+        // "improve" this to pass the token through. (Dashboard-Time-Tokens rule.)
         if (/\$[^$]+\$/.test(node.value)) {
           sawTimeToken = true;
           warnings.push(
@@ -534,6 +588,10 @@ export function translateSearchExpr(node, ir) {
         const isLatest =
           node.name === 'latest' || node.name.endsWith('.latest');
         if (isEarliest || isLatest) {
+          // AI-DEV: a time-range template variable **MUST** be dropped with a
+          // warning, never emitted as {{var}} into SINCE/UNTIL (NRQL rejects it
+          // and a wrong window is silent-wrong). Only NON-time variables pass
+          // through as {{name}} below. (Dashboard-Time-Tokens rule.)
           const param = isEarliest ? 'earliest' : 'latest';
           sawTimeToken = true;
           warnings.push(

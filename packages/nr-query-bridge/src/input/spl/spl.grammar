@@ -1378,7 +1378,12 @@ comparison_op
   / '=' { return '='; }
 
 search_value
-  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  // A bare $tok$ in value position is a dashboard variable, emitted as {{tok}}.
+  // The !search_value_char lookahead requires the token to be the COMPLETE value:
+  // `field=$tok$suffix` backtracks to the literal path (embedded tokens stay
+  // quoted-literal — out of scope), so only a standalone $tok$ becomes a node.
+  = tv:template_variable !search_value_char { return tv; }
+  / '"' chars:double_string_char* '"' { return chars.join(''); }
   / "'" chars:single_string_char* "'" { return chars.join(''); }
   / '\\"' chars:escaped_quote_inner* '\\"' { return chars.join(''); }
   / chars:search_value_char+ { return chars.join(''); }

@@ -152,7 +152,7 @@ describe('importer: template variables [pending]', () => {
   // BUG 1 — value-position tokens are emitted as quoted string literals
   // ('$tok$') instead of unquoted {{tok}}, so NR's already-quoted substitution
   // matches nothing (silent zero rows). Only bare-term position works today.
-  it.skip('value-position field=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
+  it('value-position field=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
     const xml = `<dashboard><label>V</label><row><panel><table>
       <search><query><![CDATA[index=app environment=$env_tok$ | stats count by host]]></query></search>
     </table></panel></row></dashboard>`;
@@ -161,7 +161,18 @@ describe('importer: template variables [pending]', () => {
     expect(tf).not.toContain("'$env_tok$'");
   });
 
-  it.skip('index=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
+  it('a double-quoted value-position token index="$tok$" becomes {{tok}}', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. Double-quoted tokens are the
+    // dominant corpus form (13k+); a quoted literal '$tok$' matches nothing.
+    const xml = `<dashboard><label>Q</label><row><panel><table>
+      <search><query><![CDATA[index="$env$" | stats count]]></query></search>
+    </table></panel></row></dashboard>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('{{env}}');
+    expect(tf).not.toContain("'$env$'");
+  });
+
+  it('index=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
     const xml = `<dashboard><label>I</label><row><panel><table>
       <search><query><![CDATA[index=$idx$ | stats count]]></query></search>
     </table></panel></row></dashboard>`;
@@ -173,7 +184,9 @@ describe('importer: template variables [pending]', () => {
   // BUG 6 — <input> form controls are never read into model.variables, so the
   // emitted dashboard has no template variables and any surviving {{tok}}
   // references an undefined variable.
-  it.skip('a dropdown <input> produces a model variable (BUG 6)', () => {
+  it('a dropdown <input> produces a model variable (BUG 6)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, fieldset-input
+    // parsing into model.variables (BUG6) regressed — fix the code, not the test.
     const xml = `<form><label>D</label>
       <fieldset><input type="dropdown" token="category">
         <label>Category</label><default>*</default>
@@ -186,7 +199,9 @@ describe('importer: template variables [pending]', () => {
     expect(model.variables[0].name).toBe('category');
   });
 
-  it.skip('a text <input> produces a model variable (BUG 6)', () => {
+  it('a text <input> produces a model variable (BUG 6)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, fieldset-input
+    // parsing into model.variables (BUG6) regressed — fix the code, not the test.
     const xml = `<form><label>T</label>
       <fieldset><input type="text" token="needle"><label>Search</label></input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
@@ -196,7 +211,58 @@ describe('importer: template variables [pending]', () => {
     expect(model.variables[0].name).toBe('needle');
   });
 
-  it.skip('a declared token emits a Terraform variable block (BUG 6)', () => {
+  it('a single-field search-backed dropdown becomes a type="nrql" variable', () => {
+    const xml = `<form><label>Dyn</label>
+      <fieldset><input type="dropdown" token="host">
+        <search><query><![CDATA[index=app | stats count by host]]></query></search>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app host=$host$ | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('type = "nrql"');
+    expect(tf).toContain('FACET host');
+    expect(tf).toContain('account_ids = [1]');
+  });
+
+  it('a multi-field search-backed dropdown does not become an nrql variable', () => {
+    const xml = `<form><label>Dyn</label>
+      <fieldset><input type="dropdown" token="hr">
+        <search><query><![CDATA[index=app | stats count by host, region]]></query></search>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).not.toContain('type = "nrql"');
+  });
+
+  it('a multiselect token in a comparison emits IN(...) and is_multi_selection', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the multiselect
+    // =→IN rewrite regressed — fix the code, not the test.
+    const xml = `<form><label>MS</label>
+      <fieldset><input type="multiselect" token="hosts">
+        <choice value="a">A</choice><choice value="b">B</choice>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app host=$hosts$ | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('host IN ({{hosts}})');
+    expect(tf).toContain('is_multi_selection = true');
+  });
+
+  it('warns that a Splunk *-means-all default is a literal match in NRQL', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the *-means-all
+    // caveat regressed — fix the code, not the test.
+    const xml = `<form><label>W</label>
+      <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toMatch(/Splunk '\*' means "all"/);
+  });
+
+  it('a declared token emits a Terraform variable block (BUG 6)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, Terraform variable
+    // block emission (BUG6) regressed — fix the code, not the test.
     const xml = `<form><label>V</label>
       <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
@@ -212,7 +278,9 @@ describe('importer: timepicker & time tokens [pending]', () => {
   // BUG 5/6 — the dominant real shape: <input type="time"> with a default
   // <earliest>/<latest>. The parser reads neither the input nor the default
   // range, so defaultTimeRange stays null.
-  it.skip('a time <input> default range is captured in defaultTimeRange (BUG 5/6)', () => {
+  it('a time <input> default range is captured in defaultTimeRange (BUG 5/6)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, time-input default
+    // capture (BUG5/6) regressed — fix the code, not the test.
     const xml = `<form><label>TP</label>
       <fieldset><input type="time" token="tr">
         <default><earliest>-24h@h</earliest><latest>now</latest></default>
@@ -230,7 +298,9 @@ describe('importer: timepicker & time tokens [pending]', () => {
   // BUG 5 — a per-panel <search><earliest>/<latest> (child elements, the form
   // real dashboards actually use) is ignored, so the emitted NRQL has no SINCE
   // and silently queries the wrong window.
-  it.skip('a panel <search><earliest> literal becomes SINCE (BUG 5)', () => {
+  it('a panel <search><earliest> literal becomes SINCE (BUG 5)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the per-panel time
+    // fold (BUG5) regressed — fix the code, not the test.
     const xml = `<dashboard><label>E</label><row><panel><chart>
       <search>
         <query><![CDATA[index=app | timechart count]]></query>
@@ -244,7 +314,10 @@ describe('importer: timepicker & time tokens [pending]', () => {
 
   // A time token in the inline earliest= position must be dropped with a
   // warning and never leak into SINCE (the shipped Dashboard-Time-Tokens rule).
-  it.skip('an inline earliest=$tok$ is dropped, never leaked into SINCE', () => {
+  it('an inline earliest=$tok$ is dropped, never leaked into SINCE', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the time-token drop
+    // (Dashboard-Time-Tokens rule) regressed and a $tok$ is leaking into SINCE —
+    // fix the code (splToIR TimeConstraint/TemplateVariable drop), not the test.
     const xml = `<dashboard><label>L</label><row><panel><chart>
       <search><query><![CDATA[index=app earliest=$tr.earliest$ latest=now | timechart count]]></query></search>
       <option name="charting.chart">line</option>
@@ -256,7 +329,7 @@ describe('importer: timepicker & time tokens [pending]', () => {
   });
 
   // span=$tok$ must escalate to unsupported (no TIMESERIES guessed from a token).
-  it.skip('span=$tok$ in timechart escalates to a placeholder, no TIMESERIES', () => {
+  it('span=$tok$ in timechart escalates to a placeholder, no TIMESERIES', () => {
     const xml = `<dashboard><label>S</label><row><panel><chart>
       <search><query><![CDATA[index=app | timechart span=$sp$ count]]></query></search>
       <option name="charting.chart">line</option>
@@ -270,7 +343,9 @@ describe('importer: timepicker & time tokens [pending]', () => {
 describe('importer: emitter & structure [pending]', () => {
   // BUG 2 — a clean chart whose vizType is not line/table/billboard falls back
   // to widget_markdown but still emits an nrql_query block → invalid HCL.
-  it.skip('a pie chart emits a real chart widget, not widget_markdown+nrql (BUG 2)', () => {
+  it('a pie chart emits a real chart widget, not widget_markdown+nrql (BUG 2)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the area/bar/pie
+    // widget blocks (BUG2) regressed — fix the code, not the test.
     const xml = `<dashboard><label>Pie</label><row><panel><chart>
       <title>Share</title>
       <search><query><![CDATA[index=app | stats count by status]]></query></search>
@@ -282,7 +357,9 @@ describe('importer: emitter & structure [pending]', () => {
   });
 
   // BUG 3 — event/map/html/viz panels produce no widget and no placeholder.
-  it.skip('an event panel yields a widget or placeholder, never a silent drop (BUG 3)', () => {
+  it('an event panel yields a widget or placeholder, never a silent drop (BUG 3)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the parser stopped
+    // classifying unsupported viz tags (BUG3 regression) — fix the code, not the test.
     const xml = `<dashboard><label>Ev</label><row><panel>
       <title>Events</title>
       <event><search><query><![CDATA[index=app]]></query></search></event>
@@ -292,7 +369,9 @@ describe('importer: emitter & structure [pending]', () => {
   });
 
   // BUG 4 — only viz-level <title> is read; panel-level <panel><title> is ignored.
-  it.skip('a panel-level <title> is used when the viz has none (BUG 4)', () => {
+  it('a panel-level <title> is used when the viz has none (BUG 4)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the panel-title
+    // fallback (BUG4) regressed — fix the code, not the test.
     const xml = `<dashboard><label>PT</label><row><panel>
       <title>Panel Title</title>
       <chart>
@@ -306,7 +385,9 @@ describe('importer: emitter & structure [pending]', () => {
 
   // BUG 7 — a <search base="…"> post-process panel is translated as a standalone
   // fragment, losing the base search's index/filters.
-  it.skip('a base-search panel keeps the base scope or is placeholdered (BUG 7)', () => {
+  it('a base-search panel keeps the base scope or is placeholdered (BUG 7)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, base-search
+    // resolution (BUG7) regressed — fix the code, not the test.
     const xml = `<form><label>B</label>
       <search id="base"><query><![CDATA[index=app environment=prod]]></query></search>
       <row><panel><table>
@@ -323,7 +404,7 @@ describe('importer: emitter & structure [pending]', () => {
 
   // BUG 8 — an empty <query> becomes a clean "FROM Log SELECT *" rather than a
   // placeholder (silent wrong: shows everything as if intended).
-  it.skip('an empty <query> becomes a placeholder, not a silent SELECT * (BUG 8)', () => {
+  it('an empty <query> becomes a placeholder, not a silent SELECT * (BUG 8)', () => {
     const xml = `<dashboard><label>Empty</label><row><panel><table>
       <title>Nothing</title>
       <search><query></query></search>

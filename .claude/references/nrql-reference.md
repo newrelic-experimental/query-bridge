@@ -161,6 +161,18 @@ the token outright. Verified against account 1 (2026-06-10):
 
 **Rule:** `{{var}}` goes anywhere a value, identifier, or expression goes — but NOT in the time/interval clauses (`SINCE`, `UNTIL`, `TIMESERIES`), which accept only concrete literals (relative `N units ago`, epoch ms, or datetime string). This is why an SPL dashboard time token (`$tok.earliest$`) has no valid `{{...}}` passthrough into SINCE/UNTIL — see **Dashboard Time Tokens** in `.claude/rules/design-decisions.md`.
 
+### How the dashboard substitutes a `{{var}}`
+
+Mechanics verified via `dashboardCreate` + NRQL execution on staging account 1 (2026-06-22):
+
+- **Value position only.** A `{{var}}` is replaced only where it stands as a whole value/identifier/expression — it is **not** interpolated inside a string literal. `WHERE f LIKE '%{{v}}%'` does not substitute (the literal `{{v}}` survives), and you cannot prepend/append query-side literal text to a substitution.
+- **`replacementStrategy` controls wrapping:** `STRING` → single-quoted (`f = {{v}}` → `f = 'web'`), `NUMBER` → raw (`f = {{v}}` → `f = 5`), `IDENTIFIER` → backticked (for event/facet/attribute names). Default is `STRING`.
+- **`LIKE`/`RLIKE` with a variable:** put the `%` wildcards in the variable's **value** and write `WHERE f LIKE {{v}}` (bare, unquoted). `dashboardCreate` accepted all three value shapes — `%v%` (substring), `v%` (prefix), `%v` (suffix) — and `f NOT LIKE {{v}}`.
+- **Multi-select:** an `ENUM` variable with `isMultiSelection: true` expands to a comma list, so `WHERE f IN ({{v}})` is the idiomatic form (the singular `account_id` for widgets; the plural `account_ids` list for `nrql`-type variables).
+- **`dashboardCreate` acceptance (acct 1):** value-position `f = {{tok}}`, `f IN ({{tok}})`, and `f LIKE {{tok}}` (with `%`-bearing values) all created with zero errors; the corresponding substituted concrete forms (`f = 'x'`, `f LIKE '%x%'`, `f IN ('a','b')`) all execute.
+
+**Translation consequence (SPL `$tok$`):** a wildcard-only Splunk token (`"*$tok$*"`, `"$tok$*"`, `"*$tok$"`) → `f LIKE {{tok}}` (the `%` must live in the variable's values); a literal-affixed token (`"*fps-$tok$*"`, `"$tok$-suffix"`) has no faithful translation and is emitted as `unsupported`. See the **Dashboard tokens** bullet in `.claude/rules/design-decisions.md`.
+
 ## Subqueries
 
 ### In WHERE clause

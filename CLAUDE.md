@@ -9,7 +9,7 @@ Multi-language query translator. SPL/Lucene/PromQL/PPL → NRQL/Trino. Pure ESM 
 * For code analysis, use Read/Edit/Grep — do NOT shell out to node/python to inspect or transform source files. Work in chunks — you timeout over 200-300 lines.
 * `node bin/spl2nrql.js "<query>"` IS allowed for translating ad-hoc SPL queries (see "Running ad-hoc SPL queries" below).
 * When translating a list of queries, use v2-show.test.js.
-* Commit messages: lowercase subject, max 72 chars.
+* Commit messages: lowercase subject, max 72 chars; body lines ≤100 chars (commitlint). Use `git commit -F <file>` for multi-line bodies.
 * Conventional commits required (`feat:`, `fix:`, `chore:`).
 * Commit with `ASDF_NODEJS_VERSION=24.14.0 git commit` (hooks need Node 24).
 * **Loud failure over silent wrong results.** If a command can't be translated correctly, emit `unsupported`, not a warning-and-skip. A user getting an error is better than a user getting wrong data.
@@ -21,6 +21,7 @@ Dev requires **Node 24** (hooks, CI): prefix every command `ASDF_NODEJS_VERSION=
 
 ```
 npm run test -- spl             # filter to matching files (Vitest positional; NOT Jest --testPathPattern)
+npm run test --workspace=@newrelic/dashboard-importer -- <f>   # run ONE package in isolation; root `npm test` chains --workspaces && vitest, so a failing package aborts later ones — use this when iterating one package (e.g. a cross-package mutant)
 npm run lint:fix                # ESLint with auto-fix
 npm run types:check             # TypeScript checkJs (no emit)
 npm run build:parsers           # regenerate Peggy parser AFTER any grammar change

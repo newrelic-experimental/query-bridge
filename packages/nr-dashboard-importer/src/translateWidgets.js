@@ -1,4 +1,5 @@
 import { translateSplToNrql } from '@newrelic/query-bridge';
+import { EMITTABLE_VIZ_TYPES } from './emitTerraform.js';
 
 /**
  * @typedef {import('./model.js').Widget} Widget
@@ -28,16 +29,70 @@ function placeholderBody(widget, result) {
   return body;
 }
 
+/** Escape a string for safe use inside a RegExp. */
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * New Relic expands a multi-selection variable to a comma list (`'a', 'b'`), so a
+ * `field = {{tok}}` comparison must become `field IN ({{tok}})` — otherwise the
+ * substituted NRQL (`field = 'a', 'b'`) is invalid. Rewrites only the named
+ * multiselect tokens; bare-term and non-comparison uses are left untouched.
+ *
+ * @param {string} nrql
+ * @param {Set<string>} multiSelectTokens
+ * @returns {string}
+ */
+function rewriteMultiSelectComparisons(nrql, multiSelectTokens) {
+  let out = nrql;
+  for (const tok of multiSelectTokens) {
+    const re = new RegExp(
+      '(`[^`]+`|[A-Za-z_][\\w.]*)\\s*=\\s*\\{\\{' +
+        escapeRegExp(tok) +
+        '\\}\\}',
+      'g',
+    );
+    out = out.replace(re, `$1 IN ({{${tok}}})`);
+  }
+  return out;
+}
+
 /**
  * Translate every widget's SPL. Clean/warnings-only widgets get NRQL attached;
  * unsupported/errors become markdown placeholders that preserve the original SPL.
- * Phase 1: baseRef is always null (no base/post-process resolution yet).
  *
  * @param {Widget[]} widgets
+ * @param {{multiSelectTokens?: Set<string>}} [opts] multiselect variable tokens
+ *   whose `= {{tok}}` comparisons are rewritten to `IN ({{tok}})`.
  * @returns {(CleanWidget|PlaceholderWidget)[]}
  */
-export function translateWidgets(widgets) {
+export function translateWidgets(widgets, opts = {}) {
+  const multiSelectTokens = opts.multiSelectTokens ?? new Set();
   return widgets.map((widget) => {
+    // Pre-translation placeholders: a parser-flagged unsupported widget (e.g. an
+    // event/map panel, or an unresolvable base search) or an empty query cannot
+    // produce a clean widget. Placeholder loudly rather than translate '' into a
+    // silent `FROM Log SELECT *`.
+    const preReason =
+      widget.unsupportedReason ||
+      (widget.rawSpl.trim() === ''
+        ? 'empty query — no SPL to translate'
+        : null);
+    if (preReason) {
+      return {
+        ...widget,
+        vizType: 'markdown',
+        outcome: 'placeholder',
+        placeholderText: placeholderBody(widget, {
+          nrql: '',
+          unsupported: [preReason],
+          errors: [],
+        }),
+        warnings: [],
+      };
+    }
+
     const result = translateSplToNrql(widget.rawSpl);
     const failed = result.unsupported.length > 0 || result.errors.length > 0;
     if (failed) {
@@ -49,10 +104,29 @@ export function translateWidgets(widgets) {
         warnings: result.warnings,
       };
     }
+    // The SPL translated, but the viz type has no New Relic widget block
+    // (scatter, map, unknown). Placeholder it — keeping the valid NRQL as a
+    // partial — rather than emit an invalid block. EMITTABLE_VIZ_TYPES is the
+    // single source of truth, shared with the emitter.
+    if (!EMITTABLE_VIZ_TYPES.has(widget.vizType)) {
+      return {
+        ...widget,
+        vizType: 'markdown',
+        outcome: 'placeholder',
+        placeholderText: placeholderBody(widget, {
+          nrql: result.nrql,
+          unsupported: [`no New Relic equivalent for ${widget.vizType} charts`],
+          errors: [],
+        }),
+        warnings: result.warnings,
+      };
+    }
     return {
       ...widget,
       outcome: 'clean',
-      nrql: result.nrql,
+      nrql: multiSelectTokens.size
+        ? rewriteMultiSelectComparisons(result.nrql, multiSelectTokens)
+        : result.nrql,
       warnings: result.warnings,
     };
   });

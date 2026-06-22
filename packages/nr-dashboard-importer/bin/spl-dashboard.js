@@ -5,27 +5,41 @@ import { join } from 'node:path';
 import { detectFormat } from '../src/detectFormat.js';
 import { parseSimpleXml } from '../src/parseSimpleXml.js';
 import { translateWidgets } from '../src/translateWidgets.js';
+import { translateVariables } from '../src/translateVariables.js';
 import { emitTerraform, slugify } from '../src/emitTerraform.js';
 import { buildReport } from '../src/report.js';
+
+// Provider regions the importer can target. `Staging` routes the New Relic
+// provider to staging-api.newrelic.com (internal). Validated at the CLI boundary;
+// keys are lowercased input, values are the canonical provider region string.
+const REGIONS = { us: 'US', eu: 'EU', jp: 'JP', staging: 'Staging' };
 
 const usage = `Usage:
   spl-dashboard <file.xml>              translate a Splunk Simple XML dashboard to Terraform
   cat dash.xml | spl-dashboard          read from stdin
   spl-dashboard <file.xml> --out ./dir  output directory (default: .)
-  spl-dashboard <file.xml> --account 12345  bake a literal account_id`;
+  spl-dashboard <file.xml> --account 12345  bake a literal account_id
+  spl-dashboard <file.xml> --region Staging  provider region: US (default), EU, JP, Staging`;
 
 /**
  * Pure pipeline: XML string → { slug, files }. No file I/O — testable directly.
  * @param {string} xml
- * @param {{account:number|null}} opts
+ * @param {{account:number|null, region?:string}} opts
  * @returns {{slug:string, files:Record<string,string>}}
  */
 export function runImport(xml, opts) {
   detectFormat(xml); // Phase 1: throws loudly for non-simple-xml
   const model = parseSimpleXml(xml);
-  const translated = translateWidgets(model.widgets);
-  const emitModel = { ...model, widgets: translated };
-  const tf = emitTerraform(emitModel, { accountId: opts.account });
+  const multiSelectTokens = new Set(
+    model.variables.filter((v) => v.multi).map((v) => v.name),
+  );
+  const translated = translateWidgets(model.widgets, { multiSelectTokens });
+  const variables = translateVariables(model.variables);
+  const emitModel = { ...model, widgets: translated, variables };
+  const tf = emitTerraform(emitModel, {
+    accountId: opts.account,
+    region: opts.region,
+  });
   const slug = slugify(model.title);
   const report = buildReport(model.title, translated);
   return {
@@ -48,6 +62,10 @@ export function parseArgs(argv) {
       const n = Number(argv[++i]);
       if (Number.isNaN(n)) throw new Error('--account must be a number');
       opts.account = n;
+    } else if (a === '--region') {
+      const r = REGIONS[String(argv[++i]).toLowerCase()];
+      if (!r) throw new Error('--region must be one of US, EU, JP, Staging');
+      opts.region = r;
     } else if (a === '--format')
       i++; // accepted, terraform-only in Phase 1
     else if (!a.startsWith('-')) opts.file = a;
@@ -80,7 +98,7 @@ async function main() {
       console.log(usage);
       return;
     }
-    out = runImport(xml, { account: opts.account });
+    out = runImport(xml, { account: opts.account, region: opts.region });
   } catch (e) {
     process.stderr.write(`error: ${e.message}\n`);
     process.exitCode = 1;
