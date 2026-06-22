@@ -282,7 +282,9 @@ describe('importer: emitter & structure [pending]', () => {
   });
 
   // BUG 3 — event/map/html/viz panels produce no widget and no placeholder.
-  it.skip('an event panel yields a widget or placeholder, never a silent drop (BUG 3)', () => {
+  it('an event panel yields a widget or placeholder, never a silent drop (BUG 3)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the parser stopped
+    // classifying unsupported viz tags (BUG3 regression) — fix the code, not the test.
     const xml = `<dashboard><label>Ev</label><row><panel>
       <title>Events</title>
       <event><search><query><![CDATA[index=app]]></query></search></event>

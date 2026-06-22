@@ -50,3 +50,33 @@ describe('parseSimpleXml — viz types and layout', () => {
     expect(single.layout).toEqual({ x: 0, y: 3, w: 12, h: 3 });
   });
 });
+
+describe('parseSimpleXml — unsupported viz tags never silently drop', () => {
+  it('emits an event panel as a widget carrying an unsupportedReason', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the parser stopped
+    // classifying unsupported viz tags (BUG3 regression) — fix the code, not the test.
+    const xml = `<dashboard><label>Ev</label><row><panel>
+      <event><title>Stream</title><search><query><![CDATA[index=app]]></query></search></event>
+    </panel></row></dashboard>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets).toHaveLength(1);
+    expect(m.widgets[0].unsupportedReason).toBe(
+      'event panels are not supported',
+    );
+    expect(m.widgets[0].vizType).toBe('unknown');
+    expect(m.widgets[0].title).toBe('Stream');
+    expect(m.widgets[0].rawSpl).toBe('index=app');
+  });
+
+  it('keeps a <map> panel as a map-typed widget with an unsupportedReason', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the parser stopped
+    // classifying unsupported viz tags (BUG3 regression) — fix the code, not the test.
+    const xml = `<dashboard><label>M</label><row><panel>
+      <map><search><query><![CDATA[index=app | geostats count]]></query></search></map>
+    </panel></row></dashboard>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets).toHaveLength(1);
+    expect(m.widgets[0].vizType).toBe('map');
+    expect(m.widgets[0].unsupportedReason).toBe('map panels are not supported');
+  });
+});

@@ -10,7 +10,7 @@ Columns: **src viz** = visualization elements in the XML; **dropped** = src viz 
 |---|--:|--:|--:|--:|--:|--:|:--:|
 | real/conditional-inputs.xml | 1 | 1 | 1 | 0 | 0 | 0 |  |
 | real/dashboard-panel-example.xml | 3 | 3 | 1 | 2 | 1 | 0 |  |
-| real/mixed-viz-types.xml | 4 | 1 | 1 | 0 | 0 | 3 |  |
+| real/mixed-viz-types.xml | 4 | 4 | 1 | 3 | 3 | 0 |  |
 | real/post-process-search.xml | 2 | 2 | 1 | 1 | 0 | 0 |  |
 | synthetic/panel-title-matrix.xml | 4 | 4 | 4 | 0 | 2 | 0 |  |
 | synthetic/shape-after-aggregation.xml | 2 | 2 | 2 | 0 | 2 | 0 |  |
@@ -19,4 +19,4 @@ Columns: **src viz** = visualization elements in the XML; **dropped** = src viz 
 | synthetic/shape-stats-eval-rex.xml | 3 | 3 | 3 | 0 | 0 | 0 |  |
 | synthetic/shape-unsupported-tail.xml | 3 | 3 | 1 | 2 | 3 | 0 |  |
 
-**Totals:** 23 widgets from 26 source viz — 6 placeholder (26%), 11 untitled (48%), **3 silently dropped**.
+**Totals:** 26 widgets from 26 source viz — 9 placeholder (35%), 14 untitled (54%), **0 silently dropped**.

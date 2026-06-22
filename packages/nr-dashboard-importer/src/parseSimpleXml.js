@@ -49,6 +49,27 @@ function queryOf(vizEl) {
   return '';
 }
 
+/** A viz element's own <title> (string or #text), or '' when absent. */
+function titleOf(vizEl) {
+  if (typeof vizEl.title === 'string') return vizEl.title;
+  return vizEl.title?.['#text'] ?? '';
+}
+
+/**
+ * Splunk viz tags we recognize but cannot emit as a New Relic chart. They must
+ * still produce a widget (carrying an unsupportedReason) so the chokepoint can
+ * placeholder them — never a silent drop. `map` keeps its own vizType; the rest
+ * collapse to 'unknown'.
+ * @type {Record<string, import('./model.js').VizType>}
+ */
+const UNSUPPORTED_VIZ_TAGS = {
+  event: 'unknown',
+  map: 'map',
+  html: 'unknown',
+  viz: 'unknown',
+  list: 'unknown',
+};
+
 /**
  * Parse a Splunk Simple XML dashboard string into a DashboardModel.
  * Phase 1: <label>/<description>, rows of panels with <chart>/<table>/<single>.
@@ -73,6 +94,12 @@ export function parseSimpleXml(xml) {
     const panels = asArray(row.panel);
     const panelCount = panels.length || 1;
     panels.forEach((panel, panelIndex) => {
+      const layout = {
+        x: panelIndex * Math.floor(12 / panelCount),
+        y: rowIndex * 3,
+        w: Math.floor(12 / panelCount),
+        h: 3,
+      };
       // A panel can hold chart/table/single children in document order.
       for (const [
         tag,
@@ -88,21 +115,29 @@ export function parseSimpleXml(xml) {
             const ct = chartingChart(vizEl);
             resolvedType = CHART_TYPE_MAP[ct ?? 'line'] ?? 'line';
           }
-          const w = createWidget({
-            title:
-              typeof vizEl.title === 'string'
-                ? vizEl.title
-                : (vizEl.title?.['#text'] ?? ''),
-            vizType: resolvedType,
-            rawSpl: queryOf(vizEl),
-            layout: {
-              x: panelIndex * Math.floor(12 / panelCount),
-              y: rowIndex * 3,
-              w: Math.floor(12 / panelCount),
-              h: 3,
-            },
-          });
-          widgets.push(w);
+          widgets.push(
+            createWidget({
+              title: titleOf(vizEl),
+              vizType: resolvedType,
+              rawSpl: queryOf(vizEl),
+              layout,
+            }),
+          );
+        }
+      }
+      // Recognized-but-unsupported viz tags must not vanish: emit a widget with
+      // an unsupportedReason so the chokepoint placeholders it (loud, not silent).
+      for (const [tag, vizType] of Object.entries(UNSUPPORTED_VIZ_TAGS)) {
+        for (const vizEl of asArray(panel[tag])) {
+          widgets.push(
+            createWidget({
+              title: titleOf(vizEl),
+              vizType,
+              rawSpl: queryOf(vizEl),
+              unsupportedReason: `${tag} panels are not supported`,
+              layout,
+            }),
+          );
         }
       }
     });
