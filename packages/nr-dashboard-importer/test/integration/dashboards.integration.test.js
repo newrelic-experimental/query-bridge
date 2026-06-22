@@ -212,7 +212,9 @@ describe('importer: timepicker & time tokens [pending]', () => {
   // BUG 5/6 — the dominant real shape: <input type="time"> with a default
   // <earliest>/<latest>. The parser reads neither the input nor the default
   // range, so defaultTimeRange stays null.
-  it.skip('a time <input> default range is captured in defaultTimeRange (BUG 5/6)', () => {
+  it('a time <input> default range is captured in defaultTimeRange (BUG 5/6)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, time-input default
+    // capture (BUG5/6) regressed — fix the code, not the test.
     const xml = `<form><label>TP</label>
       <fieldset><input type="time" token="tr">
         <default><earliest>-24h@h</earliest><latest>now</latest></default>

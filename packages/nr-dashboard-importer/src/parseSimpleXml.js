@@ -55,12 +55,35 @@ function titleOf(vizEl) {
   return vizEl.title?.['#text'] ?? '';
 }
 
-/** Read a <search><earliest>/<latest> sibling (string or #text), or '' when absent. */
-function searchTimeBound(vizEl, which) {
-  const v = vizEl.search?.[which];
+/** A node's text content (string or #text), trimmed, or '' when absent. */
+function textOf(v) {
   if (typeof v === 'string') return v.trim();
   if (v && typeof v['#text'] === 'string') return v['#text'].trim();
   return '';
+}
+
+/** Read a <search><earliest>/<latest> sibling (string or #text), or '' when absent. */
+function searchTimeBound(vizEl, which) {
+  return textOf(vizEl.search?.[which]);
+}
+
+/**
+ * Read the dashboard time picker's default range from a <fieldset>/<input
+ * type="time"><default><earliest>/<latest> (BUG5/6). This is the dashboard-level
+ * time range, NOT a template variable. Returns null when no time input has a
+ * literal earliest/latest default.
+ *
+ * @returns {{earliest:string,latest:string}|null}
+ */
+function parseDefaultTimeRange(root) {
+  const inputs = asArray(root.fieldset).flatMap((fs) => asArray(fs.input));
+  for (const input of inputs) {
+    if (input?.['@_type'] !== 'time') continue;
+    const earliest = textOf(input.default?.earliest);
+    const latest = textOf(input.default?.latest);
+    if (earliest || latest) return { earliest, latest };
+  }
+  return null;
 }
 
 /**
@@ -177,6 +200,7 @@ export function parseSimpleXml(xml) {
     title,
     description,
     sourceFormat: 'simple-xml',
+    defaultTimeRange: parseDefaultTimeRange(root),
     widgets,
   });
 }

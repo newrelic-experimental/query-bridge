@@ -127,3 +127,25 @@ describe('parseSimpleXml — per-panel search time folds into the base search', 
     );
   });
 });
+
+describe('parseSimpleXml — dashboard time picker default', () => {
+  it('captures a <input type="time"> default earliest/latest into defaultTimeRange', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, time-input default
+    // capture (BUG5/6) regressed — fix the code, not the test.
+    const xml = `<form><label>TP</label>
+      <fieldset><input type="time" token="tr">
+        <default><earliest>-24h@h</earliest><latest>now</latest></default>
+      </input></fieldset>
+      <row><panel><chart><search><query><![CDATA[index=app | timechart count]]></query></search></chart></panel></row>
+    </form>`;
+    const m = parseSimpleXml(xml);
+    expect(m.defaultTimeRange).toEqual({ earliest: '-24h@h', latest: 'now' });
+  });
+
+  it('leaves defaultTimeRange null when there is no time input', () => {
+    const xml = `<dashboard><label>D</label><row><panel><chart>
+      <search><query><![CDATA[index=app | timechart count]]></query></search>
+    </chart></panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).defaultTimeRange).toBeNull();
+  });
+});
