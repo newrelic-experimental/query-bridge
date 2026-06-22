@@ -3160,6 +3160,27 @@ NRQL: FROM Log SELECT count(*) WHERE index = {{env}}
 ```
 
 ```
+❓ Not confirmed
+SPL:  index="*$env$*" | stats count
+NRQL: FROM Log SELECT count(*) WHERE index LIKE {{env}}
+🟡 A wildcard dashboard token became index LIKE {{env}}. For a substring match, the dashboard variable env's values must include % wildcards (e.g. %value%); New Relic substitutes the value as-is and does not add wildcards.
+```
+
+```
+❓ Not confirmed
+SPL:  index="$env$*" | stats count
+NRQL: FROM Log SELECT count(*) WHERE index LIKE {{env}}
+🟡 A wildcard dashboard token became index LIKE {{env}}. For a substring match, the dashboard variable env's values must include % wildcards (e.g. %value%); New Relic substitutes the value as-is and does not add wildcards.
+```
+
+```
+❓ Not confirmed
+SPL:  index="*$env$" | stats count
+NRQL: FROM Log SELECT count(*) WHERE index LIKE {{env}}
+🟡 A wildcard dashboard token became index LIKE {{env}}. For a substring match, the dashboard variable env's values must include % wildcards (e.g. %value%); New Relic substitutes the value as-is and does not add wildcards.
+```
+
+```
 🤖 Confirmed by LLM
 SPL:  index=web $timespan$ | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND {{timespan}}
@@ -3225,6 +3246,18 @@ SPL:  index=web earliest=$tok.earliest$ latest=-2h | stats count
 SPL:  index=web $tok.latest$ earliest=-24h | stats count
 🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
 🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+❓ Not confirmed
+SPL:  index="*fps-$env$*" | stats count
+🔴 Index="*fps-$env$*" embeds a dashboard token inside literal text. New Relic substitutes a dashboard variable only in value position, never inside a string, so this cannot be translated. Use a standalone token (field=$tok$) or a wildcard-only token (field="*$tok$*").
+```
+
+```
+❓ Not confirmed
+SPL:  index="$env$-suffix" | stats count
+🔴 Index="$env$-suffix" embeds a dashboard token inside literal text. New Relic substitutes a dashboard variable only in value position, never inside a string, so this cannot be translated. Use a standalone token (field=$tok$) or a wildcard-only token (field="*$tok$*").
 ```
 
 ```

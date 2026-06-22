@@ -40,9 +40,12 @@ export function emitExpr(node) {
       if (node.child.type === 'IsNull') {
         return `${emitExpr(node.child.child)} IS NOT NULL`;
       }
-      // NOT(Like) → field NOT LIKE 'pattern' (idiomatic NRQL)
+      // NOT(Like) → field NOT LIKE 'pattern' (idiomatic NRQL). A {{tok}} pattern is a
+      // dashboard template variable, emitted bare (unquoted) — see the Like case below.
       if (node.child.type === 'Like') {
-        return `${emitExpr(node.child.field)} NOT LIKE '${node.child.pattern}'`;
+        return node.child.pattern.startsWith('{{')
+          ? `${emitExpr(node.child.field)} NOT LIKE ${node.child.pattern}`
+          : `${emitExpr(node.child.field)} NOT LIKE '${node.child.pattern}'`;
       }
       // NOT(Rlike) → field NOT RLIKE r'pattern'
       if (node.child.type === 'Rlike') {
@@ -71,7 +74,11 @@ export function emitExpr(node) {
       return `${emitExpr(node.child)} IS NULL`;
 
     case 'Like':
-      return `${emitExpr(node.field)} LIKE '${node.pattern}'`;
+      // A {{tok}} pattern is a dashboard template variable: emit it bare (unquoted), like
+      // the Identifier {{ passthrough above — New Relic substitutes it in value position.
+      return node.pattern.startsWith('{{')
+        ? `${emitExpr(node.field)} LIKE ${node.pattern}`
+        : `${emitExpr(node.field)} LIKE '${node.pattern}'`;
 
     case 'Rlike':
       return `${emitExpr(node.field)} RLIKE r'${escapeRegexPatternForNrql(node.pattern)}'`;

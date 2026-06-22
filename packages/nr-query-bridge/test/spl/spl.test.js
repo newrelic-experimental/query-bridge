@@ -800,11 +800,51 @@ const cases = [
   },
   // Double-quoted standalone token → {{token}}, same as unquoted. Quoting is a
   // Splunk idiom for values that may contain spaces; a quoted literal '$env$'
-  // would match nothing. (Affixed tokens like "*x-$id$*" stay literal — they are
-  // a separate, embedded-interpolation case.)
+  // would match nothing.
   {
     spl: 'index="$env$" | stats count',
     nrql: 'FROM Log SELECT count(*) WHERE index = {{env}}',
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Wildcard-ONLY token (`*$tok$*`, `$tok$*`, `*$tok$`) → `field LIKE {{tok}}`. New Relic
+  // substitutes the variable in value position, so the % wildcards must live in the
+  // variable's VALUE; the warning says so. Verified accepted by dashboardCreate + NRQL
+  // execution (staging acct 1, 2026-06-22). All three forms collapse to `LIKE {{tok}}`.
+  {
+    spl: 'index="*$env$*" | stats count',
+    nrql: 'FROM Log SELECT count(*) WHERE index LIKE {{env}}',
+    warningFunc: ['wildcard_token_like'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  {
+    spl: 'index="$env$*" | stats count',
+    nrql: 'FROM Log SELECT count(*) WHERE index LIKE {{env}}',
+    warningFunc: ['wildcard_token_like'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  {
+    spl: 'index="*$env$" | stats count',
+    nrql: 'FROM Log SELECT count(*) WHERE index LIKE {{env}}',
+    warningFunc: ['wildcard_token_like'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Literal text affixed to a token (`*fps-$tok$*`, `$tok$-suffix`) → unsupported. New Relic
+  // can't interpolate {{tok}} inside a string literal, and emitting the literal $tok$ would
+  // silently never substitute — loud failure over silent-wrong. No nrql is pinned: the
+  // condition is dropped and an unsupported message fires (the importer placeholders it).
+  {
+    spl: 'index="*fps-$env$*" | stats count',
+    unsupportedFunc: ['affixed_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  {
+    spl: 'index="$env$-suffix" | stats count',
+    unsupportedFunc: ['affixed_token_unsupported'],
     doc: 'dashboard-time-tokens',
     verified: false,
   },

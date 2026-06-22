@@ -338,6 +338,24 @@ export const messages = {
     `span=${token} is a dashboard time variable resolved only at run time; NRQL TIMESERIES needs a concrete duration ` +
     '(TIMESERIES AUTO would silently pick its own bucket size). Specify a literal span (e.g. span=5m) or leave the span empty.',
 
+  // SPL: `index="*fps-$tok$*"` / `index="$tok$-suffix"` — a dashboard token embedded with
+  // literal text inside a value. New Relic substitutes a dashboard variable only where
+  // {{tok}} stands as a whole value (never inside a string literal/pattern), so emitting the
+  // literal $tok$ would silently never substitute. No faithful translation exists.
+  affixed_token_unsupported: (field, value) =>
+    `${field}="${value}" embeds a dashboard token inside literal text. New Relic substitutes ` +
+    'a dashboard variable only in value position, never inside a string, so this cannot be ' +
+    'translated. Use a standalone token (field=$tok$) or a wildcard-only token (field="*$tok$*").',
+
+  // SPL: `index="*$tok$*"` / `"$tok$*"` / `"*$tok$"` — a token wrapped in ONLY wildcards
+  // becomes `field LIKE {{tok}}`. New Relic puts the wildcards in the variable's VALUE, so for
+  // a substring/prefix/suffix match the variable's values must carry the % (we can inject it for
+  // a static dropdown, but not for a free-text or search-backed variable resolved at run time).
+  wildcard_token_like: (field, token) =>
+    `A wildcard dashboard token became ${field} LIKE {{${token}}}. For a substring match, the ` +
+    `dashboard variable ${token}'s values must include % wildcards (e.g. %value%); New Relic ` +
+    'substitutes the value as-is and does not add wildcards.',
+
   // SPL: `_raw=*error*`
   raw_mapped_to_message: () =>
     '_raw is not a valid NRQL field; mapped to message',

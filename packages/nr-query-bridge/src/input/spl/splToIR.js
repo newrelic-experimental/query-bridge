@@ -401,6 +401,26 @@ export function translateSearchExpr(node, ir) {
           }
         }
 
+        // A token EMBEDDED in a quoted value (the standalone $tok$ case returned above).
+        // New Relic substitutes {{tok}} only in value position — never inside a string
+        // literal/pattern (verified against staging acct 1, 2026-06-22). So:
+        //   - wildcard-ONLY wrap (`*$tok$*`, `$tok$*`, `*$tok$`) → `field LIKE {{tok}}`; the
+        //     % wildcards must live in the variable's values (see wildcard_token_like).
+        //   - any literal affix (`*fps-$tok$*`, `$tok$-suffix`) → unsupported: emitting the
+        //     literal $tok$ would silently never substitute (loud failure over silent-wrong).
+        if (typeof value === 'string' && /\$[A-Za-z0-9_.:-]+\$/.test(value)) {
+          const wildcardToken = /^\*?\$([A-Za-z0-9_.:-]+)\$\*?$/.exec(value);
+          if (wildcardToken && value.includes('*')) {
+            warnings.push(
+              messages.wildcard_token_like(field, wildcardToken[1]),
+            );
+            const like = Like(Identifier(field), `{{${wildcardToken[1]}}}`);
+            return op === '!=' ? Not(like) : like;
+          }
+          unsupported.push(messages.affixed_token_unsupported(field, value));
+          return null;
+        }
+
         // Reversed operands: `.25 > count` parses `.25` into the field slot and
         // `count` into the value slot. When the left is a numeric literal and the
         // right is a field name, emit `<number> op numeric(<field>)` rather than
