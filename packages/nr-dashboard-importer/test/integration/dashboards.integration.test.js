@@ -152,7 +152,7 @@ describe('importer: template variables [pending]', () => {
   // BUG 1 — value-position tokens are emitted as quoted string literals
   // ('$tok$') instead of unquoted {{tok}}, so NR's already-quoted substitution
   // matches nothing (silent zero rows). Only bare-term position works today.
-  it.skip('value-position field=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
+  it('value-position field=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
     const xml = `<dashboard><label>V</label><row><panel><table>
       <search><query><![CDATA[index=app environment=$env_tok$ | stats count by host]]></query></search>
     </table></panel></row></dashboard>`;
@@ -161,7 +161,7 @@ describe('importer: template variables [pending]', () => {
     expect(tf).not.toContain("'$env_tok$'");
   });
 
-  it.skip('index=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
+  it('index=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
     const xml = `<dashboard><label>I</label><row><panel><table>
       <search><query><![CDATA[index=$idx$ | stats count]]></query></search>
     </table></panel></row></dashboard>`;

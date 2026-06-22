@@ -3136,15 +3136,21 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web' SINCE 24 hours ago UNTIL 1 ho
 ```
 
 ```
-🤖 Confirmed by LLM
+❓ Not confirmed
 SPL:  index=web status=$sev$ | stats count
-NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND status = '$sev$'
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND status = {{sev}}
 ```
 
 ```
-🤖 Confirmed by LLM
+❓ Not confirmed
 SPL:  index=web earliestSeen=$earliestSeen$ | stats count
-NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = '$earliestSeen$'
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = {{earliestSeen}}
+```
+
+```
+❓ Not confirmed
+SPL:  index=$idx$ | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = {{idx}}
 ```
 
 ```

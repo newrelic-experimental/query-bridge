@@ -774,20 +774,29 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: 'llm',
   },
-  // Regression: a NON-time template variable in value position is untouched.
+  // A NON-time template variable in value position becomes an unquoted {{token}}
+  // (a dashboard variable filled at render time), never a quoted literal.
   {
     spl: 'index=web status=$sev$ | stats count',
-    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND status = '$sev$'",
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND status = {{sev}}",
     doc: 'dashboard-time-tokens',
-    verified: 'llm',
+    verified: false,
   },
   // Boundary: name CONTAINS "earliest" but is neither `earliest` nor `.earliest`
-  // suffix — must NOT be treated as a time token (guards a sloppy .includes match).
+  // suffix — must NOT be treated as a time token (it emits {{earliestSeen}} as a
+  // value-position token, not dropped as a time bound).
   {
     spl: 'index=web earliestSeen=$earliestSeen$ | stats count',
-    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = '$earliestSeen$'",
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = {{earliestSeen}}",
     doc: 'dashboard-time-tokens',
-    verified: 'llm',
+    verified: false,
+  },
+  // index= with a value-position token → {{token}}, unquoted.
+  {
+    spl: 'index=$idx$ | stats count',
+    nrql: 'FROM Log SELECT count(*) WHERE index = {{idx}}',
+    doc: 'dashboard-time-tokens',
+    verified: false,
   },
   // Boundary: standalone non-time $…$ search term falls through to identifier path,
   // NOT dropped, NOT span-unsupported (it's not in a span= position).

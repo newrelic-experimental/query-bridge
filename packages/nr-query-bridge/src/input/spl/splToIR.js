@@ -371,6 +371,19 @@ export function translateSearchExpr(node, ir) {
 
         let { field, value, operator: op } = node;
 
+        // Dashboard template variable in value position (field=$tok$): emit
+        // `field = {{tok}}` unquoted. The token is a placeholder filled at
+        // dashboard render time, so it must be neither string-quoted nor
+        // numeric()-coerced. `value` is a typed node only for a complete $name$
+        // (the grammar's !search_value_char lookahead); embedded tokens stay literal.
+        if (
+          value &&
+          typeof value === 'object' &&
+          value.type === 'TemplateVariable'
+        ) {
+          return BinOp(op, Identifier(field), Identifier(`{{${value.name}}}`));
+        }
+
         // Reversed operands: `.25 > count` parses `.25` into the field slot and
         // `count` into the value slot. When the left is a numeric literal and the
         // right is a field name, emit `<number> op numeric(<field>)` rather than
