@@ -90,6 +90,37 @@ describe('translateWidgets — non-emittable viz types placeholder', () => {
   });
 });
 
+describe('translateWidgets — multiselect comparison rewrite', () => {
+  it('rewrites field = {{tok}} to field IN ({{tok}}) for a multiselect token', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. NR expands a multi-var to a comma
+    // list, so `=` must become `IN` or the NRQL is invalid. Fix code, not test.
+    const widgets = [
+      createWidget({
+        title: 'M',
+        vizType: 'table',
+        rawSpl: 'index=app host=$hosts$ | stats count',
+      }),
+    ];
+    const out = translateWidgets(widgets, {
+      multiSelectTokens: new Set(['hosts']),
+    });
+    expect(out[0].nrql).toContain('host IN ({{hosts}})');
+    expect(out[0].nrql).not.toMatch(/host = \{\{hosts\}\}/);
+  });
+
+  it('leaves a non-multiselect token comparison as equality', () => {
+    const widgets = [
+      createWidget({
+        title: 'S',
+        vizType: 'table',
+        rawSpl: 'index=app host=$h$ | stats count',
+      }),
+    ];
+    const out = translateWidgets(widgets, { multiSelectTokens: new Set() });
+    expect(out[0].nrql).toContain('host = {{h}}');
+  });
+});
+
 describe('translateWidgets — warnings attach but stay clean', () => {
   it('keeps a warned widget as a real widget and records the warnings', () => {
     // Pick SPL the translator emits NRQL for but with a warning. If none is known,

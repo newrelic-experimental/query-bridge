@@ -83,8 +83,25 @@ function replacementStrategy(v) {
  * default_values + replacement_strategy; string → default_values +
  * replacement_strategy; nrql (search-backed) → nrql_query { account_ids query }.
  */
+/** True when a variable carries Splunk's `*`-means-all sentinel. */
+function hasWildcardValue(v) {
+  return v.defaultValue === '*' || v.choices.some((c) => c.value === '*');
+}
+
 function variableBlock(v, accountId) {
-  const lines = ['  variable {'];
+  const lines = [];
+  if (hasWildcardValue(v)) {
+    // Splunk treats '*' as "match everything"; New Relic substitutes the token
+    // value literally, so `field = {{name}}` becomes `field = '*'` — matching the
+    // literal asterisk, not "all". Flagged here for the user to adjust.
+    lines.push(
+      `  # NOTE: Splunk '*' means "all"; New Relic substitutes it literally, so a`,
+    );
+    lines.push(
+      `  # \`field = {{${v.name}}}\` comparison matches the literal '*', not every value.`,
+    );
+  }
+  lines.push('  variable {');
   lines.push(`    name  = "${hclString(v.name)}"`);
   lines.push(`    title = "${hclString(v.name)}"`);
   if (v.type === 'nrql') {

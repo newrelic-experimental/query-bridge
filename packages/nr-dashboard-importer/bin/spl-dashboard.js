@@ -24,7 +24,10 @@ const usage = `Usage:
 export function runImport(xml, opts) {
   detectFormat(xml); // Phase 1: throws loudly for non-simple-xml
   const model = parseSimpleXml(xml);
-  const translated = translateWidgets(model.widgets);
+  const multiSelectTokens = new Set(
+    model.variables.filter((v) => v.multi).map((v) => v.name),
+  );
+  const translated = translateWidgets(model.widgets, { multiSelectTokens });
   const variables = translateVariables(model.variables);
   const emitModel = { ...model, widgets: translated, variables };
   const tf = emitTerraform(emitModel, { accountId: opts.account });

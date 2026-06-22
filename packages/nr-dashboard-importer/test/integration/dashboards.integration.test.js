@@ -224,6 +224,31 @@ describe('importer: template variables [pending]', () => {
     expect(tf).not.toContain('type = "nrql"');
   });
 
+  it('a multiselect token in a comparison emits IN(...) and is_multi_selection', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the multiselect
+    // =→IN rewrite regressed — fix the code, not the test.
+    const xml = `<form><label>MS</label>
+      <fieldset><input type="multiselect" token="hosts">
+        <choice value="a">A</choice><choice value="b">B</choice>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app host=$hosts$ | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('host IN ({{hosts}})');
+    expect(tf).toContain('is_multi_selection = true');
+  });
+
+  it('warns that a Splunk *-means-all default is a literal match in NRQL', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the *-means-all
+    // caveat regressed — fix the code, not the test.
+    const xml = `<form><label>W</label>
+      <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toMatch(/Splunk '\*' means "all"/);
+  });
+
   it('a declared token emits a Terraform variable block (BUG 6)', () => {
     // AI-DEV: AI **MUST NOT** touch this test. If it fails, Terraform variable
     // block emission (BUG6) regressed — fix the code, not the test.
