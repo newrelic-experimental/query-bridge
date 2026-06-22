@@ -241,6 +241,19 @@ describe('emitTerraform — versions.tf and variables.tf', () => {
     expect(vars).not.toMatch(/NRAK-/); // never a literal key
   });
 
+  it('defaults the provider region to US', () => {
+    const { 'variables.tf': vars } = emitTerraform(model, { accountId: null });
+    expect(vars).toMatch(/region\s+= "US"/);
+  });
+
+  it('emits the provider region from opts.region', () => {
+    const { 'variables.tf': vars } = emitTerraform(model, {
+      accountId: null,
+      region: 'Staging',
+    });
+    expect(vars).toMatch(/region\s+= "Staging"/);
+  });
+
   it("emits no backend block (state config is the user's)", () => {
     const files = emitTerraform(model, { accountId: null });
     for (const tf of Object.values(files)) {

@@ -173,11 +173,14 @@ export function slugify(title) {
 
 /**
  * @param {{title:string, description:string, widgets:any[], variables?:any[]}} model
- * @param {{accountId:number|null}} opts
+ * @param {{accountId:number|null, region?:string}} opts
  * @returns {{'dashboard.tf':string, 'versions.tf':string, 'variables.tf':string}}
  */
 export function emitTerraform(model, opts) {
   const accountId = opts?.accountId ?? null;
+  // Provider region. Defaults to US; the CLI (--region) validates the value, so
+  // here we trust it. `Staging` routes the provider to staging-api.newrelic.com.
+  const region = opts?.region ?? 'US';
   const slug = slugify(model.title);
 
   const widgetBlocks = model.widgets
@@ -229,7 +232,7 @@ export function emitTerraform(model, opts) {
     `provider "newrelic" {`,
     `  account_id = var.account_id`,
     `  api_key    = var.newrelic_api_key`,
-    `  region     = "US"`,
+    `  region     = "${region}"`,
     `}`,
     ``,
   ].join('\n');

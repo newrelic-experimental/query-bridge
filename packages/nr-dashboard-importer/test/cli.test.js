@@ -20,6 +20,23 @@ describe('runImport', () => {
     const out = runImport(xml, { account: 999 });
     expect(out.files['cli-dash.tf']).toContain('account_id = 999');
   });
+
+  it('threads --region into the provider block', () => {
+    const out = runImport(xml, { account: 1, region: 'Staging' });
+    expect(out.files['variables.tf']).toMatch(/region\s+= "Staging"/);
+  });
+});
+
+describe('parseArgs — --region validation', () => {
+  it('parses and canonicalizes --region case-insensitively', () => {
+    expect(parseArgs(['x.xml', '--region', 'staging']).region).toBe('Staging');
+  });
+  it('throws a clear error on an unknown --region', () => {
+    expect(() => parseArgs(['x.xml', '--region', 'Mars'])).toThrow(/--region/);
+  });
+  it('leaves region undefined when --region is absent', () => {
+    expect(parseArgs(['x.xml']).region).toBeUndefined();
+  });
 });
 
 describe('parseArgs — --account validation', () => {
