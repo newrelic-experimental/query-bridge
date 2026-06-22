@@ -128,6 +128,103 @@ describe('emitTerraform — chart widget blocks', () => {
   });
 });
 
+describe('emitTerraform — variable blocks', () => {
+  const withVars = (variables) => ({
+    title: 'V',
+    description: '',
+    widgets: [
+      {
+        title: 'W',
+        vizType: 'line',
+        outcome: 'clean',
+        nrql: 'FROM Log SELECT count(*)',
+        warnings: [],
+        layout: { x: 0, y: 0, w: 6, h: 3 },
+      },
+    ],
+    variables,
+  });
+
+  it('emits a full enum variable block with items, default, and string strategy', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, enum variable block
+    // emission (BUG6) regressed — fix the code, not the test.
+    const v = {
+      name: 'env',
+      type: 'enum',
+      defaultValue: '*',
+      choices: [
+        { value: '*', title: 'All' },
+        { value: 'prod', title: 'Prod' },
+      ],
+      multi: false,
+      sourceQuery: null,
+    };
+    const { 'dashboard.tf': tf } = emitTerraform(withVars([v]), {
+      accountId: 1,
+    });
+    expect(tf).toContain('variable {');
+    expect(tf).toContain('name  = "env"');
+    expect(tf).toContain('type = "enum"');
+    expect(tf).toContain('default_values = ["*"]');
+    expect(tf).toContain('is_multi_selection = false');
+    expect(tf).toContain('replacement_strategy = "string"');
+    expect(tf).toContain('value = "prod"');
+    expect(tf).toContain('title = "Prod"');
+  });
+
+  it('chooses replacement_strategy "number" when all choice values are numeric', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the numeric
+    // replacement_strategy heuristic regressed — fix the code, not the test.
+    const v = {
+      name: 'code',
+      type: 'enum',
+      defaultValue: '*',
+      choices: [
+        { value: '*', title: 'All' },
+        { value: '404', title: '404' },
+        { value: '500', title: '500' },
+      ],
+      multi: false,
+      sourceQuery: null,
+    };
+    const { 'dashboard.tf': tf } = emitTerraform(withVars([v]), {
+      accountId: 1,
+    });
+    expect(tf).toContain('replacement_strategy = "number"');
+  });
+
+  it('emits a string variable block for a text input', () => {
+    const v = {
+      name: 'needle',
+      type: 'string',
+      defaultValue: 'err',
+      choices: [],
+      multi: false,
+      sourceQuery: null,
+    };
+    const { 'dashboard.tf': tf } = emitTerraform(withVars([v]), {
+      accountId: 1,
+    });
+    expect(tf).toContain('type = "string"');
+    expect(tf).toContain('default_values = ["err"]');
+  });
+
+  it('emits is_multi_selection = true for a multiselect variable', () => {
+    const v = {
+      name: 'hosts',
+      type: 'enum',
+      defaultValue: '',
+      choices: [{ value: 'a', title: 'A' }],
+      multi: true,
+      sourceQuery: null,
+    };
+    const { 'dashboard.tf': tf } = emitTerraform(withVars([v]), {
+      accountId: 1,
+    });
+    expect(tf).toContain('is_multi_selection = true');
+  });
+});
+
 describe('emitTerraform — versions.tf and variables.tf', () => {
   it('pins the newrelic provider in versions.tf', () => {
     const { 'versions.tf': v } = emitTerraform(model, { accountId: null });
@@ -205,6 +302,58 @@ describe('emitTerraform — terraform validate (integration)', () => {
     () => {
       const files = emitTerraform(model, { accountId: 12345 });
       const dir = mkdtempSync(join(tmpdir(), 'tf-emit-'));
+      for (const [name, body] of Object.entries(files))
+        writeFileSync(join(dir, name), body);
+      execFileSync('terraform', ['init', '-backend=false', '-input=false'], {
+        cwd: dir,
+        stdio: 'ignore',
+      });
+      execFileSync('terraform', ['validate'], { cwd: dir, stdio: 'pipe' });
+      expect(existsSync(join(dir, 'dashboard.tf'))).toBe(true);
+    },
+    60_000,
+  );
+
+  it.skipIf(!hasTerraform())(
+    'enum and string variable blocks pass terraform validate',
+    () => {
+      const varsModel = {
+        title: 'V',
+        description: '',
+        widgets: [
+          {
+            title: 'W',
+            vizType: 'line',
+            outcome: 'clean',
+            nrql: 'FROM Log SELECT count(*)',
+            warnings: [],
+            layout: { x: 0, y: 0, w: 6, h: 3 },
+          },
+        ],
+        variables: [
+          {
+            name: 'env',
+            type: 'enum',
+            defaultValue: '*',
+            choices: [
+              { value: '*', title: 'All' },
+              { value: 'prod', title: 'Prod' },
+            ],
+            multi: false,
+            sourceQuery: null,
+          },
+          {
+            name: 'needle',
+            type: 'string',
+            defaultValue: 'err',
+            choices: [],
+            multi: false,
+            sourceQuery: null,
+          },
+        ],
+      };
+      const files = emitTerraform(varsModel, { accountId: 12345 });
+      const dir = mkdtempSync(join(tmpdir(), 'tf-vars-'));
       for (const [name, body] of Object.entries(files))
         writeFileSync(join(dir, name), body);
       execFileSync('terraform', ['init', '-backend=false', '-input=false'], {

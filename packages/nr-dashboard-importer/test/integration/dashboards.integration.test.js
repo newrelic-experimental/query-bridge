@@ -200,7 +200,9 @@ describe('importer: template variables [pending]', () => {
     expect(model.variables[0].name).toBe('needle');
   });
 
-  it.skip('a declared token emits a Terraform variable block (BUG 6)', () => {
+  it('a declared token emits a Terraform variable block (BUG 6)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, Terraform variable
+    // block emission (BUG6) regressed — fix the code, not the test.
     const xml = `<form><label>V</label>
       <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
