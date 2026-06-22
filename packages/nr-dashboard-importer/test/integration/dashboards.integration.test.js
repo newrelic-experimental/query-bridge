@@ -325,7 +325,9 @@ describe('importer: emitter & structure [pending]', () => {
 
   // BUG 7 — a <search base="…"> post-process panel is translated as a standalone
   // fragment, losing the base search's index/filters.
-  it.skip('a base-search panel keeps the base scope or is placeholdered (BUG 7)', () => {
+  it('a base-search panel keeps the base scope or is placeholdered (BUG 7)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, base-search
+    // resolution (BUG7) regressed — fix the code, not the test.
     const xml = `<form><label>B</label>
       <search id="base"><query><![CDATA[index=app environment=prod]]></query></search>
       <row><panel><table>

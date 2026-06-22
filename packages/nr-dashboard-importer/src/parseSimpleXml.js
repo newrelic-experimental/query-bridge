@@ -155,6 +155,68 @@ function foldSearchTime(query, vizEl) {
   return mods ? `${mods} ${query}`.trim() : query;
 }
 
+/** Commands that aggregate or reshape rows — a base search using one cannot be
+ * safely composed with a post-process pipeline (it would need subquery wrapping). */
+const TRANSFORMING_COMMAND =
+  /\|\s*(stats|timechart|chart|top|rare|dedup|eval)\b/i;
+
+/**
+ * Collect every `<search id="…">` in the document into an id → {query, base, ref}
+ * map (base searches are usually global, but they can nest, so walk the tree).
+ */
+function collectSearchIds(node, map) {
+  if (!node || typeof node !== 'object') return;
+  for (const [key, val] of Object.entries(node)) {
+    for (const item of asArray(val)) {
+      if (!item || typeof item !== 'object') continue;
+      if (key === 'search' && item['@_id']) {
+        map.set(item['@_id'], {
+          query: textOf(item.query),
+          base: item['@_base'] ?? null,
+          ref: item['@_ref'] ?? null,
+        });
+      }
+      collectSearchIds(item, map);
+    }
+  }
+}
+
+/**
+ * Resolve a panel `<search base="id">` post-process panel (BUG7). A non-
+ * transforming base composes as `base | post-process` so the base scope reaches
+ * the NRQL. A transforming base (stats/timechart/…), a missing id, a saved-search
+ * `ref=`, or a chained base (the base itself has a base) cannot be safely merged →
+ * unsupportedReason placeholder. Returns { composed?, baseRef, unsupportedReason }.
+ */
+function resolveBaseSearch(vizEl, baseMap) {
+  const baseId = vizEl.search?.['@_base'];
+  if (!baseId) return { baseRef: null, unsupportedReason: null };
+  const post = queryOf(vizEl);
+  const base = baseMap.get(baseId);
+  if (!base || !base.query) {
+    return {
+      baseRef: baseId,
+      unsupportedReason: `base search "${baseId}" not found in the dashboard`,
+    };
+  }
+  if (base.ref || base.base) {
+    return {
+      baseRef: baseId,
+      unsupportedReason: `base search "${baseId}" is a chained or saved-search reference, which cannot be resolved`,
+    };
+  }
+  if (TRANSFORMING_COMMAND.test(base.query)) {
+    return {
+      baseRef: baseId,
+      unsupportedReason: `base search "${baseId}" is transforming (stats/timechart/etc.) and cannot be composed with a post-process pipeline`,
+    };
+  }
+  const composed = post
+    ? `${base.query} | ${post.replace(/^\|\s*/, '')}`
+    : base.query;
+  return { baseRef: baseId, composed, unsupportedReason: null };
+}
+
 /**
  * Splunk viz tags we recognize but cannot emit as a New Relic chart. They must
  * still produce a widget (carrying an unsupportedReason) so the chokepoint can
@@ -188,6 +250,10 @@ export function parseSimpleXml(xml) {
       ? root.description
       : (root.description?.['#text'] ?? '');
 
+  // Document-wide id → query map so panel <search base="id"> can resolve scope.
+  const baseMap = new Map();
+  collectSearchIds(root, baseMap);
+
   const widgets = [];
   const rows = asArray(root.row);
   rows.forEach((row, rowIndex) => {
@@ -218,11 +284,20 @@ export function parseSimpleXml(xml) {
             const ct = chartingChart(vizEl);
             resolvedType = CHART_TYPE_MAP[ct ?? 'line'] ?? 'line';
           }
+          // A base-search panel composes (or placeholders); otherwise fold any
+          // per-panel <search> earliest/latest into the base search.
+          const base = resolveBaseSearch(vizEl, baseMap);
+          const rawSpl =
+            base.composed != null
+              ? base.composed
+              : foldSearchTime(queryOf(vizEl), vizEl);
           widgets.push(
             createWidget({
               title: titleOf(vizEl) || panelTitle,
               vizType: resolvedType,
-              rawSpl: foldSearchTime(queryOf(vizEl), vizEl),
+              rawSpl,
+              baseRef: base.baseRef,
+              unsupportedReason: base.unsupportedReason,
               layout,
             }),
           );

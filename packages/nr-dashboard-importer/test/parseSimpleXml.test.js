@@ -211,3 +211,53 @@ describe('parseSimpleXml — fieldset inputs become model variables', () => {
     expect(parseSimpleXml(xml).variables).toHaveLength(0);
   });
 });
+
+describe('parseSimpleXml — base search resolution', () => {
+  const baseDash = (baseQuery, postQuery, baseAttrs = '') =>
+    `<form><label>B</label>
+      <search id="base" ${baseAttrs}><query><![CDATA[${baseQuery}]]></query></search>
+      <row><panel><table>
+        <search base="base"><query><![CDATA[${postQuery}]]></query></search>
+      </table></panel></row>
+    </form>`;
+
+  it('composes a non-transforming base with its post-process pipeline', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, base-search
+    // composition (BUG7) regressed — fix the code, not the test.
+    const m = parseSimpleXml(
+      baseDash('index=app environment=prod', 'stats count by host'),
+    );
+    expect(m.widgets[0].rawSpl).toBe(
+      'index=app environment=prod | stats count by host',
+    );
+    expect(m.widgets[0].baseRef).toBe('base');
+    expect(m.widgets[0].unsupportedReason).toBeNull();
+  });
+
+  it('placeholders a transforming base (stats) instead of composing', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, the transforming-base
+    // guard (BUG7) regressed — fix the code, not the test.
+    const m = parseSimpleXml(
+      baseDash('index=app | stats count by host', 'sort - count'),
+    );
+    expect(m.widgets[0].unsupportedReason).toMatch(/transforming/);
+    expect(m.widgets[0].baseRef).toBe('base');
+  });
+
+  it('placeholders when the base id is missing', () => {
+    const xml = `<form><label>B</label>
+      <row><panel><table>
+        <search base="ghost"><query><![CDATA[stats count]]></query></search>
+      </table></panel></row>
+    </form>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets[0].unsupportedReason).toMatch(/not found/);
+  });
+
+  it('placeholders a saved-search ref base', () => {
+    const m = parseSimpleXml(
+      baseDash('index=app', 'stats count', 'ref="my_saved_search"'),
+    );
+    expect(m.widgets[0].unsupportedReason).toMatch(/chained or saved-search/);
+  });
+});
