@@ -798,6 +798,16 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: false,
   },
+  // Double-quoted standalone token → {{token}}, same as unquoted. Quoting is a
+  // Splunk idiom for values that may contain spaces; a quoted literal '$env$'
+  // would match nothing. (Affixed tokens like "*x-$id$*" stay literal — they are
+  // a separate, embedded-interpolation case.)
+  {
+    spl: 'index="$env$" | stats count',
+    nrql: 'FROM Log SELECT count(*) WHERE index = {{env}}',
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
   // Boundary: standalone non-time $…$ search term falls through to identifier path,
   // NOT dropped, NOT span-unsupported (it's not in a span= position).
   {

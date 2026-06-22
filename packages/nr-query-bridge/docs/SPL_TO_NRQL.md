@@ -3154,6 +3154,12 @@ NRQL: FROM Log SELECT count(*) WHERE index = {{idx}}
 ```
 
 ```
+❓ Not confirmed
+SPL:  index="$env$" | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = {{env}}
+```
+
+```
 🤖 Confirmed by LLM
 SPL:  index=web $timespan$ | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND {{timespan}}

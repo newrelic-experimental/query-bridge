@@ -384,6 +384,23 @@ export function translateSearchExpr(node, ir) {
           return BinOp(op, Identifier(field), Identifier(`{{${value.name}}}`));
         }
 
+        // A fully-quoted standalone token, e.g. `index="$env$"` — the grammar
+        // strips the quotes leaving the literal string `$env$`. Treat it exactly
+        // like an unquoted token (NR substitutes {{env}} at render time); a quoted
+        // literal '$env$' would match nothing. Only a body that is EXACTLY $name$
+        // qualifies — an embedded/affixed token (`"*x-$id$*"`, `"$id$-suffix"`)
+        // stays literal and is handled by the wildcard/buildComparison paths below.
+        if (typeof value === 'string') {
+          const tokenOnly = /^\$([A-Za-z0-9_.:-]+)\$$/.exec(value);
+          if (tokenOnly) {
+            return BinOp(
+              op,
+              Identifier(field),
+              Identifier(`{{${tokenOnly[1]}}}`),
+            );
+          }
+        }
+
         // Reversed operands: `.25 > count` parses `.25` into the field slot and
         // `count` into the value slot. When the left is a numeric literal and the
         // right is a field name, emit `<number> op numeric(<field>)` rather than

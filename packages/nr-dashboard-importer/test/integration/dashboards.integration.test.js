@@ -161,6 +161,17 @@ describe('importer: template variables [pending]', () => {
     expect(tf).not.toContain("'$env_tok$'");
   });
 
+  it('a double-quoted value-position token index="$tok$" becomes {{tok}}', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. Double-quoted tokens are the
+    // dominant corpus form (13k+); a quoted literal '$tok$' matches nothing.
+    const xml = `<dashboard><label>Q</label><row><panel><table>
+      <search><query><![CDATA[index="$env$" | stats count]]></query></search>
+    </table></panel></row></dashboard>`;
+    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    expect(tf).toContain('{{env}}');
+    expect(tf).not.toContain("'$env$'");
+  });
+
   it('index=$tok$ becomes an unquoted {{tok}} (BUG 1)', () => {
     const xml = `<dashboard><label>I</label><row><panel><table>
       <search><query><![CDATA[index=$idx$ | stats count]]></query></search>
