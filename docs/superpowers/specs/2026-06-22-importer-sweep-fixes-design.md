@@ -41,9 +41,15 @@ built in dependency order (see Sequencing) so the suite stays green at each step
    `earliest=`/`latest=` + `$tok$`, dropped unconditionally in `splToIR`. The drop
    is structural, guarded by an AI-DEV note + canary 5 + a unit test.
 5. **Base search (BUG7):** lexical compose `base | post-process` into one SPL string,
-   translated in a single call; placeholder fallback when unresolvable.
-6. **Dynamic variables (BUG6):** full support — a search-backed dropdown's inner SPL
-   is translated to NRQL and emitted as `type="nrql"`.
+   translated in a single call **only when the base is non-transforming**. A base
+   containing a transforming command (`stats`/`timechart`/`chart`/`top`/`rare`/
+   `dedup`/`eval`), an unresolvable/`ref=`/chained base → placeholder. (See expert
+   review below — composing a transforming base silently produces wrong aggregation.)
+6. **Dynamic variables (BUG6):** a search-backed dropdown is supported **only when its
+   inner SPL reduces to a single-field projection** (→ `SELECT uniques(field)` or a
+   single `FACET`); anything else (multi-field `by`, no-`by` stats, arbitrary
+   pipelines) → placeholder. Full arbitrary-inner-search translation is *not* the
+   default (it emits valid-but-wrong variable sources).
 
 ## Verified facts (provider + NerdGraph schema, 2026-06-22)
 
@@ -213,3 +219,70 @@ on it; rebase onto `master` once #35 merges). Sidekick review required (S-5).
 The translator subquery-wrapping bugs (eval-after-stats, timechart→stats,
 head-between-stats) tracked in `docs/superpowers/specs/2026-06-18-subquery-wrapping-design.md`
 are a separate investigation, not part of this sweep's canaries.
+
+## Expert review (2026-06-22): refinements, scope, verify-first
+
+spl-expert and nrql-expert reviewed this spec (Opus). They confirmed the core diagnoses
+and fix layers; the following refinements are binding on the plan.
+
+### Verify against HEAD before building (may be already shipped)
+
+- **Token charset is already widened.** `template_var_name` already allows `.:-_` +
+  alphanumerics (grammar ~L1255). Reuse as-is; do **not** present this as new work.
+- **`earliest=$tok$` may already drop.** It parses via `time_constraint`→`time_value`
+  (swallows `$tok$`)→`TimeConstraint`, and `splToIR` (~L505) already drops `$…$` bounds
+  with `time_token_bound_dropped`. **Red-test canary 5 against HEAD first.** If green,
+  the `TimeToken` node is *hardening an existing drop into a typed guarantee*, not
+  fixing a leak — and BUG1's `search_value` change does not endanger it (time_constraint
+  intercepts before search_value). Keep TimeToken (the structural guarantee was the
+  user's explicit choice) but frame it accurately and verify it makes exactly canary 5
+  behave, not a no-op.
+
+### Blocking refinements (silent-wrong → loud placeholder)
+
+- **Transforming base search → placeholder.** Classify the resolved base; if it contains
+  `stats`/`timechart`/`chart`/`top`/`rare`/`dedup`/`eval`, set `unsupportedReason`
+  instead of composing (composition routes into the known subquery-wrapping bugs →
+  silent-wrong aggregation). Collect the `<search id>` map **document-wide** (global +
+  inline). Distinguish `ref=` (saved-search, XML-external → placeholder) from `base=`.
+  Detect chained bases (`<search id base=>`) → placeholder.
+- **Dynamic variable source must be a single-field projection.** Emit `type="nrql"` only
+  when the inner SPL reduces to one field's distinct values (`SELECT uniques(field, <hi>)`
+  or single `FACET … LIMIT MAX`); otherwise placeholder/warn. Multi-field `by`, bare
+  `stats count`, and arbitrary pipelines do not seed a dropdown correctly.
+- **`replacement_strategy` is per-position.** Default `string` (dominant filter case),
+  but a token used only in numeric comparisons (`status=$code$`) needs `number` (else
+  `status='500'` type-mismatches a numeric field → silent zero rows). Scan token usage
+  across panels to pick `number` when *every* use is numeric; document the residual
+  silent-zero risk where a token is used in mixed positions.
+- **Variable `nrql_query` uses `account_ids` (list).** Write a dedicated list renderer;
+  do **not** reuse the widget `accountIdLine` (singular `account_id`).
+
+### New canaries to add (real-world silent-zeros)
+
+- `field="$tok$"` (quoted standalone token) — the quoted-string `search_value`
+  alternative consumes it before the token alternative; needs explicit handling
+  (detect a quoted body that is exactly `$name$`). Common in real dashboards.
+- `status=$code$` numeric token → `replacement_strategy="number"`.
+- multiselect `<input type="multiselect">` → `field IN ({{tok}})` + `is_multi_selection`,
+  or placeholder. Plain `field = {{tok}}` silently matches one/zero values.
+- Splunk `*`-means-all default (`<default>*</default>`) → warn: emitted `field = '*'`
+  matches the literal `*`, not "all" (zero rows).
+
+### Explicit out of scope (declare; do not silently fall through)
+
+- **Token as field name** `$field$=x` (LHS `search_field` can't start with `$`).
+- **Embedded/partial tokens** `index=$env$_logs`, `host=web-$region$` (stay quoted-literal).
+- **Multi-token** `field=$a$$b$`; **`|`-modifier tokens** `$tok|s$` (pipe breaks parse).
+- **Tokens in `IN(...)` lists** — untouched unless the corpus demands it (then extend
+  `in_value`).
+- **`_index_earliest`/`_index_latest`** time modifiers (not matched by `time_constraint`).
+- `earliest_time`/`latest_time` are **stats functions**, not time modifiers — must NOT
+  be folded into the time-token path.
+
+### Live validation (MCP was unauthenticated this session)
+
+Before promoting any new output past `verified:'llm'`: run `terraform validate` on an
+emitted dashboard with area/bar/pie + one static + one `type="nrql"` variable, and live
+NRQL checks for `WHERE index = {{idx}}` / `WHERE environment = {{env}}` (expect "undefined
+template variable" = compiles) and the actual dynamic-variable source NRQL.
