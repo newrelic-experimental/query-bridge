@@ -21,6 +21,7 @@ Dev requires **Node 24** (hooks, CI): prefix every command `ASDF_NODEJS_VERSION=
 
 ```
 npm run test -- spl             # filter to matching files (Vitest positional; NOT Jest --testPathPattern)
+npm run test --workspace=@newrelic/dashboard-importer -- <f>   # run ONE package in isolation; root `npm test` chains --workspaces && vitest, so a failing package aborts later ones — use this when iterating one package (e.g. a cross-package mutant)
 npm run lint:fix                # ESLint with auto-fix
 npm run types:check             # TypeScript checkJs (no emit)
 npm run build:parsers           # regenerate Peggy parser AFTER any grammar change
