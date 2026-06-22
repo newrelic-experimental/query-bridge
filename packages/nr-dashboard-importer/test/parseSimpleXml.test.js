@@ -149,3 +149,65 @@ describe('parseSimpleXml — dashboard time picker default', () => {
     expect(parseSimpleXml(xml).defaultTimeRange).toBeNull();
   });
 });
+
+describe('parseSimpleXml — fieldset inputs become model variables', () => {
+  it('parses a static dropdown into an enum variable with choices and default', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, fieldset-input
+    // parsing (BUG6) regressed — fix the code, not the test.
+    const xml = `<form><label>D</label>
+      <fieldset><input type="dropdown" token="category">
+        <label>Category</label><default>*</default>
+        <choice value="*">All</choice><choice value="a">A</choice>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const v = parseSimpleXml(xml).variables;
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({
+      name: 'category',
+      type: 'enum',
+      defaultValue: '*',
+      multi: false,
+      sourceQuery: null,
+    });
+    expect(v[0].choices).toEqual([
+      { value: '*', title: 'All' },
+      { value: 'a', title: 'A' },
+    ]);
+  });
+
+  it('parses a text input into a string variable', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, fieldset-input
+    // parsing (BUG6) regressed — fix the code, not the test.
+    const xml = `<form><label>T</label>
+      <fieldset><input type="text" token="needle"><label>Search</label><default>err</default></input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const v = parseSimpleXml(xml).variables;
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({
+      name: 'needle',
+      type: 'string',
+      defaultValue: 'err',
+    });
+  });
+
+  it('keeps a search-backed dropdown query as sourceQuery', () => {
+    const xml = `<form><label>S</label>
+      <fieldset><input type="dropdown" token="host">
+        <search><query><![CDATA[index=app | stats count by host]]></query></search>
+      </input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    const v = parseSimpleXml(xml).variables;
+    expect(v[0].sourceQuery).toBe('index=app | stats count by host');
+  });
+
+  it('does not treat a time input as a variable', () => {
+    const xml = `<form><label>TP</label>
+      <fieldset><input type="time" token="tr"><default><earliest>-24h</earliest><latest>now</latest></default></input></fieldset>
+      <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
+    </form>`;
+    expect(parseSimpleXml(xml).variables).toHaveLength(0);
+  });
+});

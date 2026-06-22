@@ -1,5 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
-import { createDashboardModel, createWidget } from './model.js';
+import { createDashboardModel, createWidget, createVariable } from './model.js';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -84,6 +84,56 @@ function parseDefaultTimeRange(root) {
     if (earliest || latest) return { earliest, latest };
   }
   return null;
+}
+
+/** Read static <choice value="x">Label</choice> entries into {value,title} items. */
+function parseChoices(input) {
+  return asArray(input.choice).map((c) => {
+    const value = typeof c === 'string' ? c : String(c['@_value'] ?? textOf(c));
+    const title = textOf(c) || value;
+    return { value, title };
+  });
+}
+
+/**
+ * Parse <fieldset>/<input> form controls into model variables (BUG6). A time
+ * input is the dashboard time picker (see parseDefaultTimeRange), not a variable.
+ * dropdown/radio/multiselect → enum (multiselect sets multi); text → string. A
+ * dropdown backed by a <search> keeps that inner SPL as sourceQuery for later
+ * translation to a type="nrql" variable. Inputs without a token bind nothing.
+ *
+ * @returns {import('./model.js').Variable[]}
+ */
+function parseVariables(root) {
+  const inputs = asArray(root.fieldset).flatMap((fs) => asArray(fs.input));
+  const variables = [];
+  for (const input of inputs) {
+    const type = input?.['@_type'];
+    const name = input?.['@_token'];
+    if (!name || type === 'time') continue;
+    const defaultValue = textOf(input.default);
+    if (type === 'text') {
+      variables.push(createVariable({ name, type: 'string', defaultValue }));
+    } else if (
+      type === 'dropdown' ||
+      type === 'radio' ||
+      type === 'multiselect'
+    ) {
+      const sourceQuery = queryOf(input);
+      variables.push(
+        createVariable({
+          name,
+          type: 'enum',
+          defaultValue,
+          choices: parseChoices(input),
+          multi: type === 'multiselect',
+          sourceQuery: sourceQuery || null,
+        }),
+      );
+    }
+    // Other input types (checkbox, link, …) are uncommon and not yet mapped.
+  }
+  return variables;
 }
 
 /**
@@ -200,6 +250,7 @@ export function parseSimpleXml(xml) {
     title,
     description,
     sourceFormat: 'simple-xml',
+    variables: parseVariables(root),
     defaultTimeRange: parseDefaultTimeRange(root),
     widgets,
   });

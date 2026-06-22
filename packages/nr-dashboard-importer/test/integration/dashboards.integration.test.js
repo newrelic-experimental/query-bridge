@@ -173,7 +173,9 @@ describe('importer: template variables [pending]', () => {
   // BUG 6 — <input> form controls are never read into model.variables, so the
   // emitted dashboard has no template variables and any surviving {{tok}}
   // references an undefined variable.
-  it.skip('a dropdown <input> produces a model variable (BUG 6)', () => {
+  it('a dropdown <input> produces a model variable (BUG 6)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, fieldset-input
+    // parsing into model.variables (BUG6) regressed — fix the code, not the test.
     const xml = `<form><label>D</label>
       <fieldset><input type="dropdown" token="category">
         <label>Category</label><default>*</default>
@@ -186,7 +188,9 @@ describe('importer: template variables [pending]', () => {
     expect(model.variables[0].name).toBe('category');
   });
 
-  it.skip('a text <input> produces a model variable (BUG 6)', () => {
+  it('a text <input> produces a model variable (BUG 6)', () => {
+    // AI-DEV: AI **MUST NOT** touch this test. If it fails, fieldset-input
+    // parsing into model.variables (BUG6) regressed — fix the code, not the test.
     const xml = `<form><label>T</label>
       <fieldset><input type="text" token="needle"><label>Search</label></input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
