@@ -1,11 +1,8 @@
 name: CodeQL
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: '31 7 * * 1'
+# Manual-dispatch only until the github.com OSS migration. On GHE there are no
+# Actions runners, and GitHub's default code-scanning setup already covers
+# scanning — the auto-triggered advanced workflow only conflicts and fails.
+on: [workflow_dispatch]
 jobs:
   analyze:
     runs-on: ubuntu-latest

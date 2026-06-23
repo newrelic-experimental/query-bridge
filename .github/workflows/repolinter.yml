@@ -6,7 +6,11 @@ name: Repolinter Action
 # Currently there is no elegant way to specify the default
 # branch in the event filtering, so branches are instead
 # filtered in the "Test Default Branch" step.
-on: [push, workflow_dispatch]
+#
+# Manual-dispatch only until the github.com OSS migration: GHE has no Actions
+# runners, so the push trigger only piled up perpetually-queued runs. Re-add
+# `push` once the repo is public and hosted runners are available.
+on: [workflow_dispatch]
 
 jobs:
   repolint:
