@@ -1,0 +1,65 @@
+name: Publish
+
+# Publishes @newrelic/query-bridge to npmjs.org via npm Trusted Publishing (OIDC).
+# No npm token is used — npm verifies the publish came from this repo + this
+# workflow file via an OIDC exchange. See:
+#   https://docs.npmjs.com/trusted-publishers
+#   https://newrelic.atlassian.net/wiki/spaces/NA/pages/4703551842 (NR process)
+#
+# Trusted-publisher config (set once, by the Node.js Agent team, on the package's
+# npmjs.com Settings page — see handoff notes in the PR):
+#   Organization:      newrelic-experimental
+#   Repository:        nr-query-bridge
+#   Workflow filename: publish.yml   (this file; case-sensitive)
+#
+# Monorepo note: this is a workspaces repo. Only @newrelic/query-bridge is
+# published here; @newrelic/dashboard-importer is private. If that ever changes,
+# give each package its own publish workflow + tag scheme.
+
+# Manual trigger only. Bump packages/nr-query-bridge/package.json `version`,
+# merge to master, then run this workflow from the Actions tab.
+on: [workflow_dispatch]
+
+permissions:
+  contents: write   # create the git tag + GitHub release
+  id-token: write   # REQUIRED for the Trusted Publishing OIDC exchange
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # Trusted Publishing requires npm >= 11.5.1, which ships with
+          # Node.js >= 24.5.0. The registry-url must match on both ends of
+          # the OIDC exchange.
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # build:parsers generates the SPL PEG parser; it is NOT covered by the
+      # package's prepublishOnly hook, so run it explicitly before publishing.
+      - run: npm run build:parsers
+      - run: npm test
+      - run: npm run build:types
+
+      - name: Create tag and release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(jq -r '.version' packages/nr-query-bridge/package.json)"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git tag "v${version}"
+          git push --tags
+          gh release create "v${version}" --generate-notes
+
+      # Tokenless publish of the single public workspace. `publishConfig.access`
+      # is already "public" in the package.json; --access public is belt-and-suspenders.
+      # npm auto-generates build provenance because id-token: write is set.
+      - name: Publish to npm
+        run: npm publish --workspace @newrelic/query-bridge --access public
