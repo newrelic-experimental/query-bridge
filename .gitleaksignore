@@ -1,0 +1,7 @@
+# gitleaks false-positive suppressions, one fingerprint per line.
+# Format: <commit>:<path>:<ruleId>:<startLine>  (see `gitleaks ... --verbose`).
+
+# False positive: the generic-api-key rule matched the literal example string
+# `earliest=-24h latest=$tok.latest$` — Splunk time-token prose in a design doc
+# (now deleted; lives only in history). Not a credential.
+3c045f26f84850183a8a7055007c52fb73fe2279:docs/superpowers/specs/2026-06-11-dashboard-time-tokens-design.md:generic-api-key:63

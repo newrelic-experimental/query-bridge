@@ -1,0 +1,83 @@
+# gitleaks configuration for nr-query-bridge
+#
+# Runs the full upstream gitleaks ruleset (AWS/GCP/GitHub/Stripe/generic
+# high-entropy, etc.) PLUS the New Relic key patterns below. The NR patterns
+# are ported from New Relic's own scanner, rusty-hog:
+#   https://github.com/newrelic/rusty-hog
+#   crates/rusty-hog-scanner/src/default_rules.json
+# We port only the high-signal, prefixed-token rules (low false-positive);
+# the header-text-proximity rules from rusty-hog are intentionally omitted
+# because gitleaks' default generic rules already cover those shapes.
+#
+# Run locally:   npm run scan:secrets        (full git history)
+#                npm run scan:secrets:dir     (working tree only)
+
+title = "nr-query-bridge gitleaks config"
+
+[extend]
+useDefault = true
+
+# --- New Relic key rules (ported from rusty-hog) ---------------------------
+
+[[rules]]
+id = "newrelic-user-api-key"
+description = "New Relic User/Service API Key (NRAK-)"
+regex = '''(?i)NRAK-[A-Za-z0-9]{27}'''
+keywords = ["nrak-"]
+
+[[rules]]
+id = "newrelic-license-key"
+description = "New Relic License Key (...NRAL, incl. region-aware)"
+regex = '''(?i)([a-z]{2}[0-9]{2}xx[A-Fa-f0-9]{30}|[A-Fa-f0-9]{36})NRAL'''
+keywords = ["nral"]
+
+[[rules]]
+id = "newrelic-rest-api-key"
+description = "New Relic REST API Key (NRRA-)"
+regex = '''(?i)NRRA-[A-Fa-f0-9]{42}|NRRA-[A-Fa-f0-9]{21}'''
+keywords = ["nrra-"]
+
+[[rules]]
+id = "newrelic-admin-api-key"
+description = "New Relic Admin API Key (NRAA-)"
+regex = '''(?i)NRAA-[A-Fa-f0-9]{27}'''
+keywords = ["nraa-"]
+
+[[rules]]
+id = "newrelic-insights-insert-key"
+description = "New Relic Insights Insert Key (NRII-)"
+regex = '''(?i)NRII-[A-Za-z0-9_-]{32}'''
+keywords = ["nrii-"]
+
+[[rules]]
+id = "newrelic-insights-query-key"
+description = "New Relic Insights Query Key (NRIQ-)"
+regex = '''(?i)NRIQ-[A-Za-z0-9_-]{32}'''
+keywords = ["nriq-"]
+
+[[rules]]
+id = "newrelic-synthetics-private-location-key"
+description = "New Relic Synthetics Private Location Key (NRSP-)"
+regex = '''(?i)NRSP-[A-Za-z]{2}[0-9]{2}[A-Fa-f0-9]{31}'''
+keywords = ["nrsp-"]
+
+[[rules]]
+id = "newrelic-pixie-api-key"
+description = "New Relic Pixie API Key (px-api-)"
+regex = '''px-api-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'''
+keywords = ["px-api-"]
+
+[[rules]]
+id = "newrelic-pixie-deploy-key"
+description = "New Relic Pixie Deploy Key (px-dep-)"
+regex = '''px-dep-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'''
+keywords = ["px-dep-"]
+
+# --- Allowlist --------------------------------------------------------------
+
+[allowlist]
+description = "Paths that never contain real secrets"
+paths = [
+  '''(.*/)?node_modules/.*''',
+  '''(.*/)?src/input/spl/splParser\.js''',  # generated Peggy parser
+]
