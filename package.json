@@ -21,6 +21,8 @@
     "types:check": "npm run types:check --workspaces --if-present",
     "build:parsers": "npm run build:parsers --workspace=@newrelic/query-bridge",
     "build:types": "npm run build:types --workspace=@newrelic/query-bridge",
+    "scan:secrets": "scripts/scan-secrets.sh git",
+    "scan:secrets:dir": "scripts/scan-secrets.sh dir",
     "prepare": "husky"
   },
   "devDependencies": {
