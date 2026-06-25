@@ -32,17 +32,25 @@ onto the same delegate model.
 
 ## Proposed approach
 
-Replace the transforming-base and `eval` placeholder branches in `resolveBaseSearch` with unconditional
-composition, mirroring the Studio chain walk:
+Replace the blanket transforming-base placeholder in `resolveBaseSearch` with compose-and-delegate,
+mirroring the Studio chain walk — but keep a narrow guard for the shapes the translator can't yet
+wrap-or-fail:
 
-- **Compose unconditionally.** Resolve the base chain to its root (walking a chained `<search id base=>`
-  to its parent, as Studio walks `extend`), then set `rawSpl = root | mid | … | post-process`. Hand it to
-  the translator; its `wrapAsSubquery` either produces nested-subquery NRQL or returns `unsupported`
-  (→ existing chokepoint placeholder).
-- **Keep loud placeholders only for the unresolvable:** a missing base id, a `ref=` saved-search root (no
-  inline SPL), or a cycle. These have no SPL to compose, exactly as Studio's savedSearch/csv roots.
-- **Drop the `TRANSFORMING_COMMAND` gate entirely** from `resolveBaseSearch`. Composition correctness is
-  now the translator's responsibility, where the subquery machinery and its `unsupported` guards live.
+- **Compose and delegate.** Resolve the base chain to its root (walking a chained `<search id base=>` to
+  its parent, as Studio walks `extend`), set `rawSpl = root | mid | … | post-process`, and hand it to the
+  translator; its `wrapAsSubquery` either produces nested-subquery NRQL or returns `unsupported`
+  (→ existing chokepoint placeholder). Verified 2026-06-25 (CLI + live NRQL, acct 1): `stats|where` and
+  `stats|stats` wrap correctly today — those stop being placeholders immediately.
+- **Keep loud placeholders for the unresolvable:** a missing base id, a `ref=` saved-search root (no inline
+  SPL), or a cycle — exactly as Studio's savedSearch/csv roots.
+- **Narrow interim guard (remove when `fix/subquery-wrapping` lands).** Master's `handleEval` does NOT wrap
+  (verified): `eval`-after-a-transforming-base is silently-wrong NRQL, and `head`-between / `timechart`→
+  outer-where are wrong/non-compiling. So `resolveBaseSearch` keeps a placeholder for *only* those shapes
+  until the rework lands. This is far narrower than today's blanket `TRANSFORMING_COMMAND` gate (which
+  placeholders all `stats`/`timechart`/`chart`/`top`/`rare`/`dedup` bases).
+- **Correct the comment.** Today's regex labels `eval` a transforming command; it is not — `eval` is a
+  distributable-streaming, row-wise command (SPL semantics, verified). It belongs in the interim guard only
+  as a shield for the translator's eval-after-agg bug, not because it reshapes rows.
 
 `baseRef` is still recorded either way (unchanged).
 
@@ -51,13 +59,16 @@ composition, mirroring the Studio chain walk:
 - **Shipped Phase-2 behavior changes.** Panels that were placeholders may become real widgets (the win) or
   translator-`unsupported` placeholders (still loud). The existing transforming-base canary flips from
   "expect placeholder" to the new behavior — a deliberate, human-approved change, not a regression.
-- **Risk: a chain the translator wraps *wrong* now emits wrong NRQL** where before it was a safe
-  placeholder. This is the same risk the translator carries for every `stats | …` query; it rests on the
-  translator's own `unsupported` guards (the compound-rewrap guard, the eval-after-agg non-scalar/collision
-  guards). The mitigation is the translator's guards, not a parser-side block.
-- **Sequencing.** Best landed after — or alongside — `compound-chain-collapse` (`fix/subquery-wrapping`),
-  which widens the set of chains the translator wraps correctly. Landing this first is safe but converts
-  fewer placeholders; landing it after maximizes the win. Either order is correct; neither is wrong.
+- **Risk: silent-wrong if the gate is dropped too far, too soon.** The eval-after-agg non-scalar/collision
+  guards that make eval-after-stats safe live in `fix/subquery-wrapping`, NOT master (verified
+  `evalHandlers.js` in both, 2026-06-25). On master, eval-after-a-transforming-base compiles to wrong NRQL
+  with no `unsupported` — so a blanket gate-drop would convert ~10% of base panels from safe placeholders
+  into wrong widgets. The narrow interim guard (above) is what holds loud-failure until the rework lands;
+  the mitigation is that guard plus the translator's guards-once-merged, not a bare delegate.
+- **Sequencing (a correctness prerequisite for the guarded shapes, not just an optimization).** The
+  `stats|where` / `stats|stats` conversion is safe to land now. Full removal of the interim guard
+  (eval/head/timechart shapes) MUST wait for `fix/subquery-wrapping` (`compound-chain-collapse`) to wrap-or-
+  fail those shapes. Landing the guard-removal before the rework would reintroduce silent-wrong output.
 - **Reversible.** A code-path change, not a data migration.
 
 ## Alternatives considered
@@ -70,7 +81,9 @@ composition, mirroring the Studio chain walk:
 ## Scope
 
 - **In:** rewrite `resolveBaseSearch` to compose-and-delegate; walk chained bases to root; keep loud
-  placeholders for missing-id / `ref=` / cycle; update the affected canaries.
+  placeholders for missing-id / `ref=` / cycle AND the narrow interim guard (eval/head/timechart-after-
+  transforming-root) until `fix/subquery-wrapping` lands; correct the `eval`-is-transforming comment;
+  update the affected canaries.
 - **Out:** translator changes; Studio (sibling spec); the `compound-chain-collapse` rework (own branch).
 
 ## Test plan
@@ -86,7 +99,8 @@ composition, mirroring the Studio chain walk:
 
 ## Review checklist
 
-- [ ] Dropping the `TRANSFORMING_COMMAND` gate — agree the translator's guards are the right safety net?
+- [ ] Narrowing (not dropping) the `TRANSFORMING_COMMAND` gate to only eval/head/timechart-after-transform
+  until the rework lands — agree this is the right interim safety net vs. waiting entirely?
 - [ ] Chained-base walk-to-root for Simple XML (matching Studio) — in scope here, or split out?
 - [ ] Sequencing vs. `compound-chain-collapse` — land this after the rework, or independently now?
 - [ ] The flipped canary — confirm the new expected behavior is what we want, not just what the code does.

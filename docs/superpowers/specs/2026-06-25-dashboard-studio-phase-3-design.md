@@ -70,10 +70,21 @@ for a multi-dashboard export; a single-file input keeps today's flat output.
   SPL (real widget) or returns `unsupported` (→ chokepoint placeholder). The importer builds **no**
   wrapping logic; it rides the translator's `wrapAsSubquery` (and the in-flight `compound-chain-collapse`
   improvements — coverage grows with zero importer change).
+- **Interim silent-wrong guard (remove when `fix/subquery-wrapping` lands).** Verified 2026-06-25 (CLI +
+  live NRQL, acct 1): master's translator wraps `stats|where` and `stats|stats` correctly, but
+  **eval-after-stats compiles to silently-wrong NRQL** (no `unsupported`; ~10% of the translator corpus),
+  and `head`-between-aggregations / `timechart`→outer-where are likewise wrong/non-compiling. Pure
+  approach A would emit a real-but-wrong widget for those. Until the rework lands, `parseStudio` sets
+  `unsupportedReason` when a composed chain's post-process is `eval`/`head` applied to a *transforming*
+  root (the shapes the translator can't yet wrap-or-fail). This is a narrow, dated guard — not the
+  Simple XML blanket transforming-base placeholder — and it deletes itself when the translator wraps-or-
+  fails those shapes. See `2026-06-25-simplexml-base-delegate-design.md`, which carries the same guard.
 - **visualizations** → widgets via the viz map (below). `dataSources.primary` → source dsId; `title`,
   `options` carried. Decoration vizzes (`rectangle`/`ellipse`/`image`) have no dataSource → **skipped,
   never placeholdered**.
-- **inputs** → `input.timerange`→`defaultTimeRange` (parse `options.defaultValue` like `"-24h@h,now"`);
+- **inputs** → `input.timerange`→`defaultTimeRange`. Parse `options.defaultValue`: a comma pair like
+  `"-24h@h,now"` → `{earliest:"-24h@h", latest:"now"}`; a **named preset** (no comma, e.g. a preset id)
+  is NOT a pair — capture it as-is or skip, never split on a missing comma (verified caveat, 2026-06-25).
   `input.dropdown`/`text`/`multiselect`→`variables[]`, mirroring the shipped Simple XML variable logic
   (static items→enum, search-backed→nrql/static fallback, multiselect→`multi`).
 - **layout** → iterate `layout.structure[]` (gives widget order + px `{x,y,w,h}`); **normalize px→NR
@@ -91,11 +102,12 @@ for a multi-dashboard export; a single-file input keeps today's flat output.
 | `column` | `splunk.column` (537) |
 | `pie` | `splunk.pie` (279) |
 | `area` | `splunk.area` (63) |
-| `map` | `splunk.choropleth` (62) |
+| `map` | `splunk.choropleth.svg` (62) — note the full dotted id, verified 2026-06-25 |
 | `bar` | `splunk.bar` (61) |
 | `scatter` | `splunk.scatter` (2) |
-| (skip) | `splunk.rectangle` (310), `splunk.image` (58), `splunk.ellipse` (2) — decorations, no query |
-| `unknown`→placeholder | `splunk.sankey` (4), `splunk.singlevalueicon` (3), any unrecognized `splunk.*` |
+| `markdown` (conditional) | `splunk.image` (58) → markdown widget `![](url)` **iff** `options.src` is an `http(s)` URL; an uploaded-asset image (no public URL) → drop |
+| (skip) | `splunk.rectangle` (310), `splunk.ellipse` (2) — pure-shape decorations, no content, no query |
+| `unknown`→placeholder | `splunk.sankey` (4), `splunk.singlevalueicon` (3), any unrecognized `splunk.*`. (`splunk.com`/`splunk.search.job`/`splunk.app.tv` etc. are URL/content noise, not viz types — match the `visualizations.<id>.type` field, never a substring grep.) |
 
 ### Error handling — loud failure preserved
 
@@ -122,9 +134,12 @@ the detector with a clear message, consistent with today's loud-failure behavior
 - **Format divergence (accepted, temporary).** Studio chains delegate to the translator while Simple XML
   bases placeholder transforming bases in-parser. The two converge via the sibling Simple XML spec; until
   then they differ. Reversible — it's a code path, not data.
-- **Placeholder rate on transforming chains is unknown until recon.** If many of the 1,201 chains root in
-  a transforming base the translator can't yet wrap, Studio coverage starts lower and climbs as
-  `compound-chain-collapse` lands. Phase 0 recon quantifies this; the bar is loud-failure, not coverage.
+- **Silent-wrong exposure on master (mitigated by the interim guard).** Verified 2026-06-25: master's
+  translator emits silently-wrong NRQL for eval-after-stats (~10% of the translator corpus),
+  head-between-aggregations, and timechart→outer-where — it does NOT loud-fail them. Pure approach A would
+  surface those as wrong widgets. The interim guard (above) placeholders exactly those shapes until
+  `fix/subquery-wrapping` lands, preserving loud-failure now. Coverage then climbs as the rework lands,
+  with the guard removed. Phase 0 recon quantifies how many of the 1,201 chains hit the guarded shapes.
 - **px→grid normalization is lossy.** Splunk's absolute pixel layout maps approximately onto NR's 12-col
   grid; widget proportions are preserved, exact pixel positions are not. Acceptable — NR has no px grid.
 - **`runImport` shape change is a one-way contract break** for that internal function (single→array). Its
@@ -153,6 +168,33 @@ the detector with a clear message, consistent with today's loud-failure behavior
   layout normalization, inputs→variables.
 - **NRQL validation caveat:** confirm any emitted NRQL via `run_nerdgraph_query`, never a single
   `execute_nrql_query` verdict (CLAUDE.md).
+
+## Resolved edge cases (from clean-room test review)
+
+A clean-room test pass (spec-only, no code) surfaced ambiguities; these are the decisions:
+
+- **Bulk export, one bad entry** → isolate: skip that entry with a loud report reason; never abort siblings,
+  never emit a half-built dashboard. An **all-skipped or empty** export → success with zero dashboards (not
+  an error). Malformed JSON / missing core sections → loud error.
+- **Cycle containing a text-bearing node** → still a cycle (no unique root) → placeholder.
+- **Empty inline query or empty post-process fragment** → empty composed query → empty-query placeholder
+  (the existing chokepoint branch), not an error.
+- **Three gauge styles** (radial/marker/filler) → all map to `billboard` (NR has no distinct gauge widget in
+  the emittable set); the gauge style is lost — acceptable, noted.
+- **Image without a usable `http(s)` URL** (data:/file:/relative/malformed) → drop, consistent with
+  rectangle/ellipse decorations — not a broken markdown widget.
+- **Data-bearing viz with no dataSource reference** → placeholder (loud).
+- **Title** = viz title → containing/panel title → empty string; whitespace-only trims to empty (then
+  fallback).
+- **Time default:** comma pair → `{earliest,latest}`; named preset (no comma) → capture/skip, no window
+  emit; empty endpoint (`",now"`) → malformed window, skip with warning; multiple time inputs → first wins
+  (NR has one picker).
+- **Query-backed dropdown, unresolvable source** → degrade to static enum (if choices present) else
+  free-text string; never an empty/invalid enum. Duplicate input tokens → last wins with warning; unknown
+  input type → skip with warning (not silent).
+- **Layout px→grid:** proportional, round to nearest column, clamp so a row never exceeds 12 columns;
+  overlap → order by position (top-left) and stack; zero/negative size → minimum 1 unit; out-of-bounds →
+  clamp. Order preserved; a dropped decoration's slot must not corrupt neighbors' grid math.
 
 ## Review checklist
 
