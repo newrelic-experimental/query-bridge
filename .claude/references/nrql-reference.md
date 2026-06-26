@@ -209,7 +209,75 @@ FROM Transaction JOIN (
 SELECT *, avgDur
 ```
 
-**Limits**: Up to 3 nested levels. Subquery results capped at 5000 rows. JOIN has 1:100 cardinality limit.
+**Limits**: `MAXIMUM_SUB_QUERIES = 3` (`QueryConstants`, enforced in `QueryPlanInterpreter`) caps **expression subqueries** — `WHERE … IN (…)`, scalar-in-SELECT, function-arg subqueries — counted *after* duplicate-subquery dedup. It does **NOT** limit FROM-clause nesting depth: an all-aggregating `FROM (FROM (…))` nest runs 5+ levels (verified via `run_nerdgraph_query`, 2026-06-25 — the old "up to 3 nested levels" wording was wrong; FROM-nesting is a `CompilerSelectQueryPlan` source, not a counted `CompilerSubQueryPlan`). Subquery results capped at 5000 rows. JOIN has 1:100 cardinality limit.
+
+### Column names a subquery exposes to its outer (verified vs staging + the NRDB engine source `dirac-nrql`)
+- An inner aggregate is exposed under its **bare function name** (`count`, `average`, `sum`, `min`, `max`, `latest`, `earliest`, `uniqueCount`) — NOT the dotted top-level form (`average.duration`). `stddev` exposes as **`standarddeviation`** (class-name-derived). An explicit `AS alias` re-keys it cleanly.
+- Two inner columns resolving to the same exposed name **silently collide — last wins, no error** (`count(*), sum(x) AS count` → one `count` holding the sum). So to reference an inner aggregate reliably, alias every one uniquely.
+- `median` / `percentile(…,N)` expose **keyed objects** (`{50:v}` / `{N:v}`) and `uniques` / `values` a **list** — non-scalar. `numeric(...)` over them yields null, so a row-wise outer eval over such a column can't be faithful (emit `unsupported`).
+- A **row-wise (non-aggregating) outer over a subquery is legal**: `FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, numeric(count)*100 AS pct` ✓. But **re-wrapping a row-wise outer as a nested-aggregation inner fails**: `Inner queries in nested aggregations must use aggregation functions`. So a second post-aggregation transform (`stats|eval|eval`, `stats|eval|where`, `stats|where|where`) emits non-compiling NRQL unless guarded.
+- **Visibility crosses the boundary ONE-WAY — outward, via output columns only.** A FROM-subquery is an **isolated scope** (like a CTE), not a closure: an **outer `WITH` binding is NOT visible inside the inner subquery.** `WITH 5 AS lim SELECT latest(innerlim) AS out FROM (FROM Log SELECT latest(numeric(duration)) AS innerlim WHERE numeric(duration) > lim)` → `out: null` (inside the inner, `lim` is unbound → nonexistent attr → null → no rows), whereas the identical inner with a literal `> 5` → `out: 6.32`. Only the inner's **output columns** reach the outer. Verified acct 1, 2026-06-25 (literal-controlled).
+- **An outer `WITH` shadows a same-named inner output column.** When an outer `WITH <name>` collides with a column the subquery exposes under the same name, the outer binding wins: `WITH 999 AS n SELECT latest(n) AS out FROM (FROM Log SELECT count(*) AS n WHERE 1=0)` → `out: 999`, not the inner `count`. Bearing on cross-aggregation rename: a rename target equal to an inner output-column name silently shadows that column on the outer. Verified acct 1, 2026-06-25.
+
+### Referencing a computed value in the outer: WITH chains, sibling SELECT aliases do NOT (verified vs staging acct 1)
+- A `SELECT` item **cannot reference a sibling alias** defined in the same `SELECT`. When the alias is a **function arg** (e.g. `numeric(rpm)`) the reference resolves to an unknown attribute → `null`, **silently, no error**: `SELECT numeric(count)/60 AS rpm, numeric(rpm)/60 AS rps` returns `rps: null` on every row. (A **bare** alias operand like `rpm + 1` instead **errors loudly** — `Value must be constant`; see "Renaming & relabeling" for the surface-by-surface rule.) Either way, stacking derived columns in one `SELECT` is wrong — use `WITH`.
+- `WITH` bindings **chain**: a later binding may reference an earlier one, and bindings are visible to `SELECT`, `WHERE`, and outer aggregates. `WITH numeric(count)/60 AS rpm, numeric(rpm)/60 AS rps SELECT host, rpm, rps` ✓; `WITH … AS rpm SELECT average(rpm)` ✓; `WITH … AS rpm SELECT host, rpm WHERE rpm > 100` ✓. So a chain of row-wise derivations over a subquery needs `WITH`, not stacked `SELECT` aliases.
+- Aggregation-wrapping each row-wise stage (`max(col)/60`, `latest(col)/60` — one row per group, so the agg is a passthrough) also makes a deeper nest legal, but adds a subquery level (FROM-nesting isn't depth-capped — see Limits above — but each level is slower, and `latest` needs a timestamp the subquery row may lack) — `WITH` is the cleaner tool.
+
+## Renaming & relabeling (aliases) — every mechanism NRQL gives you
+
+There is no single "rename" in NRQL. Each clause can introduce or reuse a name, and
+they differ in **whether the new name is a real, referenceable attribute or just an
+output-column label.** This is the table to consult when translating any SPL rename
+(`rename`, `eval … AS`, `stats … as`, `… by <alias>`). Status: verified live unless noted.
+
+| Clause | Form | What the name is | Referenceable downstream? |
+|---|---|---|---|
+| **SELECT** | `expr AS 'label'` | **display-only** output-column label | ✗ not referenceable elsewhere, and **mostly silent** when referenced anyway: WHERE, FACET, and an alias used as a **function arg** read it as a nonexistent attribute → null/empty, **no error**; only a **bare alias operand in a scalar SELECT expression** (e.g. `a + 1`) **errors loudly** (`Value must be constant`). `ORDER BY <alias>` works. (Verified acct 1, 2026-06-25, fake-name controlled — see note below) |
+| **WITH** | `expr AS name` | a **real, referenceable** binding | ✓ visible to SELECT, WHERE, FACET, ORDER BY, and outer aggregates; bindings **chain** (a later one may reference an earlier) |
+| **FACET** | `<source> AS 'label'` | groups on the **real** `<source>` attr, relabels the output column only | the group key (this is the faithful relabel) |
+| **ORDER BY** | `<select-alias>` **or** `<expr>` | sorts by a SELECT alias or a bare expression | n/a (terminal) |
+| **subquery** | inner `agg AS alias` | re-keys the column the **outer** query sees | ✓ outer references it by `alias` (else the bare fn name — see "Column names a subquery exposes") |
+
+**Load-bearing rules:**
+- A SELECT `AS` label is **display-only** — NOT an attribute. To create a name other
+  clauses (or another derived column) can reference within one query level, use **`WITH`**, not SELECT-AS.
+- **`FACET <source> AS 'label'`** is the only faithful way to relabel a grouping column.
+  Verified acct 1: `FROM Log SELECT count(*) FACET level AS 'Severity'` returns both a
+  `facet` key and a relabeled `Severity` column. A bare `FACET <alias>` where `<alias>`
+  is not a real attribute **silently** groups on the nonexistent attribute (with `count`
+  it returns an empty result set, no error) — never use a SELECT alias as a FACET key.
+- **`ORDER BY` accepts a SELECT alias.** Verified acct 10671289:
+  `SELECT count(*) AS cnt FACET level ORDER BY cnt DESC` sorts by the alias correctly.
+- **SELECT-alias scope is surface-dependent and mostly SILENT (do not assume NRQL errors
+  loudly).** Verified acct 1, 2026-06-25, with a guaranteed-fake alias `xqv`:
+  `… AS xqv WHERE xqv > 5` → `{xqv:0}`, `… AS xqv FACET xqv` → `[]`, `latest(x) AS d, latest(d) AS e`
+  → `e:null` — all **silent, no error**. Only a bare alias operand in a scalar SELECT
+  (`… AS xqv, xqv + 1 AS xqv2`) → loud `Value must be constant`. **Confound:** acct 1 Log has
+  real short-named fields (`c` → NETWORK/ACCESS/WTCHKPT), so aliasing to `c` silently tests
+  the real field — always verify alias scope with a nonsense name. Mechanism (dirac
+  `CompilerExpressionPlan`): WHERE/FACET/func-arg compile the bare name as an event-field ref
+  (unknown → null, silent); only a scalar value position (`compileAsTaggedValue`) raises
+  `unsupportedNonConstant`. **Implication for translation:** a bare-emitted rename in WHERE or
+  FACET is silent wrong data — NRQL will not catch it; resolve-at-consumer is the only defense.
+- **A WITH binding works as a FACET key** (compiles; `FACET <withName>`), per the WITH-visibility rule above.
+- **Renaming across an aggregation boundary** (relabeling a `stats` result) puts the new
+  name in the **outer** scope — wrap the aggregation as a subquery and project/rename in
+  the outer. You cannot define a stats alias and reference it at the same query level.
+- **No in-place name reuse:** a `WITH` binding must not reuse an existing source field's
+  name (the `eval X = f(X)` reassignment trap — see CONFIRMED-15). Alias to a fresh name.
+  (The emitter has no collision guard today.)
+- **A duplicate output alias in ONE flat SELECT silently keeps the FIRST column.**
+  `SELECT count(*) AS c, count(*)*2 AS c` returns `c` = the plain count (the first), dropping
+  the second, no error (verified acct 10671289, 2026-06-26). This is the **opposite** of a
+  subquery-exposed name collision (**last** wins — see "Column names a subquery exposes"): the
+  two surfaces resolve a collision in opposite directions, so never assume either. Alias every
+  output column uniquely.
+
+**SPL-translation mapping (consequence):**
+- `rename A as B` (display-only) → `A AS 'B'` in SELECT, `FACET A AS 'B'` in facet, bare `A` in ORDER BY/WHERE — **never a bare `B`** (B is not an attribute).
+- `eval B = expr` → `WITH expr AS B` (referenceable downstream).
+- `stats f(x) as Y` → SELECT `f(x) AS Y`; any **downstream** use of `Y` (another transform/sort/filter) requires a **subquery wrap** so `Y` exists in the outer.
 
 ## FACET
 
@@ -217,6 +285,7 @@ Groups results by field values. Multiple fields: `FACET field1, field2`.
 
 - `FACET CASES(WHERE cond1, WHERE cond2, ...)` — custom buckets
 - `LIMIT <n>` after FACET controls number of groups (default 10, max 5000, or MAX)
+- **`LIMIT N` after FACET selects the top N groups by aggregate value; `ORDER BY` does NOT change which groups are kept** — it only reorders the returned rows. Verified acct 10671289, 2026-06-26: `SELECT count(*) AS c FACET appName ORDER BY c ASC LIMIT 3` returns the same three highest-count appNames as a bare `LIMIT 3` (not the three lowest), with 36 distinct appNames present. There is no "bottom-N" or "first-N-in-stats-order" selection via FACET — only top-N-by-aggregate. (This is why a `head N` between two aggregations has no faithful NRQL form — see `design-decisions.md`.)
 
 ## WITH clause
 
