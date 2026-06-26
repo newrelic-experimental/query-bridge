@@ -18,6 +18,16 @@ Before submitting an Issue, please search for similar ones in the
 2. Increase the version numbers in any examples files and the README.md to the new version that this Pull Request would represent. The versioning scheme we use is [SemVer](http://semver.org/).
 3. You may merge the Pull Request in once you have the sign-off of two other developers, or if you do not have permission to do that, you may request the second reviewer to merge it for you.
 
+## Sensitive data
+
+This project translates real customers' queries and dashboards, so take care not
+to commit customer-identifying content. In code, tests, and docs, never name a
+customer or paste real identifiers (company/brand names, host/index/cluster
+names, customer-specific field names) — use generic placeholders instead (e.g.
+"a customer", `userId`, `region_north`). Real corpus data lives only in a private
+repository, never here. Maintainers who hold that private data also run a local
+pre-commit scan (`scripts/scan-customer-names.sh`) that blocks accidental commits.
+
 ## Contributor License Agreement
 
 Keep in mind that when you submit your Pull Request, you'll need to sign the CLA via the click-through using CLA-Assistant. If you'd like to execute our corporate CLA, or if you have any questions, please drop us an email at opensource@newrelic.com.
