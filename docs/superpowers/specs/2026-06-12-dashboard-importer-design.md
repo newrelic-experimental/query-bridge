@@ -34,8 +34,8 @@ When `[verified]` and `[assumed]` conflict, trust `[verified]` and re-check the 
 
 Two distinct sources in `../nr-query-bridge-corpus/sources/` (verified 2026-06-12) — both are translation/test material:
 
-1. **`REDACTED.saved/dashboards.json`** — a real customer's Splunk REST export, 4,665 entries.
-2. **`REDACTED/`** — a real customer's SRE Splunk-app tree with **149 standalone `.xml` view files** on disk.
+1. **A bulk REST export** (`dashboards.json`) — a real customer's Splunk REST export, 4,665 entries.
+2. **A standalone-XML app tree** — a real customer's SRE Splunk-app tree with **149 standalone `.xml` view files** on disk.
 
 So **standalone-`.xml`-file input is corpus-real, not hypothetical** — the detector's single-file path has 149 real fixtures, and Phase 1 can use a real (de-identified) one.
 
