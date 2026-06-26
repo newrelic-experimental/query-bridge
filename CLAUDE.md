@@ -14,6 +14,7 @@ Multi-language query translator. SPL/Lucene/PromQL/PPL → NRQL/Trino. Pure ESM 
 * Commit with `ASDF_NODEJS_VERSION=24.14.0 git commit` (hooks need Node 24).
 * **Loud failure over silent wrong results.** If a command can't be translated correctly, emit `unsupported`, not a warning-and-skip. A user getting an error is better than a user getting wrong data.
 * **Do not hand-zip / `tar` the working directory to share it.** It sweeps in `node_modules`, `.git`, and the gitignored `docs/local/` (private data that must not leave the repo). See "Packaging & distribution" in README.md.
+* **OSS-bound — never commit customer identifiers** (names, hosts, indexes, customer-specific field names); use placeholders (`userId`, `region_north`). A pre-commit scan (`scripts/scan-customer-names.sh`) enforces this against a denylist whose canonical copy is **tracked in the private `../nr-query-bridge-corpus` repo** (a gitignored-only list gets lost — that's how the original `scrub-mappings.yml` vanished). The scan SKIPS when no denylist is present, so the rule stands even when it can't run. See CONTRIBUTING "Sensitive data".
 
 ## Build & Test
 
