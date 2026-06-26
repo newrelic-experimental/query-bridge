@@ -108,6 +108,146 @@ describe('parseStudio — viz behavior', () => {
   });
 });
 
+describe('parseStudio — chain resolution', () => {
+  const oneViz = (dataSources, primary) =>
+    JSON.stringify({
+      title: 'T',
+      dataSources,
+      visualizations: {
+        v: { type: 'splunk.table', title: 'W', dataSources: { primary } },
+      },
+      layout: {
+        structure: [{ item: 'v', position: { x: 0, y: 0, w: 1200, h: 100 } }],
+        options: { width: 1200 },
+      },
+    });
+
+  it('composes a chain root | fragment', () => {
+    const m = parseStudio(
+      oneViz(
+        {
+          ds_root: { type: 'ds.search', options: { query: 'search gizmo=7' } },
+          ds_pp: {
+            type: 'ds.chain',
+            options: { extend: 'ds_root', query: '| where zone_q=3' },
+          },
+        },
+        'ds_pp',
+      ),
+    );
+    expect(m.widgets[0].rawSpl).toBe('search gizmo=7 | where zone_q=3');
+    expect(m.widgets[0].unsupportedReason).toBeNull();
+  });
+
+  it('composes a nested chain (chain -> chain -> search) in order', () => {
+    const m = parseStudio(
+      oneViz(
+        {
+          ds_root: { type: 'ds.search', options: { query: 'search gizmo=7' } },
+          ds_pp1: {
+            type: 'ds.chain',
+            options: { extend: 'ds_root', query: '| fields a' },
+          },
+          ds_pp2: {
+            type: 'ds.chain',
+            options: { extend: 'ds_pp1', query: '| where a>1' },
+          },
+        },
+        'ds_pp2',
+      ),
+    );
+    expect(m.widgets[0].rawSpl).toBe('search gizmo=7 | fields a | where a>1');
+  });
+
+  it('placeholders a chain whose root is a saved search (no inline SPL)', () => {
+    const m = parseStudio(
+      oneViz(
+        {
+          ds_saved: { type: 'ds.savedSearch', options: { ref: 'some_report' } },
+          ds_pp: {
+            type: 'ds.chain',
+            options: { extend: 'ds_saved', query: '| head 5' },
+          },
+        },
+        'ds_pp',
+      ),
+    );
+    expect(m.widgets[0].unsupportedReason).toMatch(
+      /ds\.savedSearch|no inline query/,
+    );
+  });
+
+  it('placeholders a chain that extends a missing id', () => {
+    const m = parseStudio(
+      oneViz(
+        {
+          ds_pp: {
+            type: 'ds.chain',
+            options: { extend: 'ds_ghost', query: '| head 5' },
+          },
+        },
+        'ds_pp',
+      ),
+    );
+    expect(m.widgets[0].unsupportedReason).toMatch(/not found/);
+  });
+
+  it('placeholders a chain cycle without hanging', () => {
+    const m = parseStudio(
+      oneViz(
+        {
+          ds_a: {
+            type: 'ds.chain',
+            options: { extend: 'ds_b', query: '| where x=1' },
+          },
+          ds_b: {
+            type: 'ds.chain',
+            options: { extend: 'ds_a', query: '| where y=2' },
+          },
+        },
+        'ds_a',
+      ),
+    );
+    expect(m.widgets[0].unsupportedReason).toMatch(/cycle/);
+  });
+
+  it('interim guard: eval after a transforming root -> placeholder', () => {
+    const m = parseStudio(
+      oneViz(
+        {
+          ds_root: {
+            type: 'ds.search',
+            options: { query: 'search gizmo=7 | stats count by zone_q' },
+          },
+          ds_pp: {
+            type: 'ds.chain',
+            options: { extend: 'ds_root', query: '| eval rate = count / 60' },
+          },
+        },
+        'ds_pp',
+      ),
+    );
+    expect(m.widgets[0].unsupportedReason).toMatch(/not yet translatable/);
+  });
+
+  it('non-transforming root + eval fragment composes (delegates to translator)', () => {
+    const m = parseStudio(
+      oneViz(
+        {
+          ds_root: { type: 'ds.search', options: { query: 'search gizmo=7' } },
+          ds_pp: {
+            type: 'ds.chain',
+            options: { extend: 'ds_root', query: '| eval k = a + b' },
+          },
+        },
+        'ds_pp',
+      ),
+    );
+    expect(m.widgets[0].rawSpl).toBe('search gizmo=7 | eval k = a + b');
+    expect(m.widgets[0].unsupportedReason).toBeNull();
+  });
+});
+
 describe('parseStudio — skeleton', () => {
   it('reads title/description and one inline-search line widget', () => {
     const doc = JSON.stringify({

@@ -23,6 +23,12 @@ const VIZ_MAP = {
 /** Pure-shape decorations: no query, no widget (silently dropped). */
 const DECORATION = new Set(['splunk.rectangle', 'splunk.ellipse']);
 
+// Transforming commands: a base ending in one needs subquery wrapping to compose.
+const TRANSFORMING = /\|\s*(stats|timechart|chart|top|rare|dedup)\b/i;
+// Interim guard (remove when fix/subquery-wrapping lands): eval/head after a
+// transforming base is silently-wrong NRQL on master — placeholder it instead.
+const GUARDED_POST = /\|\s*(eval|head)\b/i;
+
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 /** Studio pixel position → NR 12-column grid {x,y,w,h}. */
@@ -35,8 +41,8 @@ function pxToGrid(pos, canvasW) {
   return { x, y, w, h };
 }
 
-/** Resolve a dataSource id to SPL. ds.chain / savedSearch / csv handled in Task 6. */
-function resolveDataSource(dsId, dataSources) {
+/** Resolve a dataSource id to SPL, walking ds.chain recursively. */
+function resolveDataSource(dsId, dataSources, seen = new Set()) {
   const ds = dataSources[dsId];
   if (!ds) {
     return {
@@ -44,11 +50,40 @@ function resolveDataSource(dsId, dataSources) {
       unsupportedReason: dsId ? `data source "${dsId}" not found` : null,
     };
   }
-  if (ds.type === 'ds.search')
+  if (ds.type === 'ds.search') {
     return { rawSpl: ds.options?.query ?? '', unsupportedReason: null };
+  }
+  if (ds.type === 'ds.chain') {
+    if (seen.has(dsId)) {
+      return {
+        rawSpl: '',
+        unsupportedReason: `data source chain cycles at "${dsId}"`,
+      };
+    }
+    seen.add(dsId);
+    const parent = resolveDataSource(ds.options?.extend, dataSources, seen);
+    if (parent.unsupportedReason) return parent; // propagate missing/savedSearch/cycle
+    const fragment = (ds.options?.query ?? '').replace(/^\s*\|?\s*/, '').trim();
+    if (!fragment) return { rawSpl: parent.rawSpl, unsupportedReason: null };
+    if (
+      TRANSFORMING.test(parent.rawSpl) &&
+      GUARDED_POST.test('| ' + fragment)
+    ) {
+      const cmd = fragment.split(/\s+/)[0];
+      return {
+        rawSpl: '',
+        unsupportedReason: `chain post-process "${cmd}" on a transforming base is not yet translatable (pending subquery-wrapping fix)`,
+      };
+    }
+    return {
+      rawSpl: `${parent.rawSpl} | ${fragment}`,
+      unsupportedReason: null,
+    };
+  }
+  // ds.savedSearch / ds.csv — no inline SPL in the document.
   return {
     rawSpl: '',
-    unsupportedReason: `data source type "${ds.type}" not yet handled`,
+    unsupportedReason: `data source "${dsId}" is a ${ds.type} (no inline query)`,
   };
 }
 
