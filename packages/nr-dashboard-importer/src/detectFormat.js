@@ -12,26 +12,34 @@ function detectUnit(payload, hint) {
   // Strip an optional XML declaration so the root-element check sees the real root.
   const body = trimmed.replace(/^<\?xml[^>]*\?>\s*/, '');
 
-  // If a hint was supplied by the envelope router, trust it over sniffing.
-  if (hint === 'studio') {
-    // Dashboard Studio: not yet supported — that is Phase 3.
-    // Accept the hint and return the unit; CDATA-stripping will happen there.
+  // Dashboard Studio: XML-wrapped (<dashboard version="2">) or pure JSON graph.
+  // Handle on both the hinted path (envelope) and the sniff path so the
+  // payload is always the stripped inner JSON, never the XML wrapper.
+  if (
+    hint === 'studio' ||
+    /^<dashboard\b[^>]*\bversion\s*=\s*["']2/.test(body)
+  ) {
+    // XML-wrapped Studio: strip the wrapper + CDATA to the inner JSON.
+    if (/^<dashboard\b[^>]*\bversion\s*=\s*["']2/.test(body)) {
+      const m = body.match(
+        /<definition>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/definition>/,
+      );
+      if (!m)
+        throw new Error('Studio v2 dashboard has no <definition> CDATA JSON.');
+      return [{ format: 'studio', payload: m[1].trim() }];
+    }
+    // Pure-JSON Studio (hint === 'studio' but body is JSON, not XML).
     return [{ format: 'studio', payload }];
   }
-  if (hint === 'simple-xml') {
-    return [{ format: 'simple-xml', payload }];
+
+  // Studio pure JSON (no hint, sniffed by shape).
+  if (body.startsWith('{') && /"dataSources"|"visualizations"/.test(body)) {
+    return [{ format: 'studio', payload }];
   }
 
-  // Dashboard Studio: <dashboard version="2"> (XML-wrapped) or pure JSON graph.
-  if (/^<dashboard\b[^>]*\bversion\s*=\s*["']2/.test(body)) {
-    throw new Error(
-      'Dashboard Studio (version 2) is not yet supported — that is Phase 3.',
-    );
-  }
-  if (body.startsWith('{') && /"dataSources"|"visualizations"/.test(body)) {
-    throw new Error(
-      'Dashboard Studio (pure JSON) is not yet supported — that is Phase 3.',
-    );
+  // If a hint was supplied by the envelope router, trust it over sniffing.
+  if (hint === 'simple-xml') {
+    return [{ format: 'simple-xml', payload }];
   }
 
   // Simple XML: <form> or <dashboard version="1...">/<dashboard> (no version).
