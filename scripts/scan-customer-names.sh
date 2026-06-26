@@ -3,22 +3,31 @@
 # Scan tracked content for customer-identifying names before they can be
 # committed — defense-in-depth alongside gitleaks (which only covers secrets).
 #
-# The denylist is intentionally NOT tracked: committing customer names in order
-# to block customer names would itself leak them. It lives in the gitignored
-# docs/local/ (the designated private dir) for local use, or is supplied via the
-# CUSTOMER_DENYLIST env var in CI (written from a secret). When no denylist is
-# present — any contributor without corpus access, or the public repo — the scan
-# SKIPS and never blocks.
+# The denylist is intentionally NOT tracked in this (public-bound) repo:
+# committing customer names to block customer names would leak them. Its
+# canonical, version-controlled home is the PRIVATE corpus repo, resolved below
+# at ../nr-query-bridge-corpus/customer-denylist.txt. A CUSTOMER_DENYLIST env var
+# or a local docs/local/ copy take precedence. When no denylist is found — any
+# contributor without the corpus sibling, or the public mirror — the scan SKIPS
+# and never blocks.
 #
 # Usage:
 #   scripts/scan-customer-names.sh          # scan the staged index (pre-commit)
 #   scripts/scan-customer-names.sh --tree   # scan the whole HEAD tree (CI)
 set -euo pipefail
 
-DENYLIST="${CUSTOMER_DENYLIST:-docs/local/customer-denylist.txt}"
+# Resolve the denylist: explicit env override, then a local docs/local/ copy,
+# then the canonical copy in the sibling corpus repo (version-controlled there,
+# so it can't be lost like the original scrub-mappings.yml was).
+DENYLIST="${CUSTOMER_DENYLIST:-}"
+if [ -z "$DENYLIST" ]; then
+  for cand in docs/local/customer-denylist.txt ../nr-query-bridge-corpus/customer-denylist.txt; do
+    if [ -s "$cand" ]; then DENYLIST="$cand"; break; fi
+  done
+fi
 
-if [ ! -s "$DENYLIST" ]; then
-  echo "customer-name scan: no denylist at '$DENYLIST' — skipping (not a failure)."
+if [ -z "$DENYLIST" ] || [ ! -s "$DENYLIST" ]; then
+  echo "customer-name scan: no denylist found (env / docs/local / corpus sibling) — skipping (not a failure)."
   exit 0
 fi
 
