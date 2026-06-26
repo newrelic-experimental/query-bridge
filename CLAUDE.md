@@ -49,8 +49,10 @@ SPL → Peggy parser → AST → splToIR → IR → optimize → irToNrql → NR
 
 ## Important Paths
 
+> **Monorepo layout:** the translator package lives under `packages/nr-query-bridge/`. Every `src/…`, `test/…`, `bin/…`, `docs/ARCHITECTURE.md`, and `docs/SPL_TO_NRQL.md` path in this section is **relative to that package root** — prefix with `packages/nr-query-bridge/` for a repo-root path (e.g. `packages/nr-query-bridge/src/messages.js`). Repo-root paths that are NOT under the package: `.claude/…`, `docs/superpowers/…`, `docs/local/…`, root `README.md`. The dashboard CLI is `packages/nr-dashboard-importer/`.
+
 ### Source
-Full file map (every handler file + what it owns) lives in `docs/ARCHITECTURE.md` → File Map. The two entry points worth memorizing: `src/translate.js` (top-level: parse → optimize → emit) and `src/messages.js` (the centralized warning/unsupported/error catalog — never inline a user-facing message).
+Full file map (every handler file + what it owns) lives in `docs/ARCHITECTURE.md` → File Map. The two entry points worth memorizing: `packages/nr-query-bridge/src/translate.js` (top-level: parse → optimize → emit) and `packages/nr-query-bridge/src/messages.js` (the centralized warning/unsupported/error catalog — never inline a user-facing message).
 
 ### Tests
 - `test/spl/spl.test.js` — Unit tests + real-world regression suite
