@@ -21,8 +21,8 @@ name: Publish
 on: [workflow_dispatch]
 
 permissions:
-  contents: write   # create the git tag + GitHub release
-  id-token: write   # REQUIRED for the Trusted Publishing OIDC exchange
+  contents: write # create the git tag + GitHub release
+  id-token: write # REQUIRED for the Trusted Publishing OIDC exchange
 
 jobs:
   publish:
