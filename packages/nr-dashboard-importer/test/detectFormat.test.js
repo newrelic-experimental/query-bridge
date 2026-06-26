@@ -26,9 +26,60 @@ describe('detectFormat', () => {
     ).toThrow(/Dashboard Studio.*Phase 3/);
   });
 
-  it('throws a clear error for a REST envelope (Phase 2, not yet supported)', () => {
-    expect(() =>
-      detectFormat('{"entry":[{"content":{"eai:data":"<form/>"}}]}'),
-    ).toThrow(/REST envelope.*Phase 2/);
+  it('expands a REST envelope into one unit per dashboard entry', () => {
+    const env = JSON.stringify({
+      entry: [
+        {
+          content: {
+            version: '1.1',
+            isDashboard: true,
+            'eai:data': '<form><label>A</label></form>',
+          },
+        },
+        {
+          content: {
+            version: '2',
+            isDashboard: true,
+            'eai:data':
+              '<dashboard version="2"><definition><![CDATA[{"dataSources":{},"visualizations":{}}]]></definition></dashboard>',
+          },
+        },
+      ],
+    });
+    const units = detectFormat(env);
+    expect(units).toHaveLength(2);
+    expect(units[0].format).toBe('simple-xml');
+    expect(units[1].format).toBe('studio');
+  });
+
+  it('skips entries with isDashboard === false', () => {
+    const env = JSON.stringify({
+      entry: [
+        {
+          content: {
+            version: '1.1',
+            isDashboard: false,
+            'eai:data': '<form/>',
+          },
+        },
+        {
+          content: {
+            version: '1.1',
+            isDashboard: true,
+            'eai:data': '<form><label>B</label></form>',
+          },
+        },
+      ],
+    });
+    const units = detectFormat(env);
+    expect(units).toHaveLength(1);
+    expect(units[0].format).toBe('simple-xml');
+  });
+
+  it('returns an empty list for an all-skipped envelope (not an error)', () => {
+    const env = JSON.stringify({
+      entry: [{ content: { isDashboard: false, 'eai:data': '<form/>' } }],
+    });
+    expect(detectFormat(env)).toEqual([]);
   });
 });
