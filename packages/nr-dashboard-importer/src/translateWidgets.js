@@ -3,7 +3,7 @@ import { EMITTABLE_VIZ_TYPES } from './emitTerraform.js';
 
 /**
  * @typedef {import('./model.js').Widget} Widget
- * @typedef {Widget & {outcome:'clean', nrql:string, warnings:string[]}} CleanWidget
+ * @typedef {Widget & {outcome:'clean', nrql?:string, markdownText?:string, warnings:string[]}} CleanWidget
  * @typedef {Widget & {outcome:'placeholder', vizType:'markdown', placeholderText:string, warnings:string[]}} PlaceholderWidget
  */
 
@@ -70,6 +70,23 @@ function rewriteMultiSelectComparisons(nrql, multiSelectTokens) {
 export function translateWidgets(widgets, opts = {}) {
   const multiSelectTokens = opts.multiSelectTokens ?? new Set();
   return widgets.map((widget) => {
+    // Literal-markdown widgets carry their body in `options.text` (e.g. a Studio
+    // image rendered as `![](url)`) and have no SPL. Emit the text as a CLEAN
+    // markdown widget — there is nothing to translate. Native `splunk.markdown`
+    // panels without `options.text` fall through to the placeholder path below.
+    if (
+      widget.vizType === 'markdown' &&
+      typeof widget.options?.text === 'string' &&
+      widget.options.text !== ''
+    ) {
+      return {
+        ...widget,
+        outcome: 'clean',
+        markdownText: widget.options.text,
+        warnings: [],
+      };
+    }
+
     // Pre-translation placeholders: a parser-flagged unsupported widget (e.g. an
     // event/map panel, or an unresolvable base search) or an empty query cannot
     // produce a clean widget. Placeholder loudly rather than translate '' into a

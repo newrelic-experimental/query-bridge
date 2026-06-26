@@ -110,6 +110,7 @@ describe('importer gap inventory', () => {
     md += `\n**Totals:** ${agg.widgets} widgets from ${agg.sourceViz} source viz — `;
     md += `${agg.placeholder} placeholder (${pct(agg.placeholder)}%), ${agg.untitled} untitled (${pct(agg.untitled)}%), `;
     md += `**${agg.dropped} silently dropped**.\n`;
+    md += `\n_Note: the **src viz** count matches only Simple-XML viz tags (\`chart/table/single/event/map/html/viz\`), not Studio (JSON-in-CDATA) visualizations, so a Studio fixture shows an all-zeros row. Studio import is covered by the explicit Studio e2e test instead._\n`;
 
     const invPath = join(import.meta.dirname, 'GAP_INVENTORY.md');
     if (process.env.CI) {
@@ -442,7 +443,11 @@ describe('integration — Studio (synthetic)', () => {
     // Placeholders render as markdown widgets carrying the reason.
     expect(tf).toContain('Saved-backed'); // placeholder keeps its title
     expect(tf).toContain('Flowy'); // unknown-type placeholder keeps its title
-    expect(tf).toMatch(/zone/); // dropdown variable emitted
+    // The image widget's literal markdown is actually rendered (clean path).
+    expect(tf).toContain('![](https://cdn.test/pic.png)');
+    // Assert the `zone` dropdown produced a real variable block (not just the
+    // substring `zone`, which also appears in widget query text).
+    expect(tf).toContain('name  = "zone"');
   });
 
   it('drops the rectangle decoration (no widget for it)', () => {
