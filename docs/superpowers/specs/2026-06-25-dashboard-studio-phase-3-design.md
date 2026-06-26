@@ -151,6 +151,14 @@ the detector with a clear message, consistent with today's loud-failure behavior
   (delegate); px→grid normalization; Studio inputs→variables; bulk CLI output (`out/<slug>/`).
 - **Out (own specs/phases):** `emitNerdGraph`/`emitUiPaste` (Phase 4); live push (`pushDashboard`); the
   Simple XML→delegate convergence (sibling spec, `2026-06-25-simplexml-base-delegate-design.md`).
+- **Closed by recon — verified unnecessary (YAGNI), 2026-06-25:**
+  - **nrql-backed (search-backed) Studio dropdowns.** Originally deferred pending recon of the
+    dynamic-source field shape. Corpus check: 0 dropdowns use the dynamic token-string `items` form
+    (`"items":"$dsid:field$"`); all 409 `items` are static arrays (already handled → enum). No corpus
+    demand, so `parseInputs` does NOT implement a search-backed path; a no-items dropdown safely degrades
+    to a free-text string. Revisit only if a future corpus shows the token-string `items` form.
+  - **`splunk.text` viz type.** 0 occurrences in corpus (the corpus uses `splunk.markdown`, handled). Not
+    added to `VIZ_MAP`; an unrecognized `splunk.text` would loud-placeholder if one ever appears.
 
 ## Test plan
 
