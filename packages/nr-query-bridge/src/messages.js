@@ -77,6 +77,50 @@ export const messages = {
   dedup_timeseries_warning: () =>
     'dedup with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.',
 
+  // SPL: `* | stats values(status) as s by host | where s>5`
+  // A non-scalar aggregate column across a subquery boundary: values/uniques exposes a
+  // LIST, median/percentile a KEYED OBJECT. A median/percentile reference in a WHERE or
+  // trailing aggregate IS extractable (getField(col,'<N>') — handled, never reaches
+  // here); but a LIST has no scalar form, and an eval-projection over a non-scalar that
+  // cannot fold flat leaves a bare reference that resolves to null. Loud unsupported.
+  eval_after_agg_nonscalar: (field) =>
+    `references '${field}', a non-scalar aggregate result (a \`values\`/\`uniques\` list, or a \`median\`/\`percentile\` keyed object that did not fold into the stats step) that cannot be used as a scalar across a subquery boundary; the reference would resolve to null. Compute the value inside the stats step instead.`,
+
+  // SPL: `* | stats count, sum(throughput) as count by host | eval x = count * 2`
+  // Two inner aggregates resolve to the same subquery column name; the engine keeps
+  // only the last (silent drop). Loud unsupported rather than wrong data.
+  subquery_name_collision: (name) =>
+    `eval after stats: two aggregates resolve to the same subquery column '${name}', which NRQL would silently collapse to one. Give them distinct aliases before the eval.`,
+
+  // SPL: `* | stats count by host | eval pct = count * 100`
+  // eval after stats projects facet keys + computed columns only (option A); the
+  // raw aggregate columns are not re-projected. Splunk's eval would keep them, so
+  // warn that they are absent from the output rather than dropping them silently.
+  eval_after_agg_drops_source: (columns) =>
+    `eval after stats: the source aggregate column(s) ${columns.join(', ')} are not in the output — only facet keys and eval results are projected, though Splunk's eval would keep the originals too.`,
+
+  // SPL: `* | stats count by host | head 10 | stats avg(count)`
+  // head N = the first N rows in stats output order; a nested-subquery LIMIT N is
+  // the top N by aggregate value. Different selections, so no faithful translation.
+  head_between_aggregations: () =>
+    'head/tail between two aggregations has no NRQL equivalent: SPL keeps the first N rows in stats order, but a nested-subquery LIMIT N keeps the top N by aggregate value. Reorder so the head/tail is not between aggregations.',
+
+  // SPL: `* | stats count by host | where count > 5 | where count < 100`
+  // After folding, a residual row-wise SubquerySource inner means the chain cannot
+  // be collapsed into legal NRQL. Loud unsupported over non-compiling NRQL.
+  compound_collapse_unsupported: () =>
+    'this compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported',
+
+  // SPL: `* | stats count by host | stats sum(count) by region`
+  // A trailing aggregating layer over an aggregating inner subquery is legal NRQL
+  // re-aggregation ONLY when the outer's FACET keys are a subset of the columns the
+  // inner exposes. When the regroup field is not produced by the inner (here `region`
+  // was never faceted), NRQL groups on null → silently empty. Loud unsupported over
+  // wrong. Time-bucket fields (_time/timestamp/bin-alias) are exempt: TIMESERIES
+  // re-supplies them even though they are stripped from the inner facet.
+  compound_trailing_regroup_unsupported: (field) =>
+    `trailing 'stats … by ${field}' regroups by a field the inner aggregation does not produce; cannot translate faithfully`,
+
   // SPL: `* | bin size span=10`
   bin_unsupported: () =>
     'bin command not fully supported; use TIMESERIES for time or histogram() for numeric fields',
