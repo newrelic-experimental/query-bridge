@@ -1,7 +1,7 @@
 import { createDashboardModel, createVariable, createWidget } from './model.js';
 
-const CANVAS_W = 1200; // Studio default canvas width (confirm in Task 0 recon)
-const ROW_PX = 100; // Studio row-height assumption (confirm in Task 0 recon)
+const CANVAS_W = 1200; // Studio default canvas width (px); layout→grid is approximate
+const ROW_PX = 100; // Studio row-height (px) used to scale into NR grid rows
 
 /** Studio visualization type → neutral vizType. Corpus-confirmed 2026-06-25. */
 const VIZ_MAP = {
@@ -104,6 +104,18 @@ function buildWidget(viz, dataSources, layout) {
       });
     }
     return null; // image without a usable URL — dropped, not placeholdered
+  }
+  if (viz.type === 'splunk.markdown') {
+    const md = viz.options?.markdown;
+    if (typeof md === 'string' && md.trim() !== '') {
+      return createWidget({
+        title: titleOf(viz),
+        vizType: 'markdown',
+        options: { text: md },
+        layout,
+      });
+    }
+    // no markdown body → fall through to a loud empty-query placeholder
   }
   const vizType = VIZ_MAP[viz.type] ?? 'unknown';
   const resolved = resolveDataSource(viz.dataSources?.primary, dataSources);

@@ -106,6 +106,37 @@ describe('parseStudio — viz behavior', () => {
     expect(Number.isFinite(g.w)).toBe(true);
     expect(Number.isFinite(g.h)).toBe(true);
   });
+
+  it('renders a native markdown panel body as a clean markdown widget', () => {
+    const m = parseStudio(
+      wrap(
+        {
+          v_md: {
+            type: 'splunk.markdown',
+            options: { markdown: '## Gadget notes\nfree text' },
+          },
+        },
+        [{ item: 'v_md', position: { x: 0, y: 0, w: 600, h: 100 } }],
+      ),
+    );
+    expect(m.widgets).toHaveLength(1);
+    expect(m.widgets[0].vizType).toBe('markdown');
+    expect(m.widgets[0].options.text).toBe('## Gadget notes\nfree text');
+    expect(m.widgets[0].unsupportedReason).toBeNull();
+  });
+
+  it('leaves a markdown panel with no body for the empty-query placeholder', () => {
+    const m = parseStudio(
+      wrap({ v_md: { type: 'splunk.markdown', options: {} } }, [
+        { item: 'v_md', position: { x: 0, y: 0, w: 600, h: 100 } },
+      ]),
+    );
+    // vizType still markdown, but no options.text and empty rawSpl → the
+    // translateWidgets chokepoint placeholders it loudly downstream.
+    expect(m.widgets[0].vizType).toBe('markdown');
+    expect(m.widgets[0].options.text).toBeUndefined();
+    expect(m.widgets[0].rawSpl).toBe('');
+  });
 });
 
 describe('parseStudio — chain resolution', () => {
@@ -338,6 +369,23 @@ describe('parseStudio — inputs', () => {
       type: 'enum',
       multi: true,
     });
+  });
+
+  it('degrades a dropdown with no items (search-backed/empty) to a string variable', () => {
+    const m = parseStudio(
+      withInputs({
+        i_dyn: {
+          type: 'input.dropdown',
+          options: { token: 'host_pick', defaultValue: 'host_alpha' },
+        },
+      }),
+    );
+    expect(m.variables[0]).toMatchObject({
+      name: 'host_pick',
+      type: 'string',
+      defaultValue: 'host_alpha',
+    });
+    expect(m.variables[0].choices).toEqual([]);
   });
 });
 
