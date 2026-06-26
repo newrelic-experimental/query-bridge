@@ -104,3 +104,10 @@ wrap-or-fail:
 - [ ] Chained-base walk-to-root for Simple XML (matching Studio) — in scope here, or split out?
 - [ ] Sequencing vs. `compound-chain-collapse` — land this after the rework, or independently now?
 - [ ] The flipped canary — confirm the new expected behavior is what we want, not just what the code does.
+
+## PR breakdown
+
+> Retrofit per CLAUDE.md "Small PRs" rule. Each PR below is independently reviewable and shippable; land in order.
+
+1. **Correct the `eval`-is-transforming comment + narrow the gate constant** (~40 lines, refactor) — In `parseSimpleXml.js`, fix the misleading comment labeling `eval` a transforming command (it is row-wise/distributable-streaming) and split today's blanket `TRANSFORMING_COMMAND` list into the to-stay set (`stats|timechart|chart|top|rare|dedup`) plus a separate `GUARDED_POST` set (`eval|head`/timechart-after-transform) the interim guard will key off. No behavior change yet — pure rename/restructure landed first. *Dependency: independent.*
+2. **Compose-and-delegate `resolveBaseSearch` with narrow interim guard** (~250 lines, behavior) — Rewrite `resolveBaseSearch` to walk a chained base to its root and set `rawSpl = root | mid | … | post-process`, handing it to the translator (which wraps or returns `unsupported` → existing chokepoint placeholder). Keep loud placeholders for missing-id / `ref=` saved-search root / cycle, AND for the narrow interim guard shapes (`GUARDED_POST` after a transforming root) until `fix/subquery-wrapping` lands. Flip the transforming-base canary in `dashboards.integration.test.js` (red→green), add new canaries (non-transforming composes, transforming composes+translates, chained walks to root, missing-id/`ref=`/cycle → loud placeholder), and snapshot the corpus base-panel placeholder rate before/after (rate drops, 0 new silent drops). *Dependency: needs PR 1.*

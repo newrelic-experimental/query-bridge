@@ -78,3 +78,11 @@ Until fixed, the `design-decisions.md` "Subquery wrapping" bullet states only th
 
 - Building EXPAND field carrying (separate spec: `2026-06-18-mvexpand-to-expand-design.md`).
 - Changing the `contains(jparse())` membership path.
+
+## PR breakdown
+
+> Retrofit per CLAUDE.md "Small PRs" rule. Each PR below is independently reviewable and shippable; land in order.
+
+1. **eval-after-stats wraps as subquery** (~120 lines, behavior) — make `handleEval` (`evalHandlers.js:46`) call `wrapAsSubquery(ir)` when `ir._hasAggregation`, mirroring `handleWhere`, so the eval binds on the outer query over the aggregated result; emit `unsupported` if the wrap can't express the eval. Add a golden-NRQL `spl.test.js` case for `* | stats count by host | eval pct = count * 100` and drop the now-wrong `spl.test.js:993` case to `verified: false`. Dependency: independent. Highest blast radius (~10% of corpus) — do first.
+2. **TIMESERIES travels inner on wrap** (~80 lines, behavior) — change `wrapAsSubquery` (`splExprUtils.js:265`) + callers so a `timeseries` set by an inner `timechart`/`bin _time` moves into the inner `SelectQuery` (SINCE/UNTIL stay outer). Add a `spl.test.js` case for `* | timechart count by host | stats avg(count) as a` asserting TIMESERIES inner, none outer. Dependency: independent of PR 1 (separate locus), but both touch `wrapAsSubquery`'s field split — land after PR 1 to keep the wrap-behavior diffs sequential. Low incidence (~0.15%).
+3. **head N between aggregations carries inner (or unsupported)** (~60 lines, behavior) — in `wrapAsSubquery`, carry a pre-wrap `limit` to the inner query instead of forcing inner `LIMIT MAX` and stranding it on the no-op outer, or emit `unsupported`. Add a `spl.test.js` case for `… | stats count by host | head 10 | stats avg(count) as a`. Dependency: needs PR 2 (same `wrapAsSubquery` field-placement logic). Lowest priority — 0% corpus incidence; safe to defer.
