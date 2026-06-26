@@ -1,3 +1,8 @@
+# Block customer-identifying names from being committed (defense-in-depth beyond
+# gitleaks). The denylist is gitignored (docs/local/), so this SKIPS for anyone
+# without it — see scripts/scan-customer-names.sh. Runs first: fail fast.
+bash scripts/scan-customer-names.sh
+
 npx lint-staged
 
 # Type-check the whole workspace before committing. lint-staged covers ESLint on

@@ -25,12 +25,4 @@ describe('end-to-end: realistic Simple XML → Terraform', () => {
     const b = runImport(xml, { account: 12345 });
     expect(a.files).toEqual(b.files);
   });
-
-  it('contains no customer-identifying names (de-identification guard)', () => {
-    const all = Object.values(runImport(xml, { account: 12345 }).files).join(
-      '\n',
-    );
-    expect(all.toLowerCase()).not.toContain('REDACTED');
-    expect(all.toLowerCase()).not.toContain('REDACTED');
-  });
 });
