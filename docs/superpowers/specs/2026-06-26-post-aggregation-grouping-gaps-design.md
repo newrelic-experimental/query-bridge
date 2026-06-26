@@ -7,7 +7,7 @@ The compound-chain-collapse corpus sweep and whole-branch review (PR #44) surfac
 The five gaps:
 
 - **B — `dedup` between two aggregations** silently drops the dedup. `… stats count by host, region | dedup host | stats sum(count)` emits `FROM (… count by host, region) SELECT sum(count)` — the `dedup host` becomes a no-op, so the trailing aggregate sums every group. `head`/`tail` between aggregations is already loud (`head_between_aggregations`); `dedup` slips through.
-- **C — an `eval` whose output alias equals a facet-key name** silently shadows. `stats count by host | eval host = count*2` emits `SELECT count(*)*2 AS host FACET host`; NRDB resolves `host` to the facet value, not the computed column, and drops `count(*)*2` (staging-confirmed: `count(*)*2 AS level FACET level` returns the facet value).
+- **C — an `eval` whose output alias equals a facet-key name** silently shadows. `stats count by host | eval host = count*2` emits `SELECT count(*)*2 AS host FACET host`; NRDB resolves `host` to the facet value, not the computed column, and drops `count(*)*2` (staging-confirmed on acct 10671289: `count(*)*2 AS appName FACET appName` returns the `appName` facet value, discarding the computed expression).
 - **D1 — `_time`/`timestamp` regroup over a TIMESERIES inner** emits invalid NRQL. `timechart span=1m count by host | stats avg(count) by _time` emits `… SELECT average(count) FACET _time`; bare `_time` is not an NRDB attribute (parse error), and the per-bucket re-aggregation the author asked for is lost.
 - **D2 — bare `stats … by _time`** (no upstream `bin`/`timechart`) emits the same invalid `FACET _time`.
 - **E — `date_*` calendar fields** (`date_hour`, `date_wday`, …) emit `FACET date_hour`, but NR logs carry no Splunk-auto-extracted `date_*` attribute, so the facet returns empty — silent-wrong.
@@ -34,7 +34,7 @@ Fix: `handleDedup` sets a between-aggregations marker when `ir._hasAggregation`;
 
 **Mechanism.** In the eval-after-stats projection (`evalHandlers.js`, where `Alias(expr, assignment.field)` is pushed onto the outer SELECT, ~line 154), guard: if `assignment.field` is the name of one of the aggregation's facet keys (`ir.facet`), push a loud `unsupported` instead of projecting the alias.
 
-**Rationale.** `stats count by host | eval host = count*2` asks to overwrite the `host` group-by field with a computed value. The translator emits `SELECT count(*)*2 AS host FACET host`; NRDB resolves the output column `host` to the **facet value**, silently discarding `count(*)*2` (staging-confirmed: `FROM Transaction SELECT count(*)*2 AS level FACET level` returns `level` = the facet value). Overwriting a `by` field has no faithful NRQL form, so this is loud `unsupported`. The collision is inherent to the SPL (it predates the fold and exists in the subquery form too), so the guard belongs at the point the alias is created, not in the fold pass.
+**Rationale.** `stats count by host | eval host = count*2` asks to overwrite the `host` group-by field with a computed value. The translator emits `SELECT count(*)*2 AS host FACET host`; NRDB resolves the output column `host` to the **facet value**, silently discarding `count(*)*2` (staging-confirmed on acct 10671289: `SELECT count(*)*2 AS appName FACET appName` returns the `appName` facet value, not the computed expression — the collision must be with a *real* attribute, and the post-`stats` `host` is one). Overwriting a `by` field has no faithful NRQL form, so this is loud `unsupported`. The collision is inherent to the SPL (it predates the fold and exists in the subquery form too), so the guard belongs at the point the alias is created, not in the fold pass.
 
 **Message.** New key, e.g. `eval_shadows_facet_key`.
 
@@ -79,9 +79,9 @@ The inner TIMESERIES builds per-host-per-bucket cells; the **outer** TIMESERIES 
 
 ## E — `date_*` calendar fields → faithful `*Of(timestamp)` where a fold exists, else loud
 
-**Semantics.** Splunk auto-extracts calendar-component fields from each event's time: `date_hour` (0–23), `date_minute` (0–59), `date_wday` (sunday…), `date_mday` (1–31), `date_month` (january…), `date_year`, `date_second`. These **fold** — every day's 9am collapses into one `date_hour=9` group. They are calendar components, not a time axis. NR logs have no such attribute, so the current `FACET date_hour` returns empty (silent-wrong).
+**Semantics.** Splunk auto-extracts calendar-component fields from each event's time: `date_hour` (0–23), `date_minute` (0–59), `date_wday` (lowercase name, `sunday`…; per Splunk docs the matchable value is lowercase), `date_mday` (1–31), `date_month` (numeric `1`–`12` — Splunk docs show `date_month=1` for January, *not* a month name), `date_year` (4-digit), `date_second` (0–59), `date_zone` (UTC-offset minutes). These **fold** — every day's 9am collapses into one `date_hour=9` group. They are calendar components, not a time axis. NR logs have no such attribute, so the current `FACET date_hour` returns empty (silent-wrong).
 
-**NR equivalents** (staging-validated; all execute in bare `FACET` position and clear the DEV `FACETVALUE` gate, being single function calls):
+**NR equivalents** (staging-validated; all execute in bare `FACET` position as single function calls):
 
 | Splunk field | NR function | Faithful fold? | NR return shape |
 |---|---|---|---|
@@ -92,14 +92,15 @@ The inner TIMESERIES builds per-host-per-bucket cells; the **outer** TIMESERIES 
 | `date_year` | `yearOf(timestamp)` | ✅ (year is period-specific) | `"2026"` (string) |
 | `date_month` | `monthOf(timestamp)` | ❌ **pins the year** (`"June 2026"`) | — |
 | `date_second` | (none) | ❌ no NR function | — |
+| `date_zone` | (none) | ❌ no NR function | — |
 
-**Mechanism.** A `stats … by date_<comp>` group-by (the field name matched against the table) →
+**Mechanism.** A `stats … by date_<comp>` group-by — **exact field-name match against the table above, never a `date_*` prefix** (so a user field like `date_created`/`date_start` stays an ordinary facet, untouched) →
 - For the five folding fields: rewrite the facet key to `FACET <fn>(timestamp)` + a **value-shape warning** (NR returns string labels — `"13:00"`, `"Friday"` — not Splunk's integers/lowercase names; downstream sorts or comparisons that assume the integer/lowercase shape will differ).
-- For `date_month` and `date_second`: loud `unsupported` — `monthOf` pins the year (`"June 2025"` and `"June 2026"` are separate groups, not Splunk's folded `june`), and NR has no second-of-minute function. No faithful fold.
+- For `date_month`, `date_second`, and `date_zone`: loud `unsupported` — `monthOf` pins the year (`"June 2025"` and `"June 2026"` are separate groups, so it can't fold every June together the way Splunk's `date_month` does), and NR has no second-of-minute or timezone-offset function. No faithful fold.
 
 **Messages.** New warning key for the value-shape note (e.g. `date_field_label_shape`); a new `unsupported` key for the no-faithful-fold fields (e.g. `date_field_no_fold`).
 
-**Target cases.** `* | stats count by date_hour` → `FROM Log SELECT count(*) FACET hourOf(timestamp)`, `warningFunc: ['date_field_label_shape']`. `* | stats count by date_month` → `''`, `unsupportedFunc: ['date_field_no_fold']`.
+**Target cases.** `* | stats count by date_hour` → `FROM Log SELECT count(*) FACET hourOf(timestamp)`, `warningFunc: ['date_field_label_shape']`. `* | stats count by date_month` → `''`, `unsupportedFunc: ['date_field_no_fold']`. Negative control: `* | stats count by date_created` (not a calendar field) → ordinary `FACET date_created`, no rewrite, no warning.
 
 ## NRQL/SPL facts this design rests on (verified — do not re-derive)
 
@@ -118,9 +119,15 @@ Data-driven `cases` in `test/spl/spl.test.js` (the sanctioned exception), `verif
 - **C:** `stats count by host | eval host = count*2` → unsupported. Negative: `eval host2 = count*2` folds flat.
 - **D1:** `timechart span=1m count by host | stats avg(count) by _time` → the both-levels-TIMESERIES form. Negative: `timechart span=1m count by host | stats avg(count)` (no `by _time`) still collapses to the scalar form (unchanged).
 - **D2:** `stats count by _time` → `… TIMESERIES MAX` + warning. Negatives: `bin _time span=1h | stats count by _time` → `TIMESERIES 1 hour` (unchanged); `timechart span=1h count` → `TIMESERIES 1 hour` (unchanged).
-- **E:** `stats count by date_hour` → `FACET hourOf(timestamp)` + warning; `stats count by date_month` → unsupported; `stats count by date_second` → unsupported.
+- **E:** `stats count by date_hour` → `FACET hourOf(timestamp)` + warning; `stats count by date_month` → unsupported; `stats count by date_second` → unsupported; `stats count by date_zone` → unsupported. Negative control: `stats count by date_created` → ordinary `FACET date_created` (exact-set match, no rewrite, no warning).
 
 Every new message key needs a `warningFunc`/`unsupportedFunc` reference (validated against `messages` by the spy check in `spl.test.js`). Re-validate the D1/D2/E happy-path NRQL on staging via `run_nerdgraph_query` (acct 10671289 `Transaction`; acct 1 `Log` times out) before promoting past `verified: false`. Loop `spl-fuzz` 20× (it reseeds each run) after any IR/handler change.
+
+## Notes for the implementation plan (verified subtleties — don't rediscover)
+
+- **C bails loudly, but the wrap path already pushes `eval_after_agg_drops_source`.** On HEAD, both `eval host = count*2` and the `host2` negative fire that warning before the alias is projected. The plan must decide: move the facet-key-collision guard *before* the wrap (clean `unsupported`, no stray warning), or list `eval_after_agg_drops_source` in the positive case's `warningFunc`. The `host2` negative control's `warningFunc` must include it either way (exhaustive-message rule).
+- **D2 mixed facet keys.** `stats count by host, _time` must keep `FACET host` and convert only `_time` → `TIMESERIES MAX` (i.e. `SELECT count(*) FACET host TIMESERIES MAX` + the warning), never drop the whole facet.
+- **E exact-set membership** is the correctness boundary (see Mechanism): the table is a closed set matched by exact field name. The `date_created` negative control guards against a `date_*` prefix match.
 
 ## Reference-doc updates
 
@@ -131,4 +138,8 @@ Every new message key needs a `warningFunc`/`unsupportedFunc` reference (validat
 - **`eval floor(_time/N)` manual bucketing** — semantically equivalent to `bin _time span=N`, but hard to pattern-match reliably. Leave as-is (or unsupported) rather than guess; revisit only if the corpus shows demand.
 - **`SLIDE BY`** — overlapping windows; never emit for a plain `by _time` (tiling, not sliding).
 - **Other Splunk-internal `_`-fields** (`_raw`, `_cd`, `_indextime`) in a grouping position — out of scope; only `_time`/`timestamp` are handled here. A general "Splunk-internal field has no NRDB equivalent" guard is a separate concern.
+- **`date_*` fields outside a `stats … by` group-by** (in `where`/`eval`/`sort`/as a function arg) — E rewrites the group-by position only. A `date_hour` reference elsewhere is not handled here and currently passes through (the same separate-guard concern as the `_`-fields above).
+- **`eval` overwriting an aggregate-output column** (`stats count by host | eval count = count*2`) — C guards an eval alias that collides with a *facet* key; an alias colliding with the *aggregate output* column (`count`) is a related silent-shadow class C does not catch. Separate guard, deferred (corpus demand unconfirmed).
+- **Bare `_time` as the first aggregation of a chain** (`stats count by _time | stats avg(count)`) — here `_time` lands in the *inner* subquery FACET. D2 is scoped to the non-subquery case and D1 needs an inner TIMESERIES, so neither applies; the inner `FACET _time` parse-errors loudly at execution (not silent-wrong), so it is deferred rather than fixed.
+- **Combined SINCE + D1 coverage** — the inner-carries-no-SINCE / SINCE-on-the-outer constraint (already enforced) is asserted but not exercised by a dedicated `earliest=… | timechart … | stats … by _time` test case; add one if the SINCE-placement path changes.
 - **D1 differing-span re-bucketing** (a `bin _time span=Y` between two aggregations changing the outer interval) — the plan may emit `unsupported` for the differing-span case rather than infer it, if it proves fiddly.
