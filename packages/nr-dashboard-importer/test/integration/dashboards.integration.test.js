@@ -1,9 +1,21 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync as writeFsSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseSimpleXml } from '../../src/parseSimpleXml.js';
 import { translateWidgets } from '../../src/translateWidgets.js';
 import { runImport } from '../../bin/spl-dashboard.js';
+
+function hasTerraform() {
+  try {
+    execFileSync('terraform', ['version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Functional/integration coverage for the full XML→Terraform pipeline.
 //   real/      — Splunk's own published Simple XML dashboards (unbiased).
@@ -412,4 +424,54 @@ describe('importer: emitter & structure [pending]', () => {
     const widgets = translateWidgets(parseSimpleXml(xml).widgets);
     expect(widgets[0].outcome).toBe('placeholder');
   });
+});
+
+// ── Studio integration (synthetic) ──────────────────────────────────────────
+describe('integration — Studio (synthetic)', () => {
+  const xml = readFileSync(
+    new URL('./fixtures/synthetic/shape-studio-wrapped.xml', import.meta.url),
+    'utf-8',
+  );
+
+  it('imports the studio dashboard with correct widget fates', () => {
+    const [result] = runImport(xml, { account: 1 });
+    expect(result.slug).toBe('synthetic-studio-board');
+    const tf = result.files['synthetic-studio-board.tf'];
+    expect(tf).toContain('newrelic_one_dashboard');
+    // 6 source viz: v_rect dropped; v_line + v_tbl + v_img(markdown) clean; v_saved + v_huh placeholders.
+    // Placeholders render as markdown widgets carrying the reason.
+    expect(tf).toContain('Saved-backed'); // placeholder keeps its title
+    expect(tf).toContain('Flowy'); // unknown-type placeholder keeps its title
+    expect(tf).toMatch(/zone/); // dropdown variable emitted
+  });
+
+  it('drops the rectangle decoration (no widget for it)', () => {
+    const [result] = runImport(xml, { account: 1 });
+    // Exactly 5 widgets reach Terraform (6 viz − 1 decoration). Count widget blocks.
+    const blocks = (
+      result.files['synthetic-studio-board.tf'].match(/widget_\w+\s*{/g) || []
+    ).length;
+    expect(blocks).toBe(5);
+  });
+
+  it.skipIf(!hasTerraform())(
+    'emitted HCL for the Studio dashboard passes terraform validate',
+    () => {
+      const [result] = runImport(xml, { account: 1 });
+      const dir = mkdtempSync(join(tmpdir(), 'tf-studio-'));
+      writeFsSync(
+        join(dir, `${result.slug}.tf`),
+        result.files[`${result.slug}.tf`],
+      );
+      writeFsSync(join(dir, 'versions.tf'), result.files['versions.tf']);
+      writeFsSync(join(dir, 'variables.tf'), result.files['variables.tf']);
+      execFileSync('terraform', ['init', '-backend=false', '-input=false'], {
+        cwd: dir,
+        stdio: 'ignore',
+      });
+      execFileSync('terraform', ['validate'], { cwd: dir, stdio: 'pipe' });
+      expect(existsSync(join(dir, `${result.slug}.tf`))).toBe(true);
+    },
+    60_000,
+  );
 });
