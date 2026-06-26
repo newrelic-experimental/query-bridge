@@ -49,6 +49,24 @@ describe('runImport', () => {
     ]);
   });
 
+  it('isolates a malformed entry: emits the good dashboard, records the bad one', () => {
+    const badStudio =
+      '<dashboard version="2"><definition><![CDATA[{ not valid json ]]></definition></dashboard>';
+    const env = JSON.stringify({
+      entry: [
+        { content: { version: '1.1', isDashboard: true, 'eai:data': xml } },
+        { content: { version: '2', isDashboard: true, 'eai:data': badStudio } },
+      ],
+    });
+    const results = runImport(env, { account: null });
+    const dashboards = results.filter((r) => !r.skipped);
+    const skipped = results.filter((r) => r.skipped);
+    expect(dashboards.map((d) => d.slug)).toEqual(['cli-dash']); // sibling survives
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].index).toBe(1);
+    expect(skipped[0].reason).toMatch(/JSON/i); // loud reason recorded
+  });
+
   it('de-duplicates slugs when two dashboards share a title', () => {
     const env = JSON.stringify({
       entry: [

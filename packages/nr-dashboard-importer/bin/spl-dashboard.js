@@ -29,41 +29,51 @@ function parseUnit(unit) {
 }
 
 /**
- * Pure pipeline: raw input → array of { slug, files }. A REST envelope yields many.
+ * Pure pipeline: raw input → one result per detected unit (a REST envelope yields
+ * many). Each result is either a built dashboard `{slug, files}` or a skipped entry
+ * `{skipped, index, reason}` — one malformed entry never aborts its siblings. A
+ * malformed envelope itself still throws at `detectFormat` (a loud, top-level error).
  * @param {string} input
  * @param {{account:number|null, region?:string}} opts
- * @returns {{slug:string, files:Record<string,string>}[]}
+ * @returns {({skipped:false, slug:string, files:Record<string,string>}|{skipped:true, index:number, reason:string})[]}
  */
 export function runImport(input, opts) {
   // De-duplicate slugs so two same-title dashboards in one bulk export don't
   // overwrite each other's output dir (first wins the bare slug, then -2, -3…).
   const seenSlugs = new Map();
-  return detectFormat(input).map((unit) => {
-    const model = parseUnit(unit);
-    const multiSelectTokens = new Set(
-      model.variables.filter((v) => v.multi).map((v) => v.name),
-    );
-    const translated = translateWidgets(model.widgets, { multiSelectTokens });
-    const variables = translateVariables(model.variables);
-    const emitModel = { ...model, widgets: translated, variables };
-    const tf = emitTerraform(emitModel, {
-      accountId: opts.account,
-      region: opts.region,
-    });
-    const baseSlug = slugify(model.title);
-    const n = (seenSlugs.get(baseSlug) ?? 0) + 1;
-    seenSlugs.set(baseSlug, n);
-    const slug = n === 1 ? baseSlug : `${baseSlug}-${n}`;
-    const report = buildReport(model.title, translated);
-    return {
-      slug,
-      files: {
-        [`${slug}.tf`]: tf['dashboard.tf'],
-        'versions.tf': tf['versions.tf'],
-        'variables.tf': tf['variables.tf'],
-        [`${slug}.report.md`]: report,
-      },
-    };
+  return detectFormat(input).map((unit, index) => {
+    try {
+      const model = parseUnit(unit);
+      const multiSelectTokens = new Set(
+        model.variables.filter((v) => v.multi).map((v) => v.name),
+      );
+      const translated = translateWidgets(model.widgets, { multiSelectTokens });
+      const variables = translateVariables(model.variables);
+      const emitModel = { ...model, widgets: translated, variables };
+      const tf = emitTerraform(emitModel, {
+        accountId: opts.account,
+        region: opts.region,
+      });
+      const baseSlug = slugify(model.title);
+      const n = (seenSlugs.get(baseSlug) ?? 0) + 1;
+      seenSlugs.set(baseSlug, n);
+      const slug = n === 1 ? baseSlug : `${baseSlug}-${n}`;
+      const report = buildReport(model.title, translated);
+      return {
+        skipped: false,
+        slug,
+        files: {
+          [`${slug}.tf`]: tf['dashboard.tf'],
+          'versions.tf': tf['versions.tf'],
+          'variables.tf': tf['variables.tf'],
+          [`${slug}.report.md`]: report,
+        },
+      };
+    } catch (e) {
+      // Isolate a bad entry: record it loudly, never abort the siblings or emit a
+      // half-built dashboard. The CLI surfaces the reason on stderr.
+      return { skipped: true, index, reason: e.message };
+    }
   });
 }
 
@@ -118,8 +128,19 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+  // Surface skipped entries loudly; never silently drop one. An all-skipped or
+  // empty export is still a success (zero dashboards), per the bulk-import design.
   for (const r of results) {
-    const dir = results.length > 1 ? join(opts.out, r.slug) : opts.out;
+    if (r.skipped) {
+      process.stderr.write(`skipped entry ${r.index}: ${r.reason}\n`);
+    }
+  }
+  const dashboards =
+    /** @type {{skipped:false, slug:string, files:Record<string,string>}[]} */ (
+      results.filter((r) => !r.skipped)
+    );
+  for (const r of dashboards) {
+    const dir = dashboards.length > 1 ? join(opts.out, r.slug) : opts.out;
     mkdirSync(dir, { recursive: true });
     for (const [name, body] of Object.entries(r.files)) {
       const path = join(dir, name);
