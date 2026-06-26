@@ -46,12 +46,19 @@ trap 'rm -f "$pat_file"' EXIT
 printf '%s\n' "$patterns" >"$pat_file"
 
 # -F fixed strings (denylist entries are literal, not regex), -i case-insensitive,
-# -I skip binary, -n line numbers. git grep exits 0 on match, 1 on none.
-if git grep -iInF "${scope[@]}" -f "$pat_file" -- . ':(exclude)docs/local/'; then
+# -I skip binary, -n line numbers. `-f <patfile>` MUST precede the <rev> in
+# scope[] (e.g. `-f file HEAD`), or git parses the flag as a bad revision.
+# git grep exits 0 on match, 1 on no match, ≥2 on error — an ERROR must NOT be
+# read as "clean", so branch on the exact code rather than truthiness.
+git grep -iInF -f "$pat_file" "${scope[@]}" -- . ':(exclude)docs/local/' && rc=0 || rc=$?
+if [ "${rc:-0}" -eq 0 ]; then
   echo ""
   echo "ERROR: customer-identifying string(s) found in tracked content (above)."
   echo "Scrub them before committing. Denylist: $DENYLIST"
   exit 1
+elif [ "$rc" -eq 1 ]; then
+  echo "customer-name scan: clean."
+else
+  echo "ERROR: customer-name scan could not run (git grep exit $rc) — NOT treating as clean." >&2
+  exit 2
 fi
-
-echo "customer-name scan: clean."
