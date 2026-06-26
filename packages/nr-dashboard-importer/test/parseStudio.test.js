@@ -242,7 +242,7 @@ describe('parseStudio — chain resolution', () => {
     expect(m.widgets[0].unsupportedReason).toMatch(/cycle/);
   });
 
-  it('composes eval after a transforming root (translator folds it downstream)', () => {
+  it('interim guard: eval after a transforming root -> placeholder', () => {
     const m = parseStudio(
       oneViz(
         {
@@ -258,10 +258,7 @@ describe('parseStudio — chain resolution', () => {
         'ds_pp',
       ),
     );
-    expect(m.widgets[0].rawSpl).toBe(
-      'search gizmo=7 | stats count by zone_q | eval rate = count / 60',
-    );
-    expect(m.widgets[0].unsupportedReason).toBeNull();
+    expect(m.widgets[0].unsupportedReason).toMatch(/not yet translatable/);
   });
 
   it('non-transforming root + eval fragment composes (delegates to translator)', () => {

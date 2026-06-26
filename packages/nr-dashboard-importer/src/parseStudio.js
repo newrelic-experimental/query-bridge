@@ -23,12 +23,13 @@ const VIZ_MAP = {
 /** Pure-shape decorations: no query, no widget (silently dropped). */
 const DECORATION = new Set(['splunk.rectangle', 'splunk.ellipse']);
 
-const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+// Transforming commands: a base ending in one needs subquery wrapping to compose.
+const TRANSFORMING = /\|\s*(stats|timechart|chart|top|rare|dedup)\b/i;
+// Interim guard (remove when fix/subquery-wrapping lands): eval/head after a
+// transforming base is silently-wrong NRQL on master — placeholder it instead.
+const GUARDED_POST = /\|\s*(eval|head)\b/i;
 
-// (The interim eval/head-after-transforming guard was removed once the translator's
-// fold-post-aggregation pass landed: eval-after-stats now folds correctly and
-// head-between-aggregations loud-fails at the translator — so composing and
-// delegating is safe for every chain shape.)
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 /** Studio pixel position → NR 12-column grid {x,y,w,h}. */
 function pxToGrid(pos, canvasW) {
@@ -64,8 +65,16 @@ function resolveDataSource(dsId, dataSources, seen = new Set()) {
     if (parent.unsupportedReason) return parent; // propagate missing/savedSearch/cycle
     const fragment = (ds.options?.query ?? '').replace(/^\s*\|?\s*/, '').trim();
     if (!fragment) return { rawSpl: parent.rawSpl, unsupportedReason: null };
-    // Compose unconditionally and delegate: the translator either folds the
-    // post-aggregation chain or loud-fails it (chokepoint → placeholder).
+    if (
+      TRANSFORMING.test(parent.rawSpl) &&
+      GUARDED_POST.test('| ' + fragment)
+    ) {
+      const cmd = fragment.split(/\s+/)[0];
+      return {
+        rawSpl: '',
+        unsupportedReason: `chain post-process "${cmd}" on a transforming base is not yet translatable (pending subquery-wrapping fix)`,
+      };
+    }
     return {
       rawSpl: `${parent.rawSpl} | ${fragment}`,
       unsupportedReason: null,
