@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close the five SPL→NRQL grouping gaps from the spec (`docs/superpowers/specs/2026-06-26-post-aggregation-grouping-gaps-design.md`) so each input translates faithfully or emits a loud `unsupported`/warning — never silent-wrong or parse-invalid NRQL.
+**Goal:** Close the six post-aggregation/grouping gaps from the spec (`docs/superpowers/specs/2026-06-26-post-aggregation-grouping-gaps-design.md`) so each input translates faithfully or emits a loud `unsupported`/warning — never silent-wrong or parse-invalid NRQL. F additionally makes the eval-after-stats fold additive for scalar source columns (keeps the scalar columns Splunk keeps).
 
-**Architecture:** Five small, independent fixes across the existing pipeline. B/C are post-aggregation-chain guards in the SPL handlers (`rowHandlers.js`, `evalHandlers.js`, consumed in `aggregationHandlers.js`). D1 is a one-branch fix in the `foldPostAggregation` optimizer pass. D2 and E are facet-key rewrites — D2 in the `splToIR` post-loop, E in `handleStats`'s group-by construction. No grammar change, no emitter change (the emitter already renders `Func` nodes in `FACET` and any string in `TIMESERIES`).
+**Architecture:** Six small, mostly-independent fixes across the existing pipeline (F couples with C — see its Sequencing note). B/C are post-aggregation-chain guards in the SPL handlers (`rowHandlers.js`, `evalHandlers.js`, consumed in `aggregationHandlers.js`). D1 and F are fixes in the `foldPostAggregation` optimizer pass (D1 one branch; F makes `foldEvalLayer` additive). D2 and E are facet-key rewrites — D2 in the `splToIR` post-loop, E in `handleStats`'s group-by construction. No grammar change, no emitter change (the emitter already renders `Func` nodes in `FACET` and any string in `TIMESERIES`).
 
 **Tech Stack:** Pure ESM JS; IR node factories in `src/ir/nodes.js`; message catalog in `src/messages.js`; Vitest data-driven `cases` in `test/spl/spl.test.js`.
 
@@ -117,6 +117,9 @@ Verified on staging (acct 10671289) + Splunk docs during the spec's double-check
     verified: false,
   },
   // Negative control: distinct alias name still folds flat (unchanged).
+  // NOTE: Task 6 (F) makes the fold additive and DELETES eval_after_agg_drops_source —
+  // it rewrites this case's nrql to the additive form and clears its warningFunc. Leave
+  // it as-is here (HEAD-accurate at this task); F updates it.
   {
     spl: '* | stats count by host | eval host2 = count*2',
     nrql: "FROM Log SELECT count(*) * 2 AS 'host2' FACET host LIMIT MAX",
@@ -350,12 +353,66 @@ Verified on staging (acct 10671289) + Splunk docs during the spec's double-check
 
 ---
 
-### Task 6: Graduate invariants; update the NRQL reference; retire the spec
+### Task 6: F — additive eval-fold keeps the source aggregate columns Splunk keeps
+
+**Commit:** `fix: keep source aggregate columns when folding eval after stats`
+
+**Files:**
+- Modify: `src/ir/foldPostAggregation.js` — `foldEvalLayer` (line 336): re-alias + keep the **scalar** source aggregates (with overwrite dedupe); narrow the `dropped`/`eval_after_agg_drops_source` block to non-scalar sources.
+- Modify: `src/messages.js` — **reword** `eval_after_agg_drops_source` to the non-scalar-source case (do NOT delete it — it still fires for median/percentile/list sources).
+- Test: `test/spl/spl.test.js` — the **scalar**-source cases asserting `eval_after_agg_drops_source` get the additive `nrql` + the key dropped from `warningFunc` (incl. Task 2's `host2` negative); the median/percentile cases are **unchanged** (still dropped + warned).
+
+**Interfaces:**
+- Produces: narrows (does not remove) `messages.eval_after_agg_drops_source`. Scalar-source cases stop firing it; non-scalar-source cases keep it.
+
+**Sequencing (F ↔ C).** F is numbered after C and narrows `eval_after_agg_drops_source`, which Task 2 (C) asserts on its `host2` negative. `host2`'s source is the scalar `count`, so F keeps it (no drop) — this task rewrites that negative's `nrql` to the additive form and clears its `warningFunc` to `[]`.
+
+**Design.** Splunk's `eval` ADDS a column and keeps the originals, so `stats count by host | eval pct = count*100` is `host, count, pct` in Splunk but `host, pct` in the current flat fold. Make the fold additive **for scalar source aggregates only**: re-project each scalar aggregate under its exposed name alongside the folded eval. A **non-scalar** source (`median`/`percentile`→keyed object `{50:v}`, `uniques`/`values`→list; detect with `extractNonScalar`, line 93) re-projects in the wrong shape (staging-verified bare `median(duration) AS p50` → `{"50":v}`, not Splunk's scalar), so it stays dropped and keeps the (reworded, narrowed) warning. **Dedupe is mandatory** — when an eval *reassigns* a scalar source's name (`eval count = count*2`), emitting both `count(*) AS count` and `count(*)*2 AS count` is silent-wrong: NRDB returns the *first* duplicate alias (staging-verified `SELECT count(*) AS c, count(*)*2 AS c` → the plain count). So drop any kept scalar aggregate whose name a folded eval also defines — the eval wins, matching Splunk's overwrite.
+
+- [ ] **Step 1: Update the failing cases** in `test/spl/spl.test.js`. `grep -n eval_after_agg_drops_source test/spl/spl.test.js`; update only the **scalar**-source cases (change `nrql` to the additive form, drop the key from `warningFunc`). Anchors today:
+  - `* | stats count by host | eval pct = count * 100` → `nrql: "FROM Log SELECT count(*) AS count, count(*) * 100 AS 'pct' FACET host LIMIT MAX"`, drop `warningFunc`.
+  - Task 2's `host2` negative → `nrql: "FROM Log SELECT count(*) AS count, count(*) * 2 AS 'host2' FACET host LIMIT MAX"`, drop `warningFunc`.
+  - **Leave the median/percentile cases unchanged** (`median(latency) as p50 … eval x = p50*2`, the `med`/`p95` siblings) — their source is non-scalar, so it stays dropped and still carries `warningFunc: ['eval_after_agg_drops_source']`.
+  - New multi-aggregate case: `* | stats count, avg(bytes) as a by host | eval pct = count*100` → `nrql: "FROM Log SELECT count(*) AS count, average(bytes) AS a, count(*) * 100 AS 'pct' FACET host LIMIT MAX"`, `verified: false`.
+  - New overwrite case: `* | stats count by host | eval count = count*2` → `nrql: "FROM Log SELECT count(*) * 2 AS count FACET host LIMIT MAX"` (one `count`; eval wins), `verified: false`.
+  - **Exact alias quoting** (`AS count` vs `AS 'count'`) is the emitter's call — match each `nrql` to the actual `node bin/spl2nrql.js` output in Step 4.
+- [ ] **Step 2: Run, confirm red.** `ASDF_NODEJS_VERSION=24.14.0 npm run test --workspace=@newrelic/query-bridge -- spl` — the updated cases fail (HEAD still drops the aggregate + warns).
+- [ ] **Step 3: Implement** in `src/ir/foldPostAggregation.js` `foldEvalLayer`. Replace the `keptInner`/`dropped` block (lines 367–381) with a scalar-only additive merge that still warns on non-scalar drops:
+  ```js
+  const foldedNames = new Set(folded.map((f) => f.name));
+  const keptInner = [];
+  const dropped = []; // non-scalar source aggregates we still cannot re-project
+  for (const item of inner.select) {
+    if (!isBareAggregateEntry(item)) {        // prior eval-derived column — keep as-is
+      keptInner.push(item);
+    } else if (extractNonScalar(item)) {      // median/percentile keyed object, uniques list
+      dropped.push(exposedNameOf(item));      // wrong shape if re-projected — drop + warn
+    } else {                                  // scalar aggregate — re-alias and keep (additive)
+      keptInner.push(item.type === 'Alias' ? item : Alias(item, exposedNameOf(item)));
+    }
+  }
+  // Splunk's eval OVERWRITES a same-named field; emitting both is silent-wrong (flat dup
+  // alias returns the first). Drop the kept scalar whose name a folded eval reassigns.
+  const merged = keptInner.filter((item) => !foldedNames.has(exposedNameOf(item)));
+  if (dropped.length > 0 && warnings) warnings.push(messages.eval_after_agg_drops_source(dropped));
+  if (droppedAcc) for (const n of dropped) droppedAcc.add(n);
+  ```
+  Use `merged` where `keptInner` was used (`select: [...merged, ...folded]`). (`Alias`, `exposedNameOf`, `extractNonScalar`, `isBareAggregateEntry` are all already in scope.)
+- [ ] **Step 4: Run, confirm green** + verify emitted alias quoting: `ASDF_NODEJS_VERSION=24.14.0 node bin/spl2nrql.js "* | stats count by host | eval pct = count*100"`. If a bare `AS count` is later rejected on staging (reserved word), the emitter decides quoting — set the test `nrql` to whatever it actually emits.
+- [ ] **Step 5: Reword the message.** Update `eval_after_agg_drops_source` in `src/messages.js` to describe the **non-scalar** source case (a median/percentile/list aggregate can't be re-projected as a scalar, so it's absent from the output). Keep the key — the median/percentile cases still reference it.
+- [ ] **Step 6: Audit the `orderBy`-dropped guard.** `orderByRefsDropped` (`foldPostAggregation.js:696`) still fires for the still-dropped **non-scalar** names (`droppedAcc` keeps them). A *scalar* aggregate is now kept, so an `orderBy` on it is legal — if a case asserted an `orderBy`-on-a-scalar-aggregate `unsupported` (`compound_collapse_unsupported`), it now folds faithfully; update or remove it.
+- [ ] **Step 7: Whole-package + fuzz** ×20. No regressions in the eval/where-after-stats cases.
+- [ ] **Step 8: Staging re-validate** on acct 10671289 (`run_nerdgraph_query`, short window): the additive `count`+`pct` form returns both columns; the overwrite form returns one `count` = 2× the plain count; the median case still emits the scalar `x` only (`p50` dropped, warned).
+- [ ] **Step 9: Commit.**
+
+---
+
+### Task 7: Graduate invariants; update the NRQL reference; retire the spec
 
 **Commit:** `docs: graduate post-aggregation grouping invariants`
 
 **Files:**
-- Modify: `.claude/rules/design-decisions.md` — add the five invariants.
+- Modify: `.claude/rules/design-decisions.md` — add the six invariants.
 - Modify: `.claude/references/nrql-reference.md` — add the verified time/calendar facts (**guarded — see Step 2**).
 - Delete: `docs/superpowers/specs/2026-06-26-post-aggregation-grouping-gaps-design.md` (git history is the archive; invariants captured first).
 
@@ -365,6 +422,7 @@ Verified on staging (acct 10671289) + Splunk docs during the spec's double-check
   - A trailing time-bucket regroup (`_time`/`timestamp`/bin-alias) over a TIMESERIES inner → `foldPostAggregation` strips the bucket key from the outer FACET and sets the outer `ir.timeseries` to the inner's interval (TIMESERIES on both levels; without the outer one the series collapses to a scalar).
   - Bare `stats … by _time`/`timestamp` with no upstream bucketing (non-subquery) → `splToIR` post-loop sets `ir.timeseries='MAX'`, strips the key, warns `bare_time_facet_assumed_timeseries`. Runs before `facet_default_limit`.
   - `stats … by date_<comp>` → `handleStats` maps the five foldable fields (`date_hour/minute/wday/mday/year` → `hourOf/minuteOf/weekdayOf/dayOfMonthOf/yearOf(timestamp)` + `date_field_label_shape`) by exact name; `date_month/second/zone` → `date_field_no_fold` unsupported. Exact closed set, never a `date_*` prefix.
+  - eval-after-stats fold is **additive for scalar source aggregates** (`foldEvalLayer`): re-projects each scalar source under its exposed name alongside the folded eval (Splunk keeps the originals), deduping any source whose name a folded eval reassigns (the eval wins — flat duplicate aliases are silent-wrong). Non-scalar sources (`median`/`percentile` keyed objects, `uniques`/`values` lists) re-project in the wrong shape, so they stay dropped and the (narrowed) `eval_after_agg_drops_source` still warns for them.
 - [ ] **Step 2: Update the NRQL reference — guarded.** First run `git status --porcelain .claude/references/nrql-reference.md`. If it shows **no** uncommitted changes, add to `.claude/references/nrql-reference.md`: the `*Of` fold-vs-pin split, the string-label return shapes, the 366-bucket cap, and `TIMESERIES MAX`. If it shows uncommitted changes (a parallel thread owns the file), **do not edit it** — note the pending addition in the PR description and hand the snippet to that thread instead.
 - [ ] **Step 3: Delete the spec** and confirm nothing links to it: `grep -rn "2026-06-26-post-aggregation-grouping-gaps" docs .claude` should return only this plan. Remove `docs/superpowers/specs/2026-06-26-post-aggregation-grouping-gaps-design.md`.
 - [ ] **Step 4: Commit.** (Markdown-only — no test run needed.)
@@ -373,19 +431,19 @@ Verified on staging (acct 10671289) + Splunk docs during the spec's double-check
 
 ## Global Verification
 
-- [ ] `ASDF_NODEJS_VERSION=24.14.0 npm run test --workspace=@newrelic/query-bridge` — translator suite green; all five new positive cases + negatives pass; no regressions.
+- [ ] `ASDF_NODEJS_VERSION=24.14.0 npm run test --workspace=@newrelic/query-bridge` — translator suite green; all six new positive cases + negatives pass; no regressions.
 - [ ] Fuzz loop ×20 clean: `for i in $(seq 1 20); do ASDF_NODEJS_VERSION=24.14.0 npx vitest run spl-fuzz || break; done`.
 - [ ] `ASDF_NODEJS_VERSION=24.14.0 npm run lint && ASDF_NODEJS_VERSION=24.14.0 npm run types:check` — clean.
 - [ ] No `npm run build:parsers` (no grammar change).
-- [ ] CLI spot-checks (`ASDF_NODEJS_VERSION=24.14.0 node bin/spl2nrql.js "<q>"`): B → unsupported; C → unsupported; D1 → both-levels TIMESERIES, no `FACET _time`; D2 → `TIMESERIES MAX`; E `date_hour` → `FACET hourOf(timestamp)`, `date_month` → unsupported, `date_created` → plain `FACET date_created`.
-- [ ] Staging re-validation (acct 10671289 `Transaction`, `run_nerdgraph_query`, short window) of the D1/D2/E happy-path NRQL before any human promotes past `verified: false`: D1 both-levels form returns one row per minute; D2 `TIMESERIES MAX` returns a bucketed series; E `FACET hourOf(timestamp)` returns hour labels.
-- [ ] Open the PR (one PR, six commits). Run `write-gooder` for the PR body; 100–200 words, summary + test plan.
+- [ ] CLI spot-checks (`ASDF_NODEJS_VERSION=24.14.0 node bin/spl2nrql.js "<q>"`): B → unsupported; C → unsupported; D1 → both-levels TIMESERIES, no `FACET _time`; D2 → `TIMESERIES MAX`; E `date_hour` → `FACET hourOf(timestamp)`, `date_month` → unsupported, `date_created` → plain `FACET date_created`; F `stats count by host | eval pct=count*100` → additive `count` + `pct`, no warning; `eval count=count*2` → one `count`.
+- [ ] Staging re-validation (acct 10671289 `Transaction`, `run_nerdgraph_query`, short window) of the D1/D2/E/F happy-path NRQL before any human promotes past `verified: false`: D1 both-levels form returns one row per minute; D2 `TIMESERIES MAX` returns a bucketed series; E `FACET hourOf(timestamp)` returns hour labels; F additive form returns both `count` and `pct` columns.
+- [ ] Open the PR (one PR, seven commits). Run `write-gooder` for the PR body; 100–200 words, summary + test plan.
 
 ## Self-Review (run before requesting review)
 
-1. **Spec coverage:** all five gaps (B/C/D1/D2/E) have a task; each names its message key(s) and a negative control. The spec's "Notes for the implementation plan" items are resolved — C guards before the wrap (clean unsupported); D2 keeps `host` on the mixed-key case; E matches an exact closed set.
+1. **Spec coverage:** all six gaps (B/C/D1/D2/E/F) have a task; each names its message key(s) and a negative control. The spec's "Notes for the implementation plan" items are resolved — C guards before the wrap (clean unsupported); D2 keeps `host` on the mixed-key case; E matches an exact closed set; F makes the eval fold additive for scalar sources (and supersedes C's drops-source-warning note by keeping scalar `count`, so C's `host2` stops warning).
 2. **Loud-failure check:** every non-faithful path pushes `unsupported` (B, C, E-no-fold) or a warning for an unavoidable approximation (D2, E-fold); none emit compiling-but-wrong or parse-invalid NRQL.
 3. **Blast-radius check:** B/C/E are gated on a marker or an exact name set (no effect on unrelated queries); D1 changes only the time-bucket-exempt fold branch; D2 is gated on non-subquery + `_time`/`timestamp` + no existing timeseries. D1↔D2 separation rests on the subquery guard — verify both in the same run.
-4. **Message consistency:** five new keys (`dedup_between_aggregations`, `eval_shadows_facet_key`, `bare_time_facet_assumed_timeseries`, `date_field_label_shape`, `date_field_no_fold`), each referenced by a `cases` entry so the `spl.test.js` validation passes.
+4. **Message consistency:** five new keys (`dedup_between_aggregations`, `eval_shadows_facet_key`, `bare_time_facet_assumed_timeseries`, `date_field_label_shape`, `date_field_no_fold`), each referenced by a `cases` entry so the `spl.test.js` validation passes. F adds and removes no key — it **narrows** `eval_after_agg_drops_source` to non-scalar source drops (scalar-source cases stop firing it; median/percentile cases keep it).
 5. **Verified levels:** all new cases `verified: false`; no `verified: 'human'` case touched.
-6. **`warningFunc` exhaustiveness:** several cases carry the pre-existing `facet_default_limit` (and the C-negative carries `eval_after_agg_drops_source`). Each task's green step matches `warningFunc` to the exact fired set rather than trusting the listed guess.
+6. **`warningFunc` exhaustiveness:** several cases carry the pre-existing `facet_default_limit` (and, until Task 6, C's `host2` negative carries `eval_after_agg_drops_source` — F then keeps the scalar `count`, so `host2` stops firing it and its `warningFunc` clears to `[]`; the key remains for non-scalar sources). Each task's green step matches `warningFunc` to the exact fired set rather than trusting the listed guess.
