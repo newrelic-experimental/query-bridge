@@ -35,6 +35,9 @@ function parseUnit(unit) {
  * @returns {{slug:string, files:Record<string,string>}[]}
  */
 export function runImport(input, opts) {
+  // De-duplicate slugs so two same-title dashboards in one bulk export don't
+  // overwrite each other's output dir (first wins the bare slug, then -2, -3…).
+  const seenSlugs = new Map();
   return detectFormat(input).map((unit) => {
     const model = parseUnit(unit);
     const multiSelectTokens = new Set(
@@ -47,7 +50,10 @@ export function runImport(input, opts) {
       accountId: opts.account,
       region: opts.region,
     });
-    const slug = slugify(model.title);
+    const baseSlug = slugify(model.title);
+    const n = (seenSlugs.get(baseSlug) ?? 0) + 1;
+    seenSlugs.set(baseSlug, n);
+    const slug = n === 1 ? baseSlug : `${baseSlug}-${n}`;
     const report = buildReport(model.title, translated);
     return {
       slug,

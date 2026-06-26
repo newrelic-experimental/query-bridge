@@ -48,6 +48,21 @@ describe('runImport', () => {
       'gizmo-board',
     ]);
   });
+
+  it('de-duplicates slugs when two dashboards share a title', () => {
+    const env = JSON.stringify({
+      entry: [
+        { content: { version: '1.1', isDashboard: true, 'eai:data': xml } },
+        { content: { version: '1.1', isDashboard: true, 'eai:data': xml } },
+      ],
+    });
+    const results = runImport(env, { account: null });
+    expect(results.map((r) => r.slug)).toEqual(['cli-dash', 'cli-dash-2']);
+    // each result's files are keyed by its own (unique) slug
+    expect(results[1].files['cli-dash-2.tf']).toContain(
+      'newrelic_one_dashboard',
+    );
+  });
 });
 
 describe('parseArgs — --region validation', () => {
