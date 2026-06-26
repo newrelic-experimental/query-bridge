@@ -30,7 +30,7 @@ npm link
 spl2nrql "index=web | stats count by host"
 ```
 
-To unlink later: `npm unlink -g @datanerd/shared-component-logs`
+To unlink later: `npm unlink -g @newrelic/query-bridge`
 
 ## Output formats
 
