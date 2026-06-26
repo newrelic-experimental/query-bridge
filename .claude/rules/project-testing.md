@@ -12,7 +12,7 @@ These replace conflicting guidance from the universal testing standards (`.claud
 - **Test style:** Data-driven `cases` arrays with fields: `spl`, `nrql`, `errorIncludes`, `warningFunc`, `unsupportedFunc`, `doc`, `verified`, `skip` (note: `warningIncludes`/`unsupportedIncludes` are NOT implemented by the runner — use the `*Func` message-key arrays)
 - **Verification levels:** `false` → `'llm'` → `'human'`. Only humans can promote to `'human'`.
 - **Message assertions:** `warningFunc` / `unsupportedFunc` arrays must list ALL message functions that fire (exhaustive, not partial)
-- **Fuzz testing:** fast-check property-based tests in `test/spl/spl-fuzz.test.js`
+- **Fuzz testing:** fast-check property-based tests in `test/spl/spl-fuzz.test.js`. It **reseeds each run — a single green is a false-green**; loop it (~20×) before trusting a translator change (`for i in $(seq 1 20); do npx vitest run spl-fuzz || break; done`).
 - **Real-world corpus:** 339 queries in `test/spl/spl-real-world.json`
 - **NRQL validation:** Use `validate-test-cases` skill to validate translated NRQL via MCP before accepting
 - **No e2e tests:** This is a pure library — no UI, no Playwright

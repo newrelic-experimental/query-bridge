@@ -26,6 +26,8 @@ Use these for deeper research when the local reference isn't enough:
 
 ## Validate NRQL via MCP
 
+> ⚠️ **`execute_nrql_query` runs an older NRQL grammar — re-check failures via `run_nerdgraph_query` (verified acct 1, 2026-06-24).** It falsely rejects 12 functions — `jparse`, `convert`, `cidrAddress`, `toTimestamp`, `toDatetime`, `encode`, `decode`, `mapKeys`, `mapValues`, `split`, `replace`, `aggregateFunnel` — AND the `PREDICT` clause (`unexpected 'PREDICT'`). These DO work — re-run via `run_nerdgraph_query` (`run_nerdgraph_query(query: "query($id:Int!,$q:Nrql!){actor{account(id:$id){nrql(query:$q){results}}}}", variables: {id:1, q:"<NRQL>"})`) or the UI. NOT affected: `blob`, `lookup`, `stddev`, `subnet`, `meta`, `hdrHistogram`/`hdrPercentile`/`hdrPercentiles`, `attributeCardinality`, `SLIDE BY`. NOTE: `Unknown function count()` from `numeric(count(x))`-style queries is NOT a tool bug — it's NRDB rejecting an invalid query (a row-wise function wrapping an aggregate it can't take); deterministic on both tools (`string()` can wrap an aggregate, `numeric()` can't). Account 1 Log: max 1-hour windows or queries time out. Full classified list: `.claude/references/nrql-reference.md`.
+
 When `mcp__plugin_nr_nr-mcp-server__execute_nrql_query` is available, **validate every NRQL query you produce or review** by running it against account 1. Even if the fields don't exist in the target event type, this confirms the query compiles (valid syntax). A query that returns zero rows is fine — a query that returns an error is not.
 
 Use `FROM Log` as the default event type for validation. If the query uses fields that don't exist, that's OK — the goal is to confirm NRQL syntax is valid, not that data exists.

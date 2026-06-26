@@ -43,6 +43,22 @@ SELECT <functions/fields>
 | `dimensions()` | All attribute names as facets |
 | `cardinality([field1, field2, ...])` | Estimated cardinality |
 
+> ⚠️ **TOOL CAVEAT — do NOT trust `execute_nrql_query` for function support.** The `nr-mcp-server` `execute_nrql_query` (and `natural_language_to_nrql_query`) tool routes NRQL through an older parser that returns `Unknown function <fn>()` / `Not supported: Call <fn>` for a set of valid row-wise functions the real engine (UI / NerdGraph) runs fine. It is an OLDER NRQL grammar, so it misses recent **functions AND clauses**. Confirmed exec gaps (all main-thread-verified, account 1, 2026-06-24) — **functions (12):** `jparse`, `convert`, `cidrAddress`, `toTimestamp`, `toDatetime`, `encode`, `decode`, `mapKeys`, `mapValues`, `split`, `replace`, `aggregateFunnel`; **clause:** `PREDICT` (→ `unexpected 'PREDICT'`). Re-validate any of these via `run_nerdgraph_query` (`query($id:Int!,$q:Nrql!){actor{account(id:$id){nrql(query:$q){results}}}}`) before marking it unsupported.
+>
+> **NOT affected (recognized by `execute_nrql_query`):** `blob`, `lookup`, `stddev`, `subnet`, `meta`, `hdrHistogram`, `hdrPercentile`, `hdrPercentiles`, `attributeCardinality`, the `SLIDE BY` clause, and all core/common functions.
+>
+> **In dirac source but NOT deployed anywhere (both tools return `Unknown function`):** `trim`, `substringCount`, `valueType`, `eventSize`, `funnelWithValues`, `eventRecords`, `jsonSizeEstimate`, `deterministicSample`, `newCatMap`, `columns` (special token). The translator must not emit these.
+>
+> **Method note:** a parallel-agent swarm produced a first-pass sweep of all ~131 functions, but ~⅓ of its `unknown` verdicts were false (aggregate timeouts on high-volume Log, and non-`Unknown function` errors like `Unknown meta() attribute`, misclassified as "unknown"). Every entry above is re-verified on the main thread. Rule: an exec **timeout** on an aggregate means **recognized** (it parsed and started crunching), not unknown.
+>
+> **Function-classification ground truth:** the NRQL compiler is `dirac-nrql` — registry in `DefaultNRQLProvider.java`: `getDistributedFunctionFactories()` = aggregate, `getEvaluableFactories()` = evaluable/row-wise. That source is a SUPERSET of what's deployed (e.g. `trim` is in source but not live), so it answers "agg vs evaluable" and "does the function exist in source," but deployment/runnability must be confirmed live via `run_nerdgraph_query`.
+>
+> ⚠️ **Lookalike that is NOT a tool bug:** wrapping an aggregate in a row-wise function that can't take one (e.g. `numeric(count(host))`) errors as `Unknown function count()` (NerdGraph) / `Not supported: Call{count}` (execute_nrql_query) — but this is NRDB correctly rejecting an INVALID query (deterministic, identical on both tools, verified acct 1 2026-06-24). `string(count(x))` works on both tools; `numeric(count(x))` fails on both. `string()` can wrap an aggregate; `numeric()` cannot. Don't misread these as corruption.
+>
+> **Can a function wrap an aggregate in a flat SELECT?** (the `f(count(*))` "fold" question; verified vs BOTH factory lists 2026-06-25. A function can iff it has a *distributed* form — many are registered in both lists.) **YES (distributed):** arithmetic operators, `mod`, `round`, `abs`, `ceil`, `floor`, `sqrt`, `exp`, `ln`, `log10`/`log2`/`log`, `pow`, `if`/`case`, `string`, `convert`, `getField`/`extractfield` (incl. its `col['…']` bracket alias). **NO (Evaluable-only):** `numeric`, `concat`, `jparse` (`jsonparse`), `split`, `encode`/`decode`, `cidrAddress`, `mapKeys`/`mapValues`, `lower`/`upper`/`substring`/`replace`. Lookalikes to keep straight: `string` wraps an aggregate but `numeric` does not; `getField`/`extractfield` does but `jparse` does **not** (don't conflate — `getField`=`extractfield` is dual-registered, `jparse`=`jsonparse` is Evaluable-only).
+>
+> **Extracting a non-scalar aggregate across a subquery boundary:** `median`/`percentile`/`uniques` expose as keyed objects (`median(x)` → `{50: v}`), not scalars. Pull the scalar with `getField(col,'<N>')` (median → `'50'`, `percN` → `'N'`). To use it in BOTH SELECT and WHERE, bind once with `WITH`: `WITH getField(md,'50') AS md50 SELECT md50 FROM (…) WHERE md50 > 10` ✓ — a `WITH` binding is visible to SELECT+WHERE, but a SELECT alias is **not** visible in WHERE (returns empty silently). Verified acct 1 / 10671289, 2026-06-25.
+
 ## Non-Aggregation Functions (usable in SELECT/WHERE/WITH)
 
 | Function | Description |
@@ -100,23 +116,19 @@ The RHS of a comparison operator (`=`, `!=`, `<`, `>`, `<=`, `>=`) accepts a lit
 | `buckets` | ✓ | compiles; rarely meaningful as a comparison RHS |
 | `dimensions()` | ✓ | compiles; normally a FACET helper |
 | `capture` | ✓ (parses) | RHS position is accepted; the pattern must still satisfy capture's own named-group rule (`(?P<name>…)`) or you get `RegexCapture … must contain at least 1 named capture group` — that's a pattern error, not an RHS rejection |
-| `jparse` | ✗ | `Not supported: Call jparse` |
-| `convert` | ✗ | `Not supported: Call convert` |
-| `cidrAddress` | ✗ | `Not supported: Call cidrAddress` |
-| `toTimestamp` / `toDatetime` | ✗ | `Not supported: Call …` |
-| `decode` / `encode` | ✗ | `Not supported: Call …` |
-| `mapKeys` / `mapValues` | ✗ | `Not supported: Call …` |
-| `lookup` | ✗ | `Not supported: Call lookup` |
-| `stddev` | ✗ | `Not supported: Call stddev` — it's an aggregator, not a true non-aggregator |
-| `blob` | ✗ | `Blob attribute access not allowed in this context` |
+| `jparse` | ✓ | row-wise; SELECT + comparison-RHS verified via `run_nerdgraph_query` 2026-06-24. Prior `✗ Not supported: Call jparse` = `execute_nrql_query` bug (A) |
+| `convert` | ✓ | registered; real sig `convert(<function>, <fromUnit>, <toUnit>)`. Prior `✗` = bug (A) |
+| `cidrAddress` | ✓ | SELECT verified (null on non-CIDR input). Prior `✗` = bug (A) |
+| `toTimestamp` / `toDatetime` | ✓ | SELECT verified; `toTimestamp` also comparison-RHS verified. Prior `✗` = bug (A) |
+| `decode` / `encode` | ✓ | `encode('hello','base64')`→`aGVsbG8=`; `decode(...)`→`hello`. Prior `✗` = bug (A) |
+| `mapKeys` / `mapValues` | ✓ | `mapKeys/mapValues(jparse('{...}'))`→keys/values arrays. Prior `✗` = bug (A) |
+| `lookup` | ✓ | `FROM lookup(t)` runs via BOTH tools — the original `✗` (lookup on a comparison RHS) was a category error, not a support gap |
+| `stddev` | ✗ (bare on RHS) | genuinely an aggregator — `SELECT stddev(x)` runs via both tools; only a *bare* aggregator on a comparison RHS is rejected (real restriction, not a tool bug) |
+| `blob` | context | `SELECT blob(field)` runs via `execute_nrql_query` (returns null); `Blob attribute access not allowed in this context` is a real positional restriction, not a tool bug |
 
 **Aggregator functions are NEVER allowed bare on a comparison RHS.** `average`, `sum`, `min`/`max`, `median`, `percentile`, `uniqueCount`, `uniques`, `latest`/`earliest`, `rate`, `stddev`, `percentage`, `filter`, `histogram`, `apdex`, `cardinality`, etc. all fail with `Not supported: Call <fn>` — a bare WHERE cannot aggregate. The **supported pattern is a subquery**: `WHERE duration > (SELECT average(duration) FROM Transaction)` ✓ (verified, returned rows). So an aggregator RHS must be emitted as `op (SELECT agg(...) FROM ...)`, never `op agg(...)`.
 
-**Rule of thumb (one test, no list lookup):** the ✗ non-aggregator functions are not RHS-rejected for being on the RHS — they are **not implemented in the row-wise evaluator at all.** `SELECT jparse(x)`, `SELECT convert(x,..)`, `SELECT cidrAddress(x)` each return `Unknown function <fn>()`, while `SELECT round(x, 2)` returns a value. The same gap shows up in WHERE as `Not supported: Call <fn>`. So:
-
-> **If `SELECT fn(x)` returns a value per row, `fn` is safe on a comparison RHS. If `SELECT fn(x)` returns `Unknown function`, it won't work in WHERE either** — emit `unsupported`.
-
-For an aggregator, neither holds — wrap it: `op (SELECT fn(...) FROM <source>)`. (The table above is the cached answer for the common functions so you don't have to run the probe every time.)
+**The old "rule of thumb" here was WRONG — it rested on `execute_nrql_query` false negatives (bug A above).** `SELECT jparse(x)` returning `Unknown function` via `execute_nrql_query` does NOT mean jparse is unsupported — it runs fine via `run_nerdgraph_query` and the UI. **Never decide a function is unsupported from an `execute_nrql_query` error; re-run the identical query via `run_nerdgraph_query` and trust THAT.** For an aggregator on a comparison RHS, the real restriction still holds — wrap it as a subquery: `op (SELECT fn(...) FROM <source>)`.
 
 ## Placeholders: `$macro$` vs `{{var}}` — two different systems resolve them
 
@@ -293,6 +305,16 @@ Aliases computed expressions:
 ```sql
 FROM Log SELECT * WITH numeric(duration) / 1000 AS durationSec
 ```
+
+**`WITH` is row-wise (pre-aggregation) — it CANNOT compute an aggregate.** `WITH count(*) AS t`,
+`WITH average(x) AS t`, `WITH latest(x) AS t` all fail with `Unknown function …()` (a real
+rejection, not the arg-strip tool bug — `WITH duration*2 AS x` works, so the position is fine).
+Consequences (verified acct 10671289, 2026-06-25): a grand-total / global aggregate attached to
+rows needs a **scalar subquery** (`SELECT *, (SELECT average(x) FROM …) AS a`), not `WITH`; and
+`top`-style percent-of-grand-total can't use `WITH count(*)` either. What `WITH` CAN do is row-wise
+ops on an aggregate **column a subquery already exposes** (a row value), e.g.
+`WITH getField(md,'50') AS md50 SELECT md50 FROM (… median(d) AS md …) WHERE md50 > 10` ✓ — and a
+`WITH` binding is visible to both SELECT and WHERE, where a SELECT alias is not.
 
 ## WHERE operators
 

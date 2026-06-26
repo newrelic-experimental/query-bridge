@@ -217,8 +217,9 @@ on it; rebase onto `master` once #35 merges). Sidekick review required (S-5).
 ## Out of scope
 
 The translator subquery-wrapping bugs (eval-after-stats, timechart→stats,
-head-between-stats) tracked in `docs/superpowers/specs/2026-06-18-subquery-wrapping-design.md`
-are a separate investigation, not part of this sweep's canaries.
+head-between-stats) were a separate investigation, not part of this sweep's
+canaries. (Now fixed — see the **Subquery wrapping** bullet in
+`.claude/rules/design-decisions.md`.)
 
 ## Expert review (2026-06-22): refinements, scope, verify-first
 
