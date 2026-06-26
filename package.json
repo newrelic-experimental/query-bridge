@@ -29,6 +29,7 @@
     "@commitlint/cli": "*",
     "@commitlint/config-conventional": "*",
     "@eslint/js": "*",
+    "@vitest/coverage-v8": "*",
     "eslint": "*",
     "eslint-config-prettier": "*",
     "fast-check": "*",

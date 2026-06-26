@@ -31,7 +31,8 @@
     "name": "Logging Team"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=html",
     "lint": "eslint .",
     "types:check": "tsc --noEmit"
   },
