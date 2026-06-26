@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { detectFormat } from '../src/detectFormat.js';
 import { parseSimpleXml } from '../src/parseSimpleXml.js';
+import { parseStudio } from '../src/parseStudio.js';
 import { translateWidgets } from '../src/translateWidgets.js';
 import { translateVariables } from '../src/translateVariables.js';
 import { emitTerraform, slugify } from '../src/emitTerraform.js';
@@ -21,36 +22,43 @@ const usage = `Usage:
   spl-dashboard <file.xml> --account 12345  bake a literal account_id
   spl-dashboard <file.xml> --region Staging  provider region: US (default), EU, JP, Staging`;
 
+function parseUnit(unit) {
+  return unit.format === 'studio'
+    ? parseStudio(unit.payload)
+    : parseSimpleXml(unit.payload);
+}
+
 /**
- * Pure pipeline: XML string → { slug, files }. No file I/O — testable directly.
- * @param {string} xml
+ * Pure pipeline: raw input → array of { slug, files }. A REST envelope yields many.
+ * @param {string} input
  * @param {{account:number|null, region?:string}} opts
- * @returns {{slug:string, files:Record<string,string>}}
+ * @returns {{slug:string, files:Record<string,string>}[]}
  */
-export function runImport(xml, opts) {
-  const units = detectFormat(xml);
-  const model = parseSimpleXml(units[0].payload);
-  const multiSelectTokens = new Set(
-    model.variables.filter((v) => v.multi).map((v) => v.name),
-  );
-  const translated = translateWidgets(model.widgets, { multiSelectTokens });
-  const variables = translateVariables(model.variables);
-  const emitModel = { ...model, widgets: translated, variables };
-  const tf = emitTerraform(emitModel, {
-    accountId: opts.account,
-    region: opts.region,
+export function runImport(input, opts) {
+  return detectFormat(input).map((unit) => {
+    const model = parseUnit(unit);
+    const multiSelectTokens = new Set(
+      model.variables.filter((v) => v.multi).map((v) => v.name),
+    );
+    const translated = translateWidgets(model.widgets, { multiSelectTokens });
+    const variables = translateVariables(model.variables);
+    const emitModel = { ...model, widgets: translated, variables };
+    const tf = emitTerraform(emitModel, {
+      accountId: opts.account,
+      region: opts.region,
+    });
+    const slug = slugify(model.title);
+    const report = buildReport(model.title, translated);
+    return {
+      slug,
+      files: {
+        [`${slug}.tf`]: tf['dashboard.tf'],
+        'versions.tf': tf['versions.tf'],
+        'variables.tf': tf['variables.tf'],
+        [`${slug}.report.md`]: report,
+      },
+    };
   });
-  const slug = slugify(model.title);
-  const report = buildReport(model.title, translated);
-  return {
-    slug,
-    files: {
-      [`${slug}.tf`]: tf['dashboard.tf'],
-      'versions.tf': tf['versions.tf'],
-      'variables.tf': tf['variables.tf'],
-      [`${slug}.report.md`]: report,
-    },
-  };
 }
 
 export function parseArgs(argv) {
@@ -88,7 +96,7 @@ async function main() {
     console.log(usage);
     return;
   }
-  let opts, out;
+  let opts, results;
   try {
     opts = parseArgs(argv);
     const xml = opts.file
@@ -98,17 +106,20 @@ async function main() {
       console.log(usage);
       return;
     }
-    out = runImport(xml, { account: opts.account, region: opts.region });
+    results = runImport(xml, { account: opts.account, region: opts.region });
   } catch (e) {
     process.stderr.write(`error: ${e.message}\n`);
     process.exitCode = 1;
     return;
   }
-  mkdirSync(opts.out, { recursive: true });
-  for (const [name, body] of Object.entries(out.files)) {
-    const path = join(opts.out, name);
-    writeFileSync(path, body);
-    process.stdout.write(`${path}\n`);
+  for (const r of results) {
+    const dir = results.length > 1 ? join(opts.out, r.slug) : opts.out;
+    mkdirSync(dir, { recursive: true });
+    for (const [name, body] of Object.entries(r.files)) {
+      const path = join(dir, name);
+      writeFileSync(path, body);
+      process.stdout.write(`${path}\n`);
+    }
   }
 }
 

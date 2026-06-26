@@ -13,7 +13,7 @@ describe('end-to-end: realistic Simple XML → Terraform', () => {
   });
 
   it('emits one resource, three widgets, and a report', () => {
-    const out = runImport(xml, { account: 12345 });
+    const [out] = runImport(xml, { account: 12345 });
     const tf = out.files[`${out.slug}.tf`];
     expect(tf).toContain('resource "newrelic_one_dashboard"');
     expect((tf.match(/widget_/g) || []).length).toBe(3); // line + single + table
@@ -21,8 +21,8 @@ describe('end-to-end: realistic Simple XML → Terraform', () => {
   });
 
   it('re-running produces byte-identical output (idempotent)', () => {
-    const a = runImport(xml, { account: 12345 });
-    const b = runImport(xml, { account: 12345 });
+    const [a] = runImport(xml, { account: 12345 });
+    const [b] = runImport(xml, { account: 12345 });
     expect(a.files).toEqual(b.files);
   });
 });

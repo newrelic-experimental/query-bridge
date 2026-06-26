@@ -117,7 +117,7 @@ describe('importer: core pipeline (working today)', () => {
       <search><query><![CDATA[index=app | timechart count by status]]></query></search>
       <option name="charting.chart">line</option>
     </chart></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('resource "newrelic_one_dashboard"');
     expect(tf).toContain('widget_line {');
     expect(tf).toContain('FROM Log SELECT count(*)');
@@ -141,7 +141,7 @@ describe('importer: core pipeline (working today)', () => {
       <title>Search</title>
       <search><query><![CDATA[index=app $tok$ | stats count]]></query></search>
     </table></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('{{tok}}');
     expect(tf).not.toContain("'$tok$'");
   });
@@ -156,7 +156,7 @@ describe('importer: template variables [pending]', () => {
     const xml = `<dashboard><label>V</label><row><panel><table>
       <search><query><![CDATA[index=app environment=$env_tok$ | stats count by host]]></query></search>
     </table></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('{{env_tok}}');
     expect(tf).not.toContain("'$env_tok$'");
   });
@@ -167,7 +167,7 @@ describe('importer: template variables [pending]', () => {
     const xml = `<dashboard><label>Q</label><row><panel><table>
       <search><query><![CDATA[index="$env$" | stats count]]></query></search>
     </table></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('{{env}}');
     expect(tf).not.toContain("'$env$'");
   });
@@ -176,7 +176,7 @@ describe('importer: template variables [pending]', () => {
     const xml = `<dashboard><label>I</label><row><panel><table>
       <search><query><![CDATA[index=$idx$ | stats count]]></query></search>
     </table></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('{{idx}}');
     expect(tf).not.toContain("'$idx$'");
   });
@@ -218,7 +218,7 @@ describe('importer: template variables [pending]', () => {
       </input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app host=$host$ | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('type = "nrql"');
     expect(tf).toContain('FACET host');
     expect(tf).toContain('account_ids = [1]');
@@ -231,7 +231,7 @@ describe('importer: template variables [pending]', () => {
       </input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).not.toContain('type = "nrql"');
   });
 
@@ -244,7 +244,7 @@ describe('importer: template variables [pending]', () => {
       </input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app host=$hosts$ | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('host IN ({{hosts}})');
     expect(tf).toContain('is_multi_selection = true');
   });
@@ -256,7 +256,7 @@ describe('importer: template variables [pending]', () => {
       <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toMatch(/Splunk '\*' means "all"/);
   });
 
@@ -267,7 +267,7 @@ describe('importer: template variables [pending]', () => {
       <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('variable {');
     expect(tf).toContain('env');
   });
@@ -308,7 +308,7 @@ describe('importer: timepicker & time tokens [pending]', () => {
       </search>
       <option name="charting.chart">line</option>
     </chart></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('SINCE');
   });
 
@@ -322,7 +322,7 @@ describe('importer: timepicker & time tokens [pending]', () => {
       <search><query><![CDATA[index=app earliest=$tr.earliest$ latest=now | timechart count]]></query></search>
       <option name="charting.chart">line</option>
     </chart></panel></row></dashboard>`;
-    const { files } = runImport(xml, { account: 1 });
+    const [{ files }] = runImport(xml, { account: 1 });
     const tf = dashboardTf(files);
     expect(tf).not.toContain('SINCE {{');
     expect(tf).not.toContain('$tr.earliest$');
@@ -351,7 +351,7 @@ describe('importer: emitter & structure [pending]', () => {
       <search><query><![CDATA[index=app | stats count by status]]></query></search>
       <option name="charting.chart">pie</option>
     </chart></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     // A markdown block must never contain nrql_query (invalid HCL).
     expect(tf).not.toMatch(/widget_markdown \{[^}]*nrql_query/s);
   });
@@ -395,7 +395,7 @@ describe('importer: emitter & structure [pending]', () => {
       </table></panel></row>
     </form>`;
     const widgets = translateWidgets(parseSimpleXml(xml).widgets);
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     // Either the base scope reaches the NRQL, or the panel is a loud placeholder.
     const kept =
       tf.includes("index = 'app'") || widgets[0].outcome === 'placeholder';
