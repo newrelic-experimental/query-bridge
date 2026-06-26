@@ -34,8 +34,8 @@ When `[verified]` and `[assumed]` conflict, trust `[verified]` and re-check the 
 
 Two distinct sources in `../nr-query-bridge-corpus/sources/` (verified 2026-06-12) — both are translation/test material:
 
-1. **`REDACTED.saved/dashboards.json`** — a Splunk REST export, 4,665 entries (REDACTED).
-2. **`REDACTED/`** — a REDACTED SRE Splunk-app tree with **149 standalone `.xml` view files** on disk (`REDACTED.xml`, etc.).
+1. **`REDACTED.saved/dashboards.json`** — a real customer's Splunk REST export, 4,665 entries.
+2. **`REDACTED/`** — a real customer's SRE Splunk-app tree with **149 standalone `.xml` view files** on disk.
 
 So **standalone-`.xml`-file input is corpus-real, not hypothetical** — the detector's single-file path has 149 real fixtures, and Phase 1 can use a real (de-identified) one.
 
@@ -319,7 +319,7 @@ A functional sweep (`test/integration/`: 10 fixtures — Splunk's own published 
 - **Layout fidelity is approximate.** Simple XML has no coordinates; computed row/column layout won't match Splunk pixel-perfect. Acceptable — semantic fidelity (right query, right viz) matters more than exact placement. Note in report, don't chase.
 - **`charting.chart` defaulting.** A `<chart>` with no `charting.chart` option defaults to `line` (per Splunk docs). The parser must apply that default, or such panels become `unknown`/placeholder wrongly.
 - **Studio `theme`/decoration vizzes** (`splunk.rectangle`/`ellipse`/`image`/`markdown`-as-label) carry no query. Don't translate them; either skip or emit as static markdown. Don't placeholder-spam the dashboard with "unsupported" for pure decorations.
-- **Customer data in fixtures.** The corpus is real customer dashboards (REDACTED index/host/app names). Every committed fixture MUST be de-identified. Synthetic-first; de-identify the one real sample. Gitignore raw corpus pulls.
+- **Customer data in fixtures.** The corpus is real customer dashboards (real customer index/host/app names). Every committed fixture MUST be de-identified. Synthetic-first; de-identify the one real sample. Gitignore raw corpus pulls.
 
 ## Open questions — verify before building on these
 
