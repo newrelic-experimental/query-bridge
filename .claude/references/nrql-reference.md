@@ -267,6 +267,12 @@ output-column label.** This is the table to consult when translating any SPL ren
 - **No in-place name reuse:** a `WITH` binding must not reuse an existing source field's
   name (the `eval X = f(X)` reassignment trap — see CONFIRMED-15). Alias to a fresh name.
   (The emitter has no collision guard today.)
+- **A duplicate output alias in ONE flat SELECT silently keeps the FIRST column.**
+  `SELECT count(*) AS c, count(*)*2 AS c` returns `c` = the plain count (the first), dropping
+  the second, no error (verified acct 10671289, 2026-06-26). This is the **opposite** of a
+  subquery-exposed name collision (**last** wins — see "Column names a subquery exposes"): the
+  two surfaces resolve a collision in opposite directions, so never assume either. Alias every
+  output column uniquely.
 
 **SPL-translation mapping (consequence):**
 - `rename A as B` (display-only) → `A AS 'B'` in SELECT, `FACET A AS 'B'` in facet, bare `A` in ORDER BY/WHERE — **never a bare `B`** (B is not an attribute).
@@ -279,6 +285,7 @@ Groups results by field values. Multiple fields: `FACET field1, field2`.
 
 - `FACET CASES(WHERE cond1, WHERE cond2, ...)` — custom buckets
 - `LIMIT <n>` after FACET controls number of groups (default 10, max 5000, or MAX)
+- **`LIMIT N` after FACET selects the top N groups by aggregate value; `ORDER BY` does NOT change which groups are kept** — it only reorders the returned rows. Verified acct 10671289, 2026-06-26: `SELECT count(*) AS c FACET appName ORDER BY c ASC LIMIT 3` returns the same three highest-count appNames as a bare `LIMIT 3` (not the three lowest), with 36 distinct appNames present. There is no "bottom-N" or "first-N-in-stats-order" selection via FACET — only top-N-by-aggregate. (This is why a `head N` between two aggregations has no faithful NRQL form — see `design-decisions.md`.)
 
 ## WITH clause
 
