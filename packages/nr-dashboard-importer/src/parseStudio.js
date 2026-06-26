@@ -28,8 +28,8 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 /** Studio pixel position → NR 12-column grid {x,y,w,h}. */
 function pxToGrid(pos, canvasW) {
   const W = canvasW || CANVAS_W;
-  const x = clamp(Math.round((pos.x / W) * 12), 0, 11);
-  const w = clamp(Math.round((pos.w / W) * 12), 1, 12 - x);
+  const x = clamp(Math.round(((pos.x ?? 0) / W) * 12), 0, 11);
+  const w = clamp(Math.round(((pos.w ?? 0) / W) * 12), 1, 12 - x);
   const y = Math.max(0, Math.round((pos.y ?? 0) / ROW_PX));
   const h = Math.max(1, Math.round((pos.h ?? ROW_PX) / ROW_PX));
   return { x, y, w, h };
@@ -52,11 +52,28 @@ function resolveDataSource(dsId, dataSources) {
   };
 }
 
+function titleOf(viz) {
+  return String(viz.title ?? viz.options?.title ?? '').trim();
+}
+
 function buildWidget(viz, dataSources, layout) {
+  if (DECORATION.has(viz.type)) return null; // pure shape — dropped, no widget
+  if (viz.type === 'splunk.image') {
+    const src = viz.options?.src ?? '';
+    if (/^https?:\/\//i.test(src)) {
+      return createWidget({
+        title: titleOf(viz),
+        vizType: 'markdown',
+        options: { text: `![](${src})` },
+        layout,
+      });
+    }
+    return null; // image without a usable URL — dropped, not placeholdered
+  }
   const vizType = VIZ_MAP[viz.type] ?? 'unknown';
   const resolved = resolveDataSource(viz.dataSources?.primary, dataSources);
   return createWidget({
-    title: viz.title ?? '',
+    title: titleOf(viz),
     vizType,
     rawSpl: resolved.rawSpl,
     unsupportedReason:
@@ -79,9 +96,12 @@ export function parseStudio(json) {
   for (const item of structure) {
     const viz = visualizations[item.item];
     if (!viz) continue; // structure points at a missing viz — nothing to emit
-    widgets.push(
-      buildWidget(viz, dataSources, pxToGrid(item.position ?? {}, canvasW)),
+    const widget = buildWidget(
+      viz,
+      dataSources,
+      pxToGrid(item.position ?? {}, canvasW),
     );
+    if (widget) widgets.push(widget);
   }
   return createDashboardModel({
     title: doc.title ?? doc.label ?? '',
