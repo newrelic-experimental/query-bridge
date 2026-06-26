@@ -150,7 +150,11 @@ function widgetBlock(widget, accountId) {
   lines.push(`    width  = ${widget.layout.w}`);
   lines.push(`    height = ${widget.layout.h}`);
   if (widget.vizType === 'markdown') {
-    lines.push(`    text = "${hclString(widget.placeholderText)}"`);
+    // A clean literal-markdown widget carries `markdownText`; a placeholder
+    // carries `placeholderText`. Render whichever is present.
+    lines.push(
+      `    text = "${hclString(widget.markdownText ?? widget.placeholderText ?? '')}"`,
+    );
   } else {
     lines.push(`    nrql_query {`);
     lines.push(`      ${accountIdLine(accountId)}`);

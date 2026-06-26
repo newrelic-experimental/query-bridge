@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { detectFormat } from '../src/detectFormat.js';
 import { parseSimpleXml } from '../src/parseSimpleXml.js';
+import { parseStudio } from '../src/parseStudio.js';
 import { translateWidgets } from '../src/translateWidgets.js';
 import { translateVariables } from '../src/translateVariables.js';
 import { emitTerraform, slugify } from '../src/emitTerraform.js';
@@ -21,36 +22,59 @@ const usage = `Usage:
   spl-dashboard <file.xml> --account 12345  bake a literal account_id
   spl-dashboard <file.xml> --region Staging  provider region: US (default), EU, JP, Staging`;
 
+function parseUnit(unit) {
+  return unit.format === 'studio'
+    ? parseStudio(unit.payload)
+    : parseSimpleXml(unit.payload);
+}
+
 /**
- * Pure pipeline: XML string → { slug, files }. No file I/O — testable directly.
- * @param {string} xml
+ * Pure pipeline: raw input → one result per detected unit (a REST envelope yields
+ * many). Each result is either a built dashboard `{slug, files}` or a skipped entry
+ * `{skipped, index, reason}` — one malformed entry never aborts its siblings. A
+ * malformed envelope itself still throws at `detectFormat` (a loud, top-level error).
+ * @param {string} input
  * @param {{account:number|null, region?:string}} opts
- * @returns {{slug:string, files:Record<string,string>}}
+ * @returns {({skipped:false, slug:string, files:Record<string,string>}|{skipped:true, index:number, reason:string})[]}
  */
-export function runImport(xml, opts) {
-  detectFormat(xml); // Phase 1: throws loudly for non-simple-xml
-  const model = parseSimpleXml(xml);
-  const multiSelectTokens = new Set(
-    model.variables.filter((v) => v.multi).map((v) => v.name),
-  );
-  const translated = translateWidgets(model.widgets, { multiSelectTokens });
-  const variables = translateVariables(model.variables);
-  const emitModel = { ...model, widgets: translated, variables };
-  const tf = emitTerraform(emitModel, {
-    accountId: opts.account,
-    region: opts.region,
+export function runImport(input, opts) {
+  // De-duplicate slugs so two same-title dashboards in one bulk export don't
+  // overwrite each other's output dir (first wins the bare slug, then -2, -3…).
+  const seenSlugs = new Map();
+  return detectFormat(input).map((unit, index) => {
+    try {
+      const model = parseUnit(unit);
+      const multiSelectTokens = new Set(
+        model.variables.filter((v) => v.multi).map((v) => v.name),
+      );
+      const translated = translateWidgets(model.widgets, { multiSelectTokens });
+      const variables = translateVariables(model.variables);
+      const emitModel = { ...model, widgets: translated, variables };
+      const tf = emitTerraform(emitModel, {
+        accountId: opts.account,
+        region: opts.region,
+      });
+      const baseSlug = slugify(model.title);
+      const n = (seenSlugs.get(baseSlug) ?? 0) + 1;
+      seenSlugs.set(baseSlug, n);
+      const slug = n === 1 ? baseSlug : `${baseSlug}-${n}`;
+      const report = buildReport(model.title, translated);
+      return {
+        skipped: false,
+        slug,
+        files: {
+          [`${slug}.tf`]: tf['dashboard.tf'],
+          'versions.tf': tf['versions.tf'],
+          'variables.tf': tf['variables.tf'],
+          [`${slug}.report.md`]: report,
+        },
+      };
+    } catch (e) {
+      // Isolate a bad entry: record it loudly, never abort the siblings or emit a
+      // half-built dashboard. The CLI surfaces the reason on stderr.
+      return { skipped: true, index, reason: e.message };
+    }
   });
-  const slug = slugify(model.title);
-  const report = buildReport(model.title, translated);
-  return {
-    slug,
-    files: {
-      [`${slug}.tf`]: tf['dashboard.tf'],
-      'versions.tf': tf['versions.tf'],
-      'variables.tf': tf['variables.tf'],
-      [`${slug}.report.md`]: report,
-    },
-  };
 }
 
 export function parseArgs(argv) {
@@ -88,7 +112,7 @@ async function main() {
     console.log(usage);
     return;
   }
-  let opts, out;
+  let opts, results;
   try {
     opts = parseArgs(argv);
     const xml = opts.file
@@ -98,17 +122,31 @@ async function main() {
       console.log(usage);
       return;
     }
-    out = runImport(xml, { account: opts.account, region: opts.region });
+    results = runImport(xml, { account: opts.account, region: opts.region });
   } catch (e) {
     process.stderr.write(`error: ${e.message}\n`);
     process.exitCode = 1;
     return;
   }
-  mkdirSync(opts.out, { recursive: true });
-  for (const [name, body] of Object.entries(out.files)) {
-    const path = join(opts.out, name);
-    writeFileSync(path, body);
-    process.stdout.write(`${path}\n`);
+  // Surface skipped entries loudly; never silently drop one. An all-skipped or
+  // empty export is still a success (zero dashboards), per the bulk-import design.
+  for (const r of results) {
+    if (r.skipped) {
+      process.stderr.write(`skipped entry ${r.index}: ${r.reason}\n`);
+    }
+  }
+  const dashboards =
+    /** @type {{skipped:false, slug:string, files:Record<string,string>}[]} */ (
+      results.filter((r) => !r.skipped)
+    );
+  for (const r of dashboards) {
+    const dir = dashboards.length > 1 ? join(opts.out, r.slug) : opts.out;
+    mkdirSync(dir, { recursive: true });
+    for (const [name, body] of Object.entries(r.files)) {
+      const path = join(dir, name);
+      writeFileSync(path, body);
+      process.stdout.write(`${path}\n`);
+    }
   }
 }
 

@@ -17,6 +17,9 @@ Columns: **src viz** = visualization elements in the XML; **dropped** = src viz 
 | synthetic/shape-form-base-tokens.xml | 2 | 2 | 2 | 0 | 0 | 0 |  |
 | synthetic/shape-spath-timechart.xml | 2 | 2 | 2 | 0 | 0 | 0 |  |
 | synthetic/shape-stats-eval-rex.xml | 3 | 3 | 3 | 0 | 0 | 0 |  |
+| synthetic/shape-studio-wrapped.xml | 0 | 0 | 0 | 0 | 0 | 0 |  |
 | synthetic/shape-unsupported-tail.xml | 3 | 3 | 1 | 2 | 0 | 0 |  |
 
 **Totals:** 26 widgets from 26 source viz — 9 placeholder (35%), 3 untitled (12%), **0 silently dropped**.
+
+_Note: the **src viz** count matches only Simple-XML viz tags (`chart/table/single/event/map/html/viz`), not Studio (JSON-in-CDATA) visualizations, so a Studio fixture shows an all-zeros row. Studio import is covered by the explicit Studio e2e test instead._

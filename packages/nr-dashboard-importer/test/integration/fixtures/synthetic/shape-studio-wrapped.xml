@@ -1,0 +1,36 @@
+<dashboard version="2">
+  <definition><![CDATA[
+{
+  "title": "Synthetic Studio Board",
+  "description": "synthetic studio fixture",
+  "dataSources": {
+    "ds_root":  { "type": "ds.search",      "options": { "query": "search widget_zone=alpha gadget_count>3" } },
+    "ds_pp":    { "type": "ds.chain",        "options": { "extend": "ds_root", "query": "| where region_q=\"north\"" } },
+    "ds_saved": { "type": "ds.savedSearch",  "options": { "ref": "some_saved_thing" } }
+  },
+  "visualizations": {
+    "v_line":  { "type": "splunk.line",        "title": "Gadgets over time", "dataSources": { "primary": "ds_pp" } },
+    "v_tbl":   { "type": "splunk.table",       "title": "Zones",             "dataSources": { "primary": "ds_root" } },
+    "v_saved": { "type": "splunk.singlevalue", "title": "Saved-backed",      "dataSources": { "primary": "ds_saved" } },
+    "v_rect":  { "type": "splunk.rectangle" },
+    "v_img":   { "type": "splunk.image",       "options": { "src": "https://cdn.test/pic.png" } },
+    "v_huh":   { "type": "splunk.sankey",      "title": "Flowy",             "dataSources": { "primary": "ds_root" } }
+  },
+  "layout": {
+    "structure": [
+      { "item": "v_line",  "position": { "x": 0,   "y": 0,   "w": 600,  "h": 200 } },
+      { "item": "v_tbl",   "position": { "x": 600, "y": 0,   "w": 600,  "h": 200 } },
+      { "item": "v_saved", "position": { "x": 0,   "y": 200, "w": 400,  "h": 100 } },
+      { "item": "v_rect",  "position": { "x": 400, "y": 200, "w": 400,  "h": 100 } },
+      { "item": "v_img",   "position": { "x": 800, "y": 200, "w": 400,  "h": 100 } },
+      { "item": "v_huh",   "position": { "x": 0,   "y": 300, "w": 1200, "h": 100 } }
+    ],
+    "options": { "width": 1200 }
+  },
+  "inputs": {
+    "i_time": { "type": "input.timerange", "options": { "token": "tr", "defaultValue": "-24h@h,now" } },
+    "i_zone": { "type": "input.dropdown",  "options": { "token": "zone", "defaultValue": "alpha", "items": [{ "label": "Alpha", "value": "alpha" }, { "label": "Beta", "value": "beta" }] } }
+  }
+}
+  ]]></definition>
+</dashboard>

@@ -1,9 +1,21 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync as writeFsSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseSimpleXml } from '../../src/parseSimpleXml.js';
 import { translateWidgets } from '../../src/translateWidgets.js';
 import { runImport } from '../../bin/spl-dashboard.js';
+
+function hasTerraform() {
+  try {
+    execFileSync('terraform', ['version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Functional/integration coverage for the full XML→Terraform pipeline.
 //   real/      — Splunk's own published Simple XML dashboards (unbiased).
@@ -98,6 +110,7 @@ describe('importer gap inventory', () => {
     md += `\n**Totals:** ${agg.widgets} widgets from ${agg.sourceViz} source viz — `;
     md += `${agg.placeholder} placeholder (${pct(agg.placeholder)}%), ${agg.untitled} untitled (${pct(agg.untitled)}%), `;
     md += `**${agg.dropped} silently dropped**.\n`;
+    md += `\n_Note: the **src viz** count matches only Simple-XML viz tags (\`chart/table/single/event/map/html/viz\`), not Studio (JSON-in-CDATA) visualizations, so a Studio fixture shows an all-zeros row. Studio import is covered by the explicit Studio e2e test instead._\n`;
 
     const invPath = join(import.meta.dirname, 'GAP_INVENTORY.md');
     if (process.env.CI) {
@@ -117,7 +130,7 @@ describe('importer: core pipeline (working today)', () => {
       <search><query><![CDATA[index=app | timechart count by status]]></query></search>
       <option name="charting.chart">line</option>
     </chart></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('resource "newrelic_one_dashboard"');
     expect(tf).toContain('widget_line {');
     expect(tf).toContain('FROM Log SELECT count(*)');
@@ -141,7 +154,7 @@ describe('importer: core pipeline (working today)', () => {
       <title>Search</title>
       <search><query><![CDATA[index=app $tok$ | stats count]]></query></search>
     </table></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('{{tok}}');
     expect(tf).not.toContain("'$tok$'");
   });
@@ -156,7 +169,7 @@ describe('importer: template variables [pending]', () => {
     const xml = `<dashboard><label>V</label><row><panel><table>
       <search><query><![CDATA[index=app environment=$env_tok$ | stats count by host]]></query></search>
     </table></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('{{env_tok}}');
     expect(tf).not.toContain("'$env_tok$'");
   });
@@ -167,7 +180,7 @@ describe('importer: template variables [pending]', () => {
     const xml = `<dashboard><label>Q</label><row><panel><table>
       <search><query><![CDATA[index="$env$" | stats count]]></query></search>
     </table></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('{{env}}');
     expect(tf).not.toContain("'$env$'");
   });
@@ -176,7 +189,7 @@ describe('importer: template variables [pending]', () => {
     const xml = `<dashboard><label>I</label><row><panel><table>
       <search><query><![CDATA[index=$idx$ | stats count]]></query></search>
     </table></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('{{idx}}');
     expect(tf).not.toContain("'$idx$'");
   });
@@ -218,7 +231,7 @@ describe('importer: template variables [pending]', () => {
       </input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app host=$host$ | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('type = "nrql"');
     expect(tf).toContain('FACET host');
     expect(tf).toContain('account_ids = [1]');
@@ -231,7 +244,7 @@ describe('importer: template variables [pending]', () => {
       </input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).not.toContain('type = "nrql"');
   });
 
@@ -244,7 +257,7 @@ describe('importer: template variables [pending]', () => {
       </input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app host=$hosts$ | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('host IN ({{hosts}})');
     expect(tf).toContain('is_multi_selection = true');
   });
@@ -256,7 +269,7 @@ describe('importer: template variables [pending]', () => {
       <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toMatch(/Splunk '\*' means "all"/);
   });
 
@@ -267,7 +280,7 @@ describe('importer: template variables [pending]', () => {
       <fieldset><input type="dropdown" token="env"><default>*</default><choice value="*">All</choice></input></fieldset>
       <row><panel><table><search><query><![CDATA[index=app environment=$env$ | stats count]]></query></search></table></panel></row>
     </form>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('variable {');
     expect(tf).toContain('env');
   });
@@ -308,7 +321,7 @@ describe('importer: timepicker & time tokens [pending]', () => {
       </search>
       <option name="charting.chart">line</option>
     </chart></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     expect(tf).toContain('SINCE');
   });
 
@@ -322,7 +335,7 @@ describe('importer: timepicker & time tokens [pending]', () => {
       <search><query><![CDATA[index=app earliest=$tr.earliest$ latest=now | timechart count]]></query></search>
       <option name="charting.chart">line</option>
     </chart></panel></row></dashboard>`;
-    const { files } = runImport(xml, { account: 1 });
+    const [{ files }] = runImport(xml, { account: 1 });
     const tf = dashboardTf(files);
     expect(tf).not.toContain('SINCE {{');
     expect(tf).not.toContain('$tr.earliest$');
@@ -351,7 +364,7 @@ describe('importer: emitter & structure [pending]', () => {
       <search><query><![CDATA[index=app | stats count by status]]></query></search>
       <option name="charting.chart">pie</option>
     </chart></panel></row></dashboard>`;
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     // A markdown block must never contain nrql_query (invalid HCL).
     expect(tf).not.toMatch(/widget_markdown \{[^}]*nrql_query/s);
   });
@@ -395,7 +408,7 @@ describe('importer: emitter & structure [pending]', () => {
       </table></panel></row>
     </form>`;
     const widgets = translateWidgets(parseSimpleXml(xml).widgets);
-    const tf = dashboardTf(runImport(xml, { account: 1 }).files);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
     // Either the base scope reaches the NRQL, or the panel is a loud placeholder.
     const kept =
       tf.includes("index = 'app'") || widgets[0].outcome === 'placeholder';
@@ -412,4 +425,58 @@ describe('importer: emitter & structure [pending]', () => {
     const widgets = translateWidgets(parseSimpleXml(xml).widgets);
     expect(widgets[0].outcome).toBe('placeholder');
   });
+});
+
+// ── Studio integration (synthetic) ──────────────────────────────────────────
+describe('integration — Studio (synthetic)', () => {
+  const xml = readFileSync(
+    new URL('./fixtures/synthetic/shape-studio-wrapped.xml', import.meta.url),
+    'utf-8',
+  );
+
+  it('imports the studio dashboard with correct widget fates', () => {
+    const [result] = runImport(xml, { account: 1 });
+    expect(result.slug).toBe('synthetic-studio-board');
+    const tf = result.files['synthetic-studio-board.tf'];
+    expect(tf).toContain('newrelic_one_dashboard');
+    // 6 source viz: v_rect dropped; v_line + v_tbl + v_img(markdown) clean; v_saved + v_huh placeholders.
+    // Placeholders render as markdown widgets carrying the reason.
+    expect(tf).toContain('Saved-backed'); // placeholder keeps its title
+    expect(tf).toContain('Flowy'); // unknown-type placeholder keeps its title
+    // The image widget's literal markdown is actually rendered (clean path).
+    expect(tf).toContain('![](https://cdn.test/pic.png)');
+    // Assert the `zone` dropdown produced a real variable block (not just the
+    // substring `zone`, which also appears in widget query text).
+    expect(tf).toContain('name  = "zone"');
+  });
+
+  it('drops the rectangle decoration (no widget for it)', () => {
+    const [result] = runImport(xml, { account: 1 });
+    // Exactly 5 widgets reach Terraform (6 viz − 1 decoration). Count widget blocks.
+    const blocks = (
+      result.files['synthetic-studio-board.tf'].match(/widget_\w+\s*{/g) || []
+    ).length;
+    expect(blocks).toBe(5);
+  });
+
+  it.skipIf(!hasTerraform())(
+    'emitted HCL for the Studio dashboard passes terraform validate',
+    () => {
+      const [result] = runImport(xml, { account: 1 });
+      const dir = mkdtempSync(join(tmpdir(), 'tf-studio-'));
+      writeFsSync(
+        join(dir, `${result.slug}.tf`),
+        result.files[`${result.slug}.tf`],
+      );
+      writeFsSync(join(dir, 'versions.tf'), result.files['versions.tf']);
+      writeFsSync(join(dir, 'variables.tf'), result.files['variables.tf']);
+      execFileSync('terraform', ['init', '-backend=false', '-input=false'], {
+        cwd: dir,
+        stdio: 'ignore',
+      });
+      execFileSync('terraform', ['validate'], { cwd: dir, stdio: 'pipe' });
+      expect(existsSync(join(dir, `${result.slug}.tf`))).toBe(true);
+    },
+    60_000,
+  );
 });
