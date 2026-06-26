@@ -1,4 +1,4 @@
-import { createDashboardModel, createWidget } from './model.js';
+import { createDashboardModel, createVariable, createWidget } from './model.js';
 
 const CANVAS_W = 1200; // Studio default canvas width (confirm in Task 0 recon)
 const ROW_PX = 100; // Studio row-height assumption (confirm in Task 0 recon)
@@ -119,6 +119,65 @@ function buildWidget(viz, dataSources, layout) {
   });
 }
 
+function parseInputs(inputs) {
+  const variables = [];
+  let defaultTimeRange = null;
+  for (const [id, input] of Object.entries(inputs)) {
+    const opts = input.options ?? {};
+    const name = opts.token ?? id;
+    if (input.type === 'input.timerange') {
+      if (defaultTimeRange) continue; // first time input wins (NR has one picker)
+      const dv = String(opts.defaultValue ?? '');
+      if (dv.includes(',')) {
+        const [earliest, latest] = dv.split(',');
+        defaultTimeRange = { earliest: earliest.trim(), latest: latest.trim() };
+      }
+      continue; // named preset (no comma) → skip; time input never becomes a variable
+    }
+    if (input.type === 'input.text') {
+      variables.push(
+        createVariable({
+          name,
+          type: 'string',
+          defaultValue: String(opts.defaultValue ?? ''),
+        }),
+      );
+      continue;
+    }
+    if (input.type === 'input.dropdown' || input.type === 'input.multiselect') {
+      const multi = input.type === 'input.multiselect';
+      const items = Array.isArray(opts.items) ? opts.items : [];
+      if (items.length) {
+        const choices = items.map((it) => ({
+          value: String(it.value ?? it.label ?? ''),
+          title: String(it.label ?? it.value ?? ''),
+        }));
+        variables.push(
+          createVariable({
+            name,
+            type: 'enum',
+            choices,
+            defaultValue: String(opts.defaultValue ?? ''),
+            multi,
+          }),
+        );
+      } else {
+        // Search-backed or empty: degrade to free-text (nrql-backed Studio dropdowns deferred).
+        variables.push(
+          createVariable({
+            name,
+            type: 'string',
+            defaultValue: String(opts.defaultValue ?? ''),
+            multi,
+          }),
+        );
+      }
+    }
+    // Unknown input type → no variable (not silently wrong; simply absent).
+  }
+  return { variables, defaultTimeRange };
+}
+
 /** @param {string} json Studio dashboard JSON (CDATA already stripped by detectFormat). */
 export function parseStudio(json) {
   const doc = JSON.parse(json);
@@ -138,10 +197,13 @@ export function parseStudio(json) {
     );
     if (widget) widgets.push(widget);
   }
+  const { variables, defaultTimeRange } = parseInputs(doc.inputs ?? {});
   return createDashboardModel({
     title: doc.title ?? doc.label ?? '',
     description: doc.description ?? '',
     sourceFormat: 'studio',
+    variables,
+    defaultTimeRange,
     widgets,
   });
 }

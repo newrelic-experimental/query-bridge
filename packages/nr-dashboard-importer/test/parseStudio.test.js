@@ -248,6 +248,99 @@ describe('parseStudio — chain resolution', () => {
   });
 });
 
+describe('parseStudio — inputs', () => {
+  const withInputs = (inputs) =>
+    JSON.stringify({
+      title: 'T',
+      dataSources: {},
+      visualizations: {},
+      layout: { structure: [] },
+      inputs,
+    });
+
+  it('parses a comma time-range default into defaultTimeRange', () => {
+    const m = parseStudio(
+      withInputs({
+        i_t: {
+          type: 'input.timerange',
+          options: { token: 'tr', defaultValue: '-24h@h,now' },
+        },
+      }),
+    );
+    expect(m.defaultTimeRange).toEqual({ earliest: '-24h@h', latest: 'now' });
+    expect(m.variables).toHaveLength(0); // time input is not a variable
+  });
+
+  it('skips a named-preset time default (no comma)', () => {
+    const m = parseStudio(
+      withInputs({
+        i_t: {
+          type: 'input.timerange',
+          options: { defaultValue: 'last_cycle_preset' },
+        },
+      }),
+    );
+    expect(m.defaultTimeRange).toBeNull();
+  });
+
+  it('first time input wins when several exist', () => {
+    const m = parseStudio(
+      withInputs({
+        i_a: { type: 'input.timerange', options: { defaultValue: '-7d,now' } },
+        i_b: { type: 'input.timerange', options: { defaultValue: '-1h,now' } },
+      }),
+    );
+    expect(m.defaultTimeRange).toEqual({ earliest: '-7d', latest: 'now' });
+  });
+
+  it('maps a static dropdown to an enum variable', () => {
+    const m = parseStudio(
+      withInputs({
+        i_d: {
+          type: 'input.dropdown',
+          options: {
+            token: 'zone',
+            defaultValue: 'z_a',
+            items: [
+              { label: 'Zone A', value: 'z_a' },
+              { label: 'Zone B', value: 'z_b' },
+            ],
+          },
+        },
+      }),
+    );
+    expect(m.variables[0]).toMatchObject({
+      name: 'zone',
+      type: 'enum',
+      defaultValue: 'z_a',
+      multi: false,
+    });
+    expect(m.variables[0].choices).toEqual([
+      { value: 'z_a', title: 'Zone A' },
+      { value: 'z_b', title: 'Zone B' },
+    ]);
+  });
+
+  it('maps a text input to a string variable and a multiselect to multi', () => {
+    const m = parseStudio(
+      withInputs({
+        i_x: { type: 'input.text', options: { token: 'q', defaultValue: '' } },
+        i_m: {
+          type: 'input.multiselect',
+          options: { token: 'tags', items: [{ label: 'P', value: 'p' }] },
+        },
+      }),
+    );
+    expect(m.variables.find((v) => v.name === 'q')).toMatchObject({
+      type: 'string',
+    });
+    expect(m.variables.find((v) => v.name === 'tags')).toMatchObject({
+      type: 'enum',
+      multi: true,
+    });
+  });
+});
+
 describe('parseStudio — skeleton', () => {
   it('reads title/description and one inline-search line widget', () => {
     const doc = JSON.stringify({
