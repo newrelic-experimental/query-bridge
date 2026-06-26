@@ -10,6 +10,14 @@ export default defineConfig({
       // so an entirely-untested new file counts against coverage.
       all: true,
       include: ['src/**/*.js'],
+      // Exclude bin/ explicitly. vitest matches `include` against the ABSOLUTE
+      // path with picomatch `contains:true`, so when CI checks the repo out under
+      // a path containing a `src/` segment (Grand Central uses /work/src/...),
+      // `src/**/*.js` spuriously contains-matches bin/spl-dashboard.js — which the
+      // cli/e2e/smoke tests execute — and it lands in the report at ~53%, tripping
+      // the gate. Local paths without a `src/` segment don't hit this. Excluding
+      // bin/ is correct regardless: the gate polices src/, not the CLI shim.
+      exclude: ['bin/**'],
       reporter: ['text'],
       // Per-file gate (perFile:true checks EVERY file individually, not the
       // package aggregate). No file may regress below these floors. The numbers
