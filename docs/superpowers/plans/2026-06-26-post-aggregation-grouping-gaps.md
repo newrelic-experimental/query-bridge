@@ -117,9 +117,11 @@ Verified on staging (acct 10671289) + Splunk docs during the spec's double-check
     verified: false,
   },
   // Negative control: distinct alias name still folds flat (unchanged).
-  // NOTE: Task 6 (F) makes the fold additive and DELETES eval_after_agg_drops_source —
-  // it rewrites this case's nrql to the additive form and clears its warningFunc. Leave
-  // it as-is here (HEAD-accurate at this task); F updates it.
+  // NOTE: Task 6 (F) makes the fold additive and NARROWS eval_after_agg_drops_source to
+  // non-scalar sources — it does NOT delete the key (median/percentile/list sources still
+  // fire it). This case's source `count` is scalar, so F keeps it: rewrites this nrql to the
+  // additive form and clears its warningFunc to []. Leave it as-is here (HEAD-accurate at
+  // this task); F updates it.
   {
     spl: '* | stats count by host | eval host2 = count*2',
     nrql: "FROM Log SELECT count(*) * 2 AS 'host2' FACET host LIMIT MAX",
