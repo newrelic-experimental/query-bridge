@@ -6,7 +6,7 @@
  * silent mis-route) so later phases can extend this without surprise.
  *
  * @param {string} input - raw dashboard payload (file contents or stdin).
- * @returns {'simple-xml'} the detected format.
+ * @returns {{format:'simple-xml'|'studio', payload:string}[]} detected units.
  * @throws {Error} for not-yet-supported formats.
  */
 export function detectFormat(input) {
@@ -36,7 +36,7 @@ export function detectFormat(input) {
 
   // Simple XML: <form> or <dashboard version="1...">/<dashboard> (no version).
   if (/^<form\b/.test(body) || /^<dashboard\b/.test(body)) {
-    return 'simple-xml';
+    return [{ format: 'simple-xml', payload: input }];
   }
 
   throw new Error(

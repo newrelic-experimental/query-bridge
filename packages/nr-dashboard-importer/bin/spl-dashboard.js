@@ -28,8 +28,8 @@ const usage = `Usage:
  * @returns {{slug:string, files:Record<string,string>}}
  */
 export function runImport(xml, opts) {
-  detectFormat(xml); // Phase 1: throws loudly for non-simple-xml
-  const model = parseSimpleXml(xml);
+  const units = detectFormat(xml);
+  const model = parseSimpleXml(units[0].payload);
   const multiSelectTokens = new Set(
     model.variables.filter((v) => v.multi).map((v) => v.name),
   );
