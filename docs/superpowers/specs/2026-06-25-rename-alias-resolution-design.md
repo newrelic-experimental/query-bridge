@@ -250,3 +250,17 @@ bug) and pass after the fix; `guard` cases pass today and lock correct behavior.
 - Native-JSON access changes; `EXPAND`-based rewrites.
 - Renaming forms already `unsupported` and correct to stay so (`rename` with `*` wildcards,
   `rename` of a parenthesized expression).
+
+## PR breakdown
+
+> Retrofit per CLAUDE.md "Small PRs" rule. Each PR below is independently reviewable and shippable; land in order. (Mirrors the companion plan `../plans/2026-06-25-rename-alias-resolution.md`; cuts along the pipeline seams — IR scaffolding before the consumers that read it, refactor before behavior.)
+
+1. **Scaffolding: alias registry + resolver module** (~180 lines, scaffolding) — Implement Part 1's `ir._renameMap`: add the field to the `SelectQuery` factory (`src/ir/nodes.js`) and create the `aliasResolution.js` resolver (`recordRename`, `resolveSelectField`, `resolveFacetField`, `freshAliasName`) with unit tests. No consumer yet. Dependency: independent.
+2. **Record `rename` bindings (Part 1 producer)** (~30 lines, behavior) — `handleRename` records `{aliasName → sourceAttr}` into `_renameMap` in addition to its current emission; output unchanged. Dependency: needs PR 1.
+3. **Resolve-don't-overwrite in `table`/`fields` (Part 2, CONFIRMED-7 A+B)** (~40 lines, behavior) — Replace the destructive `ir.select = cmd.fields.map(...)` with resolve-against-(select-alias, then `_renameMap`, else bare); preserve the dropped stats aggregate and drop a projected FACET key. Dependency: needs PR 1, PR 2.
+4. **Resolve renamed ORDER BY key (Part 2, NRQL fact #2)** (~25 lines, behavior) — `handleSort` resolves a renamed key to its source attribute. Dependency: needs PR 1, PR 2.
+5. **Resolve renamed FACET keys (Part 2, NRQL fact #1)** (~50 lines, behavior) — `FACET source AS 'label'` at the `handleStats`/`handleTimechart`/`handleTop`/`handleRare`/`handleDedup` group-by surfaces. Dependency: needs PR 1, PR 2.
+6. **Family C: faithful self-reference rewrite (Part 3)** (~90 lines, behavior) — Self-referential `WITH` bindings (`eval X=f(X)`, `convert`/`strcat`/`spath`) aliased to a fresh deterministic name with a `_fieldReplacements` rewrite, via one shared helper reusing `exprReferencesField`. Excludes `handleRex` (tuple binding) and `handleEventstats` (JOIN, no WITH). Dependency: needs PR 1.
+7. **Fix the backwards `rename_keeps_original` warning (Part 4)** (~30 lines, behavior + message) — Flip the warning to fire on a genuinely-unresolvable/dropped rename, not the keep-original path; new message key validated by the `spl.test.js` key-consistency check. Dependency: needs PR 3, PR 4, PR 5.
+8. **Emitter backstop: guard self-referential WITH (Part 3 backstop)** (~30 lines, behavior + tests) — `irToNrql` surfaces a loud `unsupported`/throw for a surviving self-referential binding instead of emitting circular-dependency NRQL. Dependency: needs PR 6.
+9. **Family B seam (Part 5) + corpus baseline** (~10 lines, docs/tests) — Record the `foldPostAggregation.js` integration contract (cross-aggregation rename resolves on the OUTER via `_renameMap`/`resolveSelectField`) in `.claude/rules/design-decisions.md`; no Family B behavior is built here (stays `unsupported`/subquery). Run the corpus verdict diff. Dependency: needs PR 8.
