@@ -83,6 +83,10 @@ index=web status>=400 AND status<500
 ... | rename src_ip AS source_ip, dst_ip AS dest_ip
 ... | rename _time AS timestamp
 ```
+`rename A AS B` **rebinds** the field: downstream the field is `B` and `A` is gone — NOT a
+display alias (that is NRQL `AS` semantics, not SPL's). NRQL has no field-rename primitive,
+so the translator maps a downstream reference to `B` back to source `A` (e.g. `A AS 'B'` in
+SELECT, `FACET A AS 'B'`). Verified vs Splunk `rename` docs, 2026-06-25.
 
 ### dedup (deduplication)
 ```spl
