@@ -16,6 +16,7 @@ import {
   Rlike,
   Regex,
   Binding,
+  Alias,
   DualCheck,
 } from '../../ir/nodes.js';
 import {
@@ -30,10 +31,9 @@ import { messages } from '../../messages.js';
 // ── Command handlers ────────────────────────────────────────
 
 export function handleWhere(cmd, ir) {
-  // If after aggregation, wrap as subquery and filter the outer query
-  if (ir._hasAggregation) {
-    wrapAsSubquery(ir);
-  }
+  // If after aggregation, wrap as subquery and filter the outer query.
+  const afterAgg = ir._hasAggregation;
+  if (afterAgg) wrapAsSubquery(ir);
 
   // The PEG grammar uses `expression` not `expr`
   const whereNode = cmd.expression || cmd.expr;
@@ -44,6 +44,40 @@ export function handleWhere(cmd, ir) {
 }
 
 export function handleEval(cmd, ir) {
+  // eval after an aggregation must bind on the AGGREGATED result, not the raw
+  // events. A pre-aggregation WITH would reference fields that no longer exist
+  // post-stats (silent wrong result). Wrap the aggregation as a subquery and
+  // project the eval columns on the outer query — re-projecting the facet keys
+  // so the result stays one row per group (a `SELECT *` would drop the eval
+  // alias entirely; verified against staging acct 10671289). The optimizer's
+  // foldPostAggregation pass flattens this to a single query when it is safe.
+  if (ir._hasAggregation) {
+    const facetKeys = [...ir.facet];
+    wrapAsSubquery(ir);
+    // Inspect the wrapped inner's exposed columns for two hazards that have no
+    // faithful translation — emit loud unsupported, never silently-wrong NRQL.
+    const cols = ir.dataSource.query.select
+      .map(exposedSubqueryColumn)
+      .filter(Boolean);
+    // Collision: two inner aggregates resolving to the same exposed subquery
+    // column name (e.g. count(*) and `sum(x) as count`). NRQL silently keeps
+    // only the last → faithful translation is impossible.
+    const seen = new Set();
+    for (const col of cols) {
+      if (seen.has(col.name)) {
+        ir.unsupported.push(messages.subquery_name_collision(col.name));
+        return;
+      }
+      seen.add(col.name);
+    }
+    // Non-scalar: an eval referencing a median/percentile/uniques column (a
+    // keyed object/list across the subquery boundary) cannot be used in
+    // row-wise arithmetic — numeric() of it is null.
+    const nonScalarNames = cols.filter((c) => c.nonScalar).map((c) => c.name);
+    ir.select.push(...facetKeys);
+    translateEvalExpr(cmd, ir, { projectToSelect: true, nonScalarNames });
+    return;
+  }
   // eval creates bindings: WITH expr AS name
   translateEvalExpr(cmd, ir);
 }
@@ -86,7 +120,11 @@ export function translateWhereExpr(expr, ir) {
   return walkEvalExpr(expr, ir);
 }
 
-function translateEvalExpr(cmd, ir) {
+function translateEvalExpr(
+  cmd,
+  ir,
+  { projectToSelect = false, nonScalarNames = [] } = {},
+) {
   if (cmd.rawText) {
     // Safety net: eval bodies the ladder still can't parse (e.g. LIKE/IN-in-eval,
     // known follow-ups) emit loud unsupported rather than silently wrong results.
@@ -100,9 +138,23 @@ function translateEvalExpr(cmd, ir) {
       ir._currentAlias = assignment.field;
       const expr = walkEvalExpr(assignment.expr, ir);
       if (expr) {
-        // NRQL WITH clause can't alias to a field that the expression references
-        // (circular dependency). In that case, inline into SELECT instead.
-        if (exprReferencesField(expr, assignment.field)) {
+        // After an aggregation the query has been wrapped as a subquery, so the
+        // eval must be an explicit `expr AS name` column on the outer SELECT — a
+        // WITH binding would not appear in `SELECT *` output (verified on staging).
+        if (projectToSelect) {
+          // Guard: eval over a non-scalar aggregate column (median/percentile/
+          // uniques) — numeric() over the keyed object/list yields null, so emit
+          // loud unsupported instead of a silently-null column.
+          if (nonScalarNames.some((n) => exprReferencesField(expr, n))) {
+            ir.unsupported.push(
+              messages.eval_after_agg_nonscalar(assignment.field),
+            );
+            continue;
+          }
+          ir.select.push(Alias(expr, assignment.field));
+        } else if (exprReferencesField(expr, assignment.field)) {
+          // NRQL WITH clause can't alias to a field that the expression references
+          // (circular dependency). In that case, inline into SELECT instead.
           ir.select.push(expr);
         } else {
           ir.bindings.push(Binding(assignment.field, expr));
@@ -592,6 +644,37 @@ function walkEvalFunc(node, ir) {
 }
 
 // ── Internal helpers ────────────────────────────────────────
+
+// NRQL aggregates whose subquery-exposed column is a LIST (uniques — the NRQL form
+// of SPL values/list). A list has no scalar extraction, so an eval-projection
+// referencing one after stats is unsupported. median/percentile expose a KEYED
+// OBJECT ({50:v} / {N:v}); they are NOT listed here — the optimizer's
+// foldPostAggregation pass folds eval-arithmetic over them FLAT (`median(d) * 2`,
+// valid NRQL) and extracts the scalar via getField(col,'<N>') for a where/trailing-agg
+// reference. Keeping them out of this set is what re-opens that faithful path.
+const NON_SCALAR_AGG_FUNCS = new Set(['uniques']);
+
+function isNonScalarAgg(expr) {
+  return expr?.type === 'Function' && NON_SCALAR_AGG_FUNCS.has(expr.name);
+}
+
+// The name + scalar-ness a subquery exposes for one inner SELECT entry. A
+// subquery exposes an unaliased aggregate under its bare NRQL function name; an
+// `AS alias` re-keys it (engine: DistributedFunctionLeaf.flattenResultLeaf).
+// Returns null for entries that aren't simple aggregate columns (e.g. the
+// arithmetic produced by `top`'s percent column).
+function exposedSubqueryColumn(entry) {
+  if (entry.type === 'Alias') {
+    return { name: entry.name, nonScalar: isNonScalarAgg(entry.expr) };
+  }
+  if (entry.type === 'Function') {
+    return {
+      name: entry.name,
+      nonScalar: NON_SCALAR_AGG_FUNCS.has(entry.name),
+    };
+  }
+  return null;
+}
 
 // True when an EVAL AST NODE is a bare field reference that must be wrapped in
 // numeric() for an ordering comparison.

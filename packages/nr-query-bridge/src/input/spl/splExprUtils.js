@@ -262,14 +262,51 @@ export function escapeWildcard(value) {
 
 // ── Subquery wrapping ───────────────────────────────────────
 
+// Remove the time-bucket facet keys (_time/timestamp and any `bin _time as X`
+// aliases) from a facet list when TIMESERIES is present — TIMESERIES already
+// groups by time, so faceting by the bucket too is redundant. Always returns a
+// fresh array. Shared by wrapAsSubquery (inner facet) and splToIR (outer post-loop).
+export function stripTimeBucketFacets(
+  facet,
+  timeseries,
+  timeAliases = new Set(),
+) {
+  if (!timeseries || facet.length === 0) return [...facet];
+  return facet.filter(
+    (f) =>
+      !(
+        f.type === 'Identifier' &&
+        (f.name === '_time' ||
+          f.name === 'timestamp' ||
+          timeAliases.has(f.name))
+      ),
+  );
+}
+
+// Wrap the current query as a subquery source. The post-aggregation fold pass
+// (foldPostAggregationPass) handles any illegal nesting after all wrapAsSubquery
+// calls complete. Always returns true.
 export function wrapAsSubquery(ir) {
+  // TIMESERIES already groups by time, so a _time/bucket facet on the inner is
+  // redundant. The outer post-loop dedup (splToIR) can't reach the inner once
+  // wrapped, so strip it here.
+  const innerFacet = stripTimeBucketFacets(
+    ir.facet,
+    ir.timeseries,
+    ir._timeBucketAliases,
+  );
   const innerQuery = SelectQuery({
     dataSource: ir.dataSource,
     bindings: [...ir.bindings],
     select: [...ir.select],
     where: [...ir.where],
-    facet: [...ir.facet],
-    limit: ir.facet.length > 0 ? 'MAX' : ir.limit,
+    facet: innerFacet,
+    limit: innerFacet.length > 0 ? 'MAX' : ir.limit,
+    // TIMESERIES belongs to the aggregation being pushed inner (e.g. a timechart
+    // before a trailing stats). Nested TIMESERIES populates all buckets (verified
+    // on staging); leaving it on the outer bolts it onto a non-time-bucketed
+    // aggregate. No-op when ir.timeseries is null (the common stats/where case).
+    timeseries: ir.timeseries,
   });
 
   ir.dataSource = { type: 'SubquerySource', query: innerQuery };
@@ -277,6 +314,8 @@ export function wrapAsSubquery(ir) {
   ir.facet = [];
   ir.bindings = [];
   ir.where = [];
+  ir.timeseries = null;
+  return true;
 }
 
 // ── Subsearch normalization ─────────────────────────────────

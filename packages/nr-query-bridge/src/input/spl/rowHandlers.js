@@ -49,10 +49,15 @@ export function handleSort(cmd, ir) {
 }
 
 export function handleHead(cmd, ir) {
+  // A head between two aggregations can't be expressed faithfully (see
+  // handleStats). Mark it so the next aggregation can fail loud; harmless if no
+  // second aggregation follows (head after a single stats is a valid LIMIT N).
+  if (ir._hasAggregation) ir._headBetweenAgg = true;
   ir.limit = cmd.count;
 }
 
 export function handleTail(cmd, ir) {
+  if (ir._hasAggregation) ir._headBetweenAgg = true;
   ir.limit = cmd.count;
   ir.orderBy = OrderBy(Identifier('timestamp'), false); // ASC = oldest first
 }

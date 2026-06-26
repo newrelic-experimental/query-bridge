@@ -1048,19 +1048,509 @@ const cases = [
     verified: 'human',
   },
   // ── EvalArith: arithmetic inside function args (Task 4) ──
+  // This eval references `total`, which `stats count` never produces (not an
+  // aggregate, not a facet key) — unresolvable post-aggregation. Loud unsupported
+  // rather than NRQL where `total` silently resolves to null.
   {
-    // PENDING eval-after-stats fix — see Fix 1 in
-    // docs/superpowers/specs/2026-06-18-subquery-wrapping-design.md.
-    // The translator currently emits this eval as a PRE-aggregation WITH over
-    // fields that don't exist post-stats (silent wrong result). The `nrql` below
-    // is the wrapped TARGET, so this case is RED until handleEval wraps like
-    // handleWhere. When fixing: confirm the real output, update nrql to match,
-    // remove `skip`. Only a human may restore a verified level.
     spl: '* | stats count | eval x = round(total/count, 2)',
-    nrql: 'FROM (FROM Log SELECT count(*)) WITH round(numeric(total) / numeric(count), 0.01) AS x SELECT *',
+    nrql: '',
+    unsupportedFunc: ['compound_collapse_unsupported'],
     doc: 'eval-conditional',
     verified: false,
-    skip: true,
+  },
+  {
+    spl: '* | stats count by host | eval pct = count * 100',
+    nrql: "FROM Log SELECT count(*) * 100 AS 'pct' FACET host LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // eval ARITHMETIC over a median/percentile after stats folds FLAT into the stats
+  // step: `median(latency) * 2` in a flat SELECT is valid NRQL (staging-verified, acct
+  // 10671289). No subquery, no getField — the eval-projection folds, dropping the raw
+  // aggregate alias (drops-source warning). Task 5 narrowed the nonscalar guard to LISTS,
+  // re-opening this faithful flat fold for the keyed-object aggregates.
+  {
+    spl: '* | stats median(latency) as p50 by host | eval x = p50 * 2',
+    nrql: "FROM Log SELECT median(latency) * 2 AS 'x' FACET host LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  {
+    spl: '* | stats median(duration) as med by service | eval x = med * 2',
+    nrql: "FROM Log SELECT median(duration) * 2 AS 'x' FACET service LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  {
+    spl: '* | stats p95(duration) as p95 by service | eval x = p95 * 2',
+    nrql: "FROM Log SELECT percentile(duration, 95) * 2 AS 'x' FACET service LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // median/percentile referenced across the SUBQUERY boundary (where / trailing-agg) is
+  // a keyed object ({50: v} / {N: v}); a bare numeric()/aggregate over it resolves to
+  // null (silent-wrong). Task 5 extracts the scalar with getField(col, '<N>'). For a
+  // WHERE reference, bind once via `WITH getField(col,'N') AS <col>N` and reference the
+  // bound name in SELECT + WHERE (staging-verified, acct 10671289). median → key '50'.
+  {
+    spl: '* | stats median(duration) as md by host | where md>10',
+    nrql: "FROM (FROM Log SELECT median(duration) AS 'md' FACET host LIMIT MAX) WITH getField(md, '50') AS md50 SELECT md50 WHERE md50 > 10",
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // Trailing re-aggregation over a median column: getField is inlined into the outer
+  // aggregate's argument (used once, no WITH needed).
+  {
+    spl: '* | stats median(duration) as md by host | stats avg(md)',
+    nrql: "FROM (FROM Log SELECT median(duration) AS 'md' FACET host LIMIT MAX) SELECT average(getField(md, '50'))",
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // percentile(x, N) → key String(N). p95 → '95'.
+  {
+    spl: '* | stats p95(duration) as p95 by host | where p95>10',
+    nrql: "FROM (FROM Log SELECT percentile(duration, 95) AS 'p95' FACET host LIMIT MAX) WITH getField(p95, '95') AS p9595 SELECT p9595 WHERE p9595 > 10",
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  {
+    spl: '* | stats p95(duration) as p95 by host | stats avg(p95)',
+    nrql: "FROM (FROM Log SELECT percentile(duration, 95) AS 'p95' FACET host LIMIT MAX) SELECT average(getField(p95, '95'))",
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // Silent-wrong guard for the narrowing: an eval-PROJECTION over a median that does NOT
+  // fold flat (concat is not a distributed/fold-safe function) would otherwise leave a
+  // bare `concat(md, …)` referencing the keyed-object column across the boundary, which
+  // resolves to null. The post-pass non-scalar guard catches it → loud unsupported. This
+  // is the path the guard-narrowing re-opened; it must NOT emit silent-wrong NRQL.
+  {
+    spl: '* | stats median(duration) as md by host | eval x = md . "ms"',
+    nrql: '',
+    unsupportedFunc: ['eval_after_agg_nonscalar'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // uniques/values (a LIST) has no scalar-extraction equivalent across the boundary, so
+  // a where/trailing-agg reference STAYS loud unsupported (eval_after_agg_nonscalar). The
+  // Task 5 narrowing keeps lists unsupported while opening keyed objects.
+  {
+    spl: '* | stats values(status) as s by host | where s>5',
+    nrql: '',
+    unsupportedFunc: ['eval_after_agg_nonscalar'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  {
+    spl: '* | stats values(status) as s by host | stats avg(s)',
+    nrql: '',
+    unsupportedFunc: ['eval_after_agg_nonscalar'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // The getField extraction touches ONLY the keyed-object column; a scalar sibling
+  // (avg → `a`) in the same WHERE keeps its ordinary numeric() coercion. Proves the
+  // rewrite does not over-fire onto scalar references.
+  {
+    spl: '* | stats median(duration) as md, avg(duration) as a by host | where md>10 AND a>5',
+    nrql: "FROM (FROM Log SELECT median(duration) AS 'md', average(duration) AS 'a' FACET host LIMIT MAX) WITH getField(md, '50') AS md50 SELECT md50 WHERE md50 > 10 AND numeric(a) > 5",
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // Known limitation (loud, never silent-wrong): two stacked WHERE layers over a
+  // median column do not merge once the inner layer is getField-rewritten (it becomes
+  // a row-wise layer that can't re-nest), so the chain stays loud unsupported rather
+  // than emitting a bare numeric(md) that would resolve to null. Single-WHERE median
+  // (above) is the supported form.
+  {
+    spl: '* | stats median(duration) as md by host | where md>10 | where md<100',
+    nrql: '',
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // Silent-wrong guard — bound-name collision: the synthesized getField bound name
+  // `md50` would collide with the REAL `md50` (avg) column and silently shadow it (the
+  // user's md50 filter would read the median). The collision-free picker renames the
+  // synthesized binding to `md50_2`; the user's own `md50` keeps its numeric() filter.
+  {
+    spl: '* | stats median(duration) as md, avg(duration) as md50 by host | where md>10 AND md50>5',
+    nrql: "FROM (FROM Log SELECT median(duration) AS 'md', average(duration) AS 'md50' FACET host LIMIT MAX) WITH getField(md, '50') AS md50_2 SELECT md50_2 WHERE md50_2 > 10 AND numeric(md50) > 5",
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // Silent-wrong guard — exposed-name collision on the extraction path: two inner
+  // aggregates expose the same column `m`; NRQL keeps the FIRST (median, key 50) but our
+  // map would key getField off the LAST (percentile 95) → wrong/missing key → null. No
+  // faithful translation, so the trailing-agg path bails loud (collision guard).
+  {
+    spl: '* | stats p50(duration) as m, p95(duration) as m by host | stats avg(m)',
+    nrql: '',
+    unsupportedFunc: ['subquery_name_collision'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // Silent-wrong guard — ORDER BY over a keyed-object column: no extraction branch
+  // rewrites orderBy, so a bare `ORDER BY md DESC` over a median ({50:v}) would sort on
+  // the raw object (and SELECT * returns it). The post-pass guard walks orderBy → loud.
+  {
+    spl: '* | stats median(duration) as md by host | where host!="x" | sort -md',
+    nrql: '',
+    unsupportedFunc: ['eval_after_agg_nonscalar'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // Silent-wrong guard — FACET over a keyed-object column: a trailing `by md` regroups on
+  // a median keyed object; NRQL groups on bogus "0"/"1" buckets (staging-confirmed). The
+  // facet key IS exposed (so the Task-4 regroup guard does not fire), but the post-pass
+  // guard walks facet for non-scalar references → loud unsupported.
+  {
+    spl: '* | stats median(duration) as md by host | stats count by md',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['eval_after_agg_nonscalar'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // eval after stats where two inner aggregates resolve to the same exposed column
+  // name (count(*) and `sum(...) as count`): NRQL would silently keep only one, so
+  // a faithful translation is impossible → loud unsupported (collision guard).
+  {
+    spl: '* | stats count, sum(throughput) as count by host | eval x = count * 2',
+    nrql: '',
+    unsupportedFunc: ['subquery_name_collision'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // concat fold-blocker fallback: a non-foldable eval (concat, canFoldEval false) over a
+  // plain scalar aggregate does NOT fold flat — it stays as a row-wise SELECT layer over
+  // the aggregating inner, i.e. a single legal subquery (count is now an exposed scalar
+  // column, so concat references it fine; no non-scalar guard, no string() wrap — NRQL
+  // concat auto-coerces numerics). The facet key host is re-projected.
+  {
+    spl: '* | stats count by host | eval label="n=".count',
+    nrql: "FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, concat('n=', count) AS 'label'",
+    doc: 'compound-eval-eval',
+    verified: false,
+  },
+  // Facet-key fold-blocker: an eval that references a facet key (a `by` event field)
+  // must NOT fold flat even when its functions are fold-safe — a flat aggregating SELECT
+  // over an event field is invalid NRQL ("FACET cannot be used when selecting on event
+  // fields"). The facet-key reference is a fold-BLOCKER exactly like concat; the layer
+  // stays a row-wise SELECT over the aggregating inner (region is now an exposed column
+  // the outer if() references fine). Re-projects the facet key region.
+  {
+    spl: '* | stats count by region | eval ru = if(region="us","domestic","intl")',
+    nrql: "FROM (FROM Log SELECT count(*) FACET region LIMIT MAX) SELECT region, if(region = 'us', 'domestic', 'intl') AS 'ru'",
+    doc: 'compound-eval-eval',
+    verified: false,
+  },
+  // Facet-key fold-blocker — aggregate × facet-key arithmetic (`count * len(host)`). The
+  // flat form `count(*) * length(host) FACET host` is rejected (aggregate × event field);
+  // keep the subquery so count is an exposed scalar and host an exposed event column.
+  // (`numeric(count)` because `*` is arithmetic; count is the exposed scalar column.)
+  {
+    spl: '* | stats count by host | eval scaled = count * len(host)',
+    nrql: "FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, numeric(count) * length(host) AS 'scaled'",
+    warningFunc: ['eval_length_warning'],
+    doc: 'compound-eval-eval',
+    verified: false,
+  },
+  // Facet-key fold-blocker — fold-safe fn (if) over a facet key only, no aggregate ref.
+  // Still blocks the flat fold; the facet key host is re-projected and referenced by if().
+  {
+    spl: '* | stats count by host | eval x = if(host = "a", 1, 0)',
+    nrql: "FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, if(host = 'a', 1, 0) AS 'x'",
+    doc: 'compound-eval-eval',
+    verified: false,
+  },
+  // Facet-key fold-blocker — bare facet-key projection (`eval x = host`). A flat
+  // `SELECT host AS x FACET host` selects on an event field → invalid. Keep the subquery.
+  {
+    spl: '* | stats count by host | eval x = host',
+    nrql: "FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, host AS 'x'",
+    doc: 'compound-eval-eval',
+    verified: false,
+  },
+  // Compound transform after an eval/where that itself followed an aggregation.
+  // Task 2: eval-led post-aggregation chains no longer emit compound_rewrap_unsupported.
+  // eval|eval folds flat and is ADDITIVE — both a and b survive (Splunk's eval keeps
+  // prior columns); only the raw count aggregate is dropped (+ drops-source warning).
+  {
+    spl: '* | stats count by host | eval a=count/60 | eval b=a/60',
+    nrql: "FROM Log SELECT count(*) / 60 AS 'a', count(*) / 60 / 60 AS 'b' FACET host LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'compound-eval-eval',
+    verified: false,
+  },
+  // eval|where: fold collapses the eval into the inner; outer SELECT is empty → SELECT *;
+  // WHERE uses numeric() coercion because > is an ordering operator.
+  {
+    spl: '* | stats count by host | eval rpm=count/60 | where rpm>10',
+    nrql: "FROM (FROM Log SELECT count(*) / 60 AS 'rpm' FACET host LIMIT MAX) SELECT * WHERE numeric(rpm) > 10",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // eval|stats: fold collapses the eval into the inner, outer re-aggregates.
+  {
+    spl: '* | stats count by host | eval rpm=count/60 | stats avg(rpm)',
+    nrql: "FROM (FROM Log SELECT count(*) / 60 AS 'rpm' FACET host LIMIT MAX) SELECT average(rpm)",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // fold pass: eval-projection folds into its aggregating subquery (Task 1)
+  {
+    spl: '* | stats count by host | eval rps = count/3600',
+    nrql: "FROM Log SELECT count(*) / 3600 AS 'rps' FACET host LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // where|where: two stacked row-wise where layers over the aggregating stats inner
+  // AND-fold into one legal single subquery (Task 3).
+  {
+    spl: '* | stats count by host | where count > 5 | where count < 100',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeric(count) > 5 AND numeric(count) < 100',
+    doc: 'compound-where-where',
+    verified: false,
+  },
+  // Guard: the AND-fold must NOT resurrect a dropped-aggregate reference. Here eval a
+  // drops the raw `count`; the merged WHERE still references the dropped `count`, so
+  // unexposedReference keeps it loud unsupported — never silently-wrong null NRQL.
+  {
+    spl: '* | stats count by host | eval a=count/60 | where a>5 | where count<100',
+    nrql: '',
+    warningFunc: ['eval_after_agg_drops_source'],
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'compound-where-where',
+    verified: false,
+  },
+  // The AND-fold must base on the OUTER layer so a trailing sort's ORDER BY survives
+  // the merge — folding onto the inner would silently drop it (silent-wrong).
+  {
+    spl: '* | stats count by host | where count > 5 | where count < 100 | sort count',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeric(count) > 5 AND numeric(count) < 100 ORDER BY count ASC',
+    doc: 'compound-where-where',
+    verified: false,
+  },
+  // Silent-wrong guard: a post-aggregation step that references a raw aggregate an
+  // earlier eval consumed (count is dropped when eval a folds) cannot resolve it —
+  // loud unsupported, never null-valued NRQL. (Splunk keeps count, so it works there.)
+  {
+    spl: '* | stats count by host | eval a=count/60 | eval b=count/120',
+    nrql: '',
+    warningFunc: ['eval_after_agg_drops_source'],
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'compound-eval-eval',
+    verified: false,
+  },
+  {
+    spl: '* | stats count by host | eval a=count/60 | where count>5',
+    nrql: '',
+    warningFunc: ['eval_after_agg_drops_source'],
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // The dropped-reference guard walks ALL expression node types (deny-by-default),
+  // so a reference to the dropped aggregate routed through NOT / isnull (not just a
+  // bare BinOp) is caught too — same loud unsupported, never silent-wrong.
+  {
+    spl: '* | stats count by host | eval a=count/60 | where NOT count>5',
+    nrql: '',
+    warningFunc: ['eval_after_agg_drops_source'],
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  {
+    spl: '* | stats count by host | eval a=count/60 | where isnull(count)',
+    nrql: '',
+    warningFunc: ['eval_after_agg_drops_source'],
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // Third surface of the dropped-reference class: a sort on the dropped aggregate
+  // would silently mis-order (NRQL ignores the unresolved ORDER BY key) — loud instead.
+  {
+    spl: '* | stats count by host | eval a=count/60 | sort count',
+    nrql: '',
+    warningFunc: ['eval_after_agg_drops_source'],
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // Task 4: trailing stats re-aggregation. Valid when the outer's FACET key is a
+  // subset of the inner's exposed columns — `region` IS in the inner FACET host, region,
+  // so the regroup resolves. Legal NRQL agg-over-agg subquery, NOT flagged.
+  {
+    spl: '* | stats count by host, region | stats sum(count) by region',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host, region LIMIT MAX) SELECT sum(count) FACET region',
+    warningFunc: ['facet_default_limit'],
+    doc: 'compound-stats-stats',
+    verified: false,
+  },
+  // Regroup guard: the outer FACET key `region` is NOT among the inner's exposed
+  // columns (inner exposes count, host). NRQL would group on null → silently empty.
+  // Loud unsupported over wrong.
+  {
+    spl: '* | stats count by host | stats sum(count) by region',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['compound_trailing_regroup_unsupported'],
+    doc: 'compound-stats-stats',
+    verified: false,
+  },
+  // Time-bucket regroup is exempt ONLY when the inner carries TIMESERIES (a timechart
+  // re-supplies _time). A plain stats|stats by _time has no TIMESERIES, so _time is a
+  // real unexposed regroup → loud unsupported, not silent group-on-null.
+  {
+    spl: '* | stats count by host | stats sum(count) by _time',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['compound_trailing_regroup_unsupported'],
+    doc: 'compound-stats-stats',
+    verified: false,
+  },
+  // Regroup guard, eval-led (Task 2 deferred this silent-wrong to Task 4). After eval
+  // folds, the inner exposes `a` and facet `host`; the trailing `by region` regroups on
+  // a column the inner never produced → loud unsupported. The eval-fold still drops the
+  // raw `count`, so eval_after_agg_drops_source fires alongside the guard.
+  {
+    spl: '* | stats count by host | eval a=count/60 | stats sum(a) by region',
+    nrql: '',
+    warningFunc: ['facet_default_limit', 'eval_after_agg_drops_source'],
+    unsupportedFunc: ['compound_trailing_regroup_unsupported'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // Same class: `by count` regroups on the raw aggregate the eval-fold dropped, so it is
+  // not exposed by the inner either → loud unsupported, never group-on-null.
+  {
+    spl: '* | stats count by host | eval a=count/60 | stats sum(a) by count',
+    nrql: '',
+    warningFunc: ['facet_default_limit', 'eval_after_agg_drops_source'],
+    unsupportedFunc: ['compound_trailing_regroup_unsupported'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // Nested regroup: a trailing `where` wraps the bad regroup ONE level down, so the
+  // hazard sits on a nested aggregating layer, not the root. The guard pushes its
+  // diagnosis onto the threaded ROOT unsupported array (the emitter reads only the root),
+  // so it still surfaces as '' rather than silently-wrong 3-level nested NRQL.
+  {
+    spl: '* | stats count by host | stats sum(count) by region | where region="x"',
+    nrql: '',
+    unsupportedFunc: ['compound_trailing_regroup_unsupported'],
+    doc: 'compound-stats-stats',
+    verified: false,
+  },
+  // The same nested shape with a FAITHFUL inner regroup (`region` IS in the inner FACET
+  // host, region) must stay valid — the guard must NOT over-fire on a nested layer whose
+  // facet key the inner does expose.
+  {
+    spl: '* | stats count by host, region | stats sum(count) by region | where region="x"',
+    nrql: "FROM (FROM (FROM Log SELECT count(*) FACET host, region LIMIT MAX) SELECT sum(count) FACET region LIMIT MAX) SELECT * WHERE region = 'x'",
+    doc: 'compound-stats-stats',
+    verified: false,
+  },
+  // ── Cleanroom regression gaps (Task 7b): confirmed-correct compound behaviors ──
+  // where on a FACET KEY (not an aggregate) after stats: the filter targets `region`,
+  // an exposed facet column, so it is a plain string equality with NO numeric() wrap —
+  // distinct from the where-on-aggregate cases which coerce the count column.
+  {
+    spl: '* | stats count by host, region | where region = "us-east"',
+    nrql: "FROM (FROM Log SELECT count(*) FACET host, region LIMIT MAX) SELECT * WHERE region = 'us-east'",
+    doc: 'results-where-on-agg',
+    verified: false,
+  },
+  // where comparing two aggregate result columns to each other (`c > hosts`): both
+  // sides are exposed scalars, so ordering coercion wraps BOTH in numeric().
+  {
+    spl: '* | stats count as c, dc(host) as hosts by region | where c > hosts',
+    nrql: "FROM (FROM Log SELECT count(*) AS 'c', uniqueCount(host) AS 'hosts' FACET region LIMIT MAX) SELECT * WHERE numeric(c) > numeric(hosts)",
+    doc: 'results-where-on-agg',
+    verified: false,
+  },
+  // eval if() over an aggregate folds FLAT into the stats step (no subquery); the raw
+  // count column is not re-projected (drops-source warning).
+  {
+    spl: '* | stats count by host | eval band = if(count > 100, "hi", "lo")',
+    nrql: "FROM Log SELECT if(count(*) > 100, 'hi', 'lo') AS 'band' FACET host LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // ratio of two distinct aggregates (`b / c`) folds flat: each alias resolves back to
+  // its aggregate inside one SELECT; both raw columns dropped (drops-source warning).
+  {
+    spl: '* | stats sum(bytes) as b, count as c by host | eval avg_size = b / c',
+    nrql: "FROM Log SELECT sum(bytes) / count(*) AS 'avg_size' FACET host LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // self-shadowing eval (`count = count + 1`): the RHS `count` resolves to the aggregate
+  // (no infinite loop), folding flat to `count(*) + 1`; raw count dropped.
+  {
+    spl: '* | stats count by host | eval count = count + 1',
+    nrql: "FROM Log SELECT count(*) + 1 AS 'count' FACET host LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // four-level compose: stats → eval-fold → where-filter → trailing re-aggregation. The
+  // eval folds into the inner (rps), the trailing stats re-aggregates over the subquery,
+  // and the where filters it. FACET-default-limit AND drops-source warnings both fire.
+  {
+    spl: '* | stats count by host, region | eval rps = count/60 | where rps > 1 | stats sum(rps) by region',
+    nrql: "FROM (FROM Log SELECT count(*) / 60 AS 'rps' FACET host, region LIMIT MAX) SELECT sum(rps) WHERE numeric(rps) > 1 FACET region",
+    warningFunc: ['facet_default_limit', 'eval_after_agg_drops_source'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // eval after a WHERE-subquery: the where already wrapped a row-wise outer over the
+  // aggregating inner; a further eval would nest that row-wise layer as an illegal
+  // non-aggregating inner → loud unsupported (defensible, never silent-wrong).
+  {
+    spl: '* | stats count by host | where count > 5 | eval label = if(count > 50, "high", "low")',
+    nrql: '',
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // timechart then eval folds flat; the TIMESERIES that timechart owned stays on the
+  // (now eval-projected) aggregation. Raw count dropped (drops-source warning).
+  {
+    spl: '* | timechart count by host | eval rps = count/60',
+    nrql: "FROM Log SELECT count(*) / 60 AS 'rps' FACET host LIMIT MAX TIMESERIES AUTO",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'fields-eval-arithmetic',
+    verified: false,
+  },
+  // timechart then where wraps a subquery; the TIMESERIES belongs to the inner
+  // aggregation (timechart owned it), and the outer filters the count column.
+  {
+    spl: '* | timechart count by host | where count > 100',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host LIMIT MAX TIMESERIES AUTO) SELECT * WHERE numeric(count) > 100',
+    doc: 'results-where-on-agg',
+    verified: false,
+  },
+  // dc() → uniqueCount is a SCALAR aggregate, so a where over its aliased column needs
+  // only numeric() coercion — no getField extraction (contrast median/percentile, which
+  // expose keyed objects across the subquery boundary and require getField).
+  {
+    spl: '* | stats dc(user) as users by host | where users > 100',
+    nrql: "FROM (FROM Log SELECT uniqueCount(user) AS 'users' FACET host LIMIT MAX) SELECT * WHERE numeric(users) > 100",
+    doc: 'results-where-on-agg',
+    verified: false,
   },
   {
     spl: '* | eval x = if(a > b+1, "hi", "lo")',
@@ -2050,12 +2540,15 @@ const cases = [
     doc: 'reports-timechart',
     verified: 'human',
   },
-  // timechart then stats — _time FACET absorbed by TIMESERIES (found by model-based fuzz)
-  // FIXME: inner subquery needs LIMIT MAX; outer count(*) is trivially 1 per bucket
-  //   because timechart produces one row per time bucket. Semantics are wrong.
+  // timechart then stats grouped by _time (found by model-based fuzz). Degenerate:
+  // timechart produces one row per bucket, so `stats count by _time` is trivially
+  // 1 per group. With TIMESERIES now correctly on the inner timechart, the `by
+  // _time` lands as an outer FACET _time. FIXME: that `by _time` should fold back
+  // into the inner TIMESERIES; semantics still wrong — kept verified:false.
   {
     spl: '* | timechart span=1m count | stats count by _time',
-    nrql: 'FROM (FROM Log SELECT count(*)) SELECT count(*) TIMESERIES 1 minute',
+    nrql: 'FROM (FROM Log SELECT count(*) TIMESERIES 1 minute) SELECT count(*) FACET _time',
+    warningFunc: ['facet_default_limit'],
     doc: 'reports-timechart',
     verified: false,
   },
@@ -2064,7 +2557,25 @@ const cases = [
   //   semantics need rethinking
   {
     spl: '* | timechart span=5m count | stats sum(count)',
-    nrql: 'FROM (FROM Log SELECT count(*)) SELECT sum(count) TIMESERIES 5 minutes',
+    nrql: 'FROM (FROM Log SELECT count(*) TIMESERIES 5 minutes) SELECT sum(count)',
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  // timechart then stats: TIMESERIES belongs on the INNER aggregation (the
+  // timechart), not the outer. Verified on staging (acct 10671289) that nested
+  // TIMESERIES populates all buckets.
+  {
+    spl: '* | timechart count by host | stats avg(count) as a',
+    nrql: "FROM (FROM Log SELECT count(*) FACET host LIMIT MAX TIMESERIES AUTO) SELECT average(count) AS 'a'",
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  // bin _time + stats by _time then a trailing stats: TIMESERIES already groups by
+  // time, so the inner FACET _time is redundant. The outer post-loop dedup can't
+  // reach the inner once wrapped, so wrapAsSubquery strips it from the inner facet.
+  {
+    spl: '* | bin _time span=1h | stats count by _time | stats avg(count)',
+    nrql: 'FROM (FROM Log SELECT count(*) TIMESERIES 1 hour) SELECT average(count)',
     doc: 'reports-timechart',
     verified: false,
   },
@@ -2704,6 +3215,24 @@ const cases = [
   //
   { spl: '* | head 10', limit: 10, doc: 'results-head', verified: 'human' },
   { spl: '* | head', limit: 10, doc: 'results-head', verified: 'human' },
+  // head/tail BETWEEN two aggregations is unsupported: SPL keeps the first N rows
+  // in stats order, but a nested-subquery LIMIT N keeps the top N by aggregate
+  // value — different selections, no faithful translation. (head after a single
+  // stats, with no second aggregation, is unaffected.)
+  {
+    spl: '* | stats count by host | head 10 | stats avg(count) as a',
+    nrql: '',
+    unsupportedFunc: ['head_between_aggregations'],
+    doc: 'results-head',
+    verified: false,
+  },
+  {
+    spl: '* | stats count by host | tail 10 | stats avg(count) as a',
+    nrql: '',
+    unsupportedFunc: ['head_between_aggregations'],
+    doc: 'results-head',
+    verified: false,
+  },
   //
   // ── reverse command ─────────────────────────────────────────────
   //
@@ -3270,13 +3799,19 @@ const cases = [
   // ── NRQL Feature Gaps (customer migration feedback) ───────────────
   //
 
-  // Gap #2 — dedup + stats: warn about 5K LIMIT MAX sampling
+  // Gap #2 — dedup + stats: Task 4's regroup guard flips this from silently-wrong to
+  // loud unsupported. dedup translates to `SELECT latest(timestamp) FACET userId`, which
+  // does NOT expose `routeName`, so the trailing `stats count by routeName` regrouped on
+  // a column the inner never produced → NRQL groups on null (silently empty). Was
+  // verified:'llm' emitting that wrong NRQL; now correctly unsupported (downgraded to
+  // verified:false — the prior translation was wrong, not human-confirmed).
   {
     spl: '* | dedup userId | stats count by routeName',
-    nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) FACET routeName LIMIT MAX',
+    nrql: '',
     warningFunc: ['dedup_facet_warning', 'dedup_limit_max_cap'],
+    unsupportedFunc: ['compound_trailing_regroup_unsupported'],
     doc: 'results-dedup',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
   {

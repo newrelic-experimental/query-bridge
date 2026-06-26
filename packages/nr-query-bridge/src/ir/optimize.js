@@ -6,6 +6,7 @@
  */
 import { transformTree } from './transform.js';
 import { Identifier, BinOp, Func, Literal, Wildcard } from './nodes.js';
+import { foldPostAggregationPass } from './foldPostAggregation.js';
 
 // ── Pass 1: Double-NOT elimination ──────────────────────────
 
@@ -139,6 +140,7 @@ const passes = [
   foldConstants,
   eliminateTautologies,
   expandDualChecks,
+  foldPostAggregationPass, // ← collapse over-nested post-aggregation chains; catch-all unsupported
   applyFillnull,
   applyFieldReplacements,
 ];

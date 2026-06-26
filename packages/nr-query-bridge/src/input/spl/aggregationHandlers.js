@@ -20,7 +20,15 @@ import { walkEvalExpr } from './evalHandlers.js';
 import { messages } from '../../messages.js';
 
 export function handleStats(cmd, ir) {
-  // If already aggregated, wrap current IR as a subquery source
+  // A head/tail sat between this aggregation and a prior one. SPL takes the first
+  // N rows in stats order; a nested-subquery LIMIT N takes the top N by aggregate
+  // value — not the same selection, so there is no faithful translation.
+  if (ir._headBetweenAgg) {
+    ir.unsupported.push(messages.head_between_aggregations());
+    return;
+  }
+  // If already aggregated, wrap current IR as a subquery source. Any illegal
+  // nesting is caught by foldPostAggregationPass after all handlers run.
   if (ir._hasAggregation && ir.select.length > 0) {
     wrapAsSubquery(ir);
   } else if (ir.select.length > 0) {
@@ -89,11 +97,10 @@ export function handleTop(cmd, ir) {
   ir.select = [countExpr];
 
   // Percent column: count(*) * 100.0 / (SELECT count(*) FROM Log [WHERE ...])
-  // TODO: consider emitting NRQL's native percentage(count(*), WHERE cond) when
-  //   the pattern fits. Currently we always emit the manual subquery division.
-  //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
-  //   Feasibility unclear — percentage() only works for "percentage of total matching
-  //   a condition", not for arbitrary ratio calculations like eventstats patterns.
+  // NOTE: NRQL's native percentage(count(*), WHERE cond) CANNOT replace this — verified on
+  //   staging 2026-06-25: percentage() is scoped WITHIN each facet (returns 100 per row), not
+  //   percent-of-grand-total; and WITH count(*) AS total is rejected (WITH cannot aggregate).
+  //   The percent-of-total denominator genuinely needs this scalar subquery. Do not re-chase.
   if (cmd.showperc !== false) {
     const subqWhere = [...ir.where];
     const subquery = SelectQuery({

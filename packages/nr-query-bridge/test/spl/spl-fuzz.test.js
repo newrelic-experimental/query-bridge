@@ -1580,11 +1580,19 @@ class EvalCommand {
   }
   run(m, _r) {
     m.appendPipe(`eval x = ${this.field} / 1000`);
-    m.hasWith = true;
+    const afterAggregation = m.hasAggregation;
+    if (!afterAggregation) m.hasWith = true;
     const r = m.translate();
     expect(r.nrql).not.toContain('[object Object]');
     if (r.nrql) {
-      expect(r.nrql).toContain('WITH');
+      if (afterAggregation) {
+        // eval after an aggregation wraps the aggregation as a subquery and
+        // projects the eval as an outer SELECT column (`… AS 'x'`), not a WITH
+        // binding (a WITH alias would be dropped by the outer SELECT *).
+        expect(r.nrql).toContain("AS 'x'");
+      } else {
+        expect(r.nrql).toContain('WITH');
+      }
     }
   }
   toString() {
