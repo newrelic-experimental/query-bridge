@@ -1,0 +1,112 @@
+<form version="1.1" theme="dark">
+  <label>Migration Reality — Simple XML (synthetic)</label>
+  <description>A synthetic Splunk Simple XML dashboard modeled on the SHAPE of real customer log-analysis dashboards (time + search-backed dropdown fieldset, rows of mixed panels). All field/index names are invented. Run through the SPL-&gt;NRQL importer, it shows what actually happens on a migration: a little works, much breaks. Panel titles label the category; the importer's placeholder panels self-document the original SPL and the reason.</description>
+
+  <fieldset submitButton="true" autoRun="false">
+    <input type="time" token="tr">
+      <label>Time</label>
+      <default><earliest>-24h@h</earliest><latest>now</latest></default>
+    </input>
+    <input type="dropdown" token="env">
+      <label>Environment</label>
+      <choice value="*prod*">All prod</choice>
+      <fieldForLabel>env</fieldForLabel>
+      <fieldForValue>env</fieldForValue>
+      <search>
+        <query>index=web_logs | dedup env</query>
+        <earliest>-1h</earliest><latest>now</latest>
+      </search>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <chart>
+        <title>CLEAN: timechart over a real field (renders)</title>
+        <search><query>search level=INFO | timechart count</query></search>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>CLEAN: stats count by level (renders)</title>
+        <search><query>search * | stats count by level</query></search>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>RENDER-FAIL live: top -&gt; ORDER BY (passes console, red-banners in widget)</title>
+        <search><query>search * | top limit=10 hostname</query></search>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>LOSSY: time-picker token $tr.earliest$ dropped — panel loses its time window</title>
+        <search><query>earliest=$tr.earliest$ latest=$tr.latest$ index=web_logs status&gt;=500 \
+| timechart count by status</query></search>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>GAP: wildcard rename (log.* as *) — common in K8s log dashboards</title>
+        <search><query>index=k8s_logs | rename log.* as * | stats count by level</query></search>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>GAP: rex named capture from _raw</title>
+        <search><query>index=web_logs | rex field=_raw "user_id=(?&lt;uid&gt;\w+)" | stats count by uid</query></search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>GAP: iplocation geo enrichment</title>
+        <search><query>index=web_logs | iplocation clientip | stats count by Country</query></search>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>GAP: mvexpand multivalue</title>
+        <search><query>index=web_logs | mvexpand tags | stats count by tags</query></search>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>GAP: strftime time bucketing in eval</title>
+        <search><query>search * | eval hour=strftime(_time,"%H") | stats count by hour</query></search>
+      </chart>
+    </panel>
+    <panel>
+      <single>
+        <title>GAP: transaction session grouping</title>
+        <search><query>index=web_logs | transaction session_id maxpause=30m | stats count</query></search>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>GAP: affixed token pod="*checkout-$env$-api*" (token inside a literal)</title>
+        <search><query>index=k8s_logs pod="*checkout-$env$-api*" | stats count by level</query></search>
+      </chart>
+    </panel>
+    <panel>
+      <html>
+        <h2>Static notes panel</h2>
+        <p>In Splunk this is a free-text panel. The importer turns every &lt;html&gt; panel into a placeholder — so even your documentation panels need re-authoring.</p>
+      </html>
+    </panel>
+  </row>
+</form>
