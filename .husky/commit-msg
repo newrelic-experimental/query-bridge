@@ -1,1 +1,15 @@
-npx --no -- commitlint --edit "$1"
+npx --no -- commitlint --edit "$1" || exit 1
+
+# --- spr stacked-PR support (guarded; no-op for contributors without spr) ---
+# spr (ejoffe/spr) identifies each commit by a `commit-id:<8 hex>` trailer it expects in
+# the commit body. spr normally installs its own commit-msg hook, but Husky owns
+# core.hooksPath and shadows it, so we add the id here instead. Scoped tightly so it
+# never touches ordinary work: only when spr is installed AND a rebase is in progress
+# (spr adds the id by rewording commits via `git rebase`). Plain `git commit`s and
+# contributors without spr are unaffected; commitlint above still gates every message.
+__gitdir="$(git rev-parse --git-dir 2>/dev/null || echo .git)"
+if command -v git-spr >/dev/null 2>&1 && { [ -d "$__gitdir/rebase-merge" ] || [ -d "$__gitdir/rebase-apply" ]; }; then
+  if ! grep -qiE '^commit-id:[0-9a-f]{8}$' "$1"; then
+    printf '\ncommit-id:%s\n' "$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> "$1"
+  fi
+fi
