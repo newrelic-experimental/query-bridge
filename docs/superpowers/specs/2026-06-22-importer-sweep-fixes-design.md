@@ -1,5 +1,7 @@
 # Design: fix the 8 importer bugs from the 2026-06-18 integration sweep
 
+> **Problem tracking consolidated into** [`2026-06-27-known-issues-laundry-list-design.md`](./2026-06-27-known-issues-laundry-list-design.md). The eight numbered bugs here are recorded as shipped in this spec's close-out; residual deferred items (`affixed-token`, `wildcard-token-like`, `span-token-unsupported`) are tracked in the laundry list.
+
 ## Context
 
 The 2026-06-18 integration sweep (PR #35) added 14 `it.skip` canaries to

@@ -1,5 +1,7 @@
 # mvexpand → NRQL EXPAND Translation (design)
 
+> **Problem tracking consolidated into** [`2026-06-27-known-issues-laundry-list-design.md`](./2026-06-27-known-issues-laundry-list-design.md) (the `mvexpand-*` / `mvzip` family). This file is kept for its fix-design detail.
+
 **Date:** 2026-06-18
 **Status:** **Design only — NOT implemented.** Extracted from `.claude/rules/design-decisions.md` on 2026-06-18, where this machinery had been recorded as if shipped. A pickaxe over the full history (`git log -S field_expanded`, `-S ArrayField`) confirms these constructs have **only ever existed in design docs**, never in `src/`. This spec is the unbuilt design record; nothing here is in the code today.
 

@@ -1,5 +1,7 @@
 # Skipped Tests Design Spec
 
+> **Problem tracking consolidated into** [`2026-06-27-known-issues-laundry-list-design.md`](./2026-06-27-known-issues-laundry-list-design.md) (`stats-count-by-array-field`, `stats-eval-grammar`, and the multivalue gaps). This file is kept for its fix-design detail.
+
 5 skipped tests remain in spl.test.js. This spec covers the design for all 5, plus the broader EXPAND opportunity that affects ~15 existing tests.
 
 ## 1. Append edge cases (validation only — no code changes)
