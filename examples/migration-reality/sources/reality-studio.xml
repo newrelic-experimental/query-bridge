@@ -1,0 +1,89 @@
+<dashboard version="2">
+  <definition><![CDATA[
+{
+  "title": "Migration Reality (Studio, synthetic)",
+  "description": "A synthetic Splunk Dashboard Studio board modeled on the SHAPE of real customer boards (ds.search/ds.chain/ds.savedSearch data sources, a px-grid layout, a global time input feeding $global_time.earliest$, mixed splunk.* visualizations). All field/index names are invented. Run through the SPL->NRQL importer it shows the REALITY of a Studio migration: a little works, much breaks, and Studio adds its own failure modes.",
+  "dataSources": {
+    "ds_ok_line": { "type": "ds.search", "options": { "query": "search level=INFO | timechart count" } },
+    "ds_ok_pie":  { "type": "ds.search", "options": { "query": "search * | stats count by level" } },
+    "ds_top":     { "type": "ds.search", "options": { "query": "search * | top limit=10 hostname" } },
+    "ds_sort":    { "type": "ds.search", "options": { "query": "search * | stats count by level | sort -count" } },
+    "ds_txn":     { "type": "ds.search", "options": { "query": "search index=web_logs | transaction session_id maxpause=30m | stats count" } },
+    "ds_mv":      { "type": "ds.search", "options": { "query": "search index=web_logs | mvexpand tags | stats count by tags" } },
+    "ds_ip":      { "type": "ds.search", "options": { "query": "search index=web_logs | iplocation clientip | stats count by Country" } },
+    "ds_chain_root": { "type": "ds.search", "options": { "query": "search index=web_logs | stats count by pod" } },
+    "ds_chain":   { "type": "ds.chain", "options": { "extend": "ds_chain_root", "query": "| eval rate = count / 60" } },
+    "ds_saved":   { "type": "ds.savedSearch", "options": { "ref": "Errors by service (saved)" } },
+    "ds_total":   { "type": "ds.search", "options": { "query": "search * | stats count" } }
+  },
+  "visualizations": {
+    "v_intro": { "type": "splunk.markdown", "options": { "markdown": "# Migration Reality — Studio\n\nEvery panel below was authored in Splunk Dashboard Studio and run, unmodified, through the SPL->NRQL importer. The notes by each row say what to expect. Studio carries clean markdown across (unlike Simple XML, where text panels become placeholders)." } },
+
+    "v_md_clean": { "type": "splunk.markdown", "options": { "markdown": "## ✅ These just work\n\nA filtered `timechart` and a `stats count by` migrate to `TIMESERIES` / `FACET` and render with live data." } },
+    "v_ok_line": { "type": "splunk.line", "title": "Events over time (timechart)", "dataSources": { "primary": "ds_ok_line" } },
+    "v_ok_pie":  { "type": "splunk.pie",  "title": "By level (stats count by)",   "dataSources": { "primary": "ds_ok_pie" } },
+
+    "v_md_render": { "type": "splunk.markdown", "options": { "markdown": "## 🔴 Pass review, fail live\n\n`top`/`sort` emit `ORDER BY count DESC`. That compiles and even returns rows in the query console — but the dashboard widget engine rejects it: *\"ORDER BY is not supported on aggregation function queries.\"* So these red-banner only once they are live widgets." } },
+    "v_top": { "type": "splunk.bar",   "title": "Top hosts (top → ORDER BY)",     "dataSources": { "primary": "ds_top" } },
+    "v_sort": { "type": "splunk.table", "title": "Levels sorted (sort → ORDER BY)", "dataSources": { "primary": "ds_sort" } },
+
+    "v_md_gap": { "type": "splunk.markdown", "options": { "markdown": "## 🚫 No NRQL equivalent\n\n`transaction` (session grouping), `mvexpand` (multivalue row-expansion), and `iplocation` (geo-IP) have no NRQL concept. The importer fails loudly — a placeholder panel that preserves the original SPL — never a silently-wrong chart." } },
+    "v_txn": { "type": "splunk.line",        "title": "Sessions (transaction)",  "dataSources": { "primary": "ds_txn" } },
+    "v_mv":  { "type": "splunk.bar",         "title": "Tags (mvexpand)",         "dataSources": { "primary": "ds_mv" } },
+    "v_ip":  { "type": "splunk.bar",         "title": "By country (iplocation)", "dataSources": { "primary": "ds_ip" } },
+
+    "v_md_studio": { "type": "splunk.markdown", "options": { "markdown": "## 🧩 Studio-specific reality\n\nStudio data sources add their own failures: a `ds.chain` whose base transforms (stats) then post-processes with `eval` is guarded to a placeholder; a `ds.savedSearch` has no inline SPL to translate; and an unrecognized `splunk.*` visualization (here a sankey) becomes a placeholder." } },
+    "v_chain":  { "type": "splunk.line",        "title": "Per-minute rate (ds.chain eval-after-stats)", "dataSources": { "primary": "ds_chain" } },
+    "v_saved":  { "type": "splunk.singlevalue", "title": "Saved-search backed",  "dataSources": { "primary": "ds_saved" } },
+    "v_sankey": { "type": "splunk.sankey",       "title": "Flow (unrecognized viz)", "dataSources": { "primary": "ds_ok_pie" } },
+
+    "v_md_deco": { "type": "splunk.markdown", "options": { "markdown": "## 🖼️ Decorations & media\n\nAn `splunk.image` with an http(s) source migrates to a clean markdown image; a `splunk.rectangle` decoration is dropped (no widget); a `splunk.markdown` note migrates clean." } },
+    "v_img":  { "type": "splunk.image",     "options": { "src": "https://example.com/runbook.png" } },
+    "v_rect": { "type": "splunk.rectangle" },
+    "v_note": { "type": "splunk.markdown", "options": { "markdown": "**Note:** this markdown panel migrates to a clean New Relic markdown widget." } },
+
+    "v_md_layout": { "type": "splunk.markdown", "options": { "markdown": "## 📐 Layout is approximate\n\nThe billboard below was authored to span the center 80% (x=120, w=960 of 1200px). Studio's pixel canvas → New Relic's 12-column grid is rounded, not exact: fine positions round and adjacent panels can shift or collide." } },
+    "v_layout": { "type": "splunk.singlevalue", "title": "Total events (centered 80% in Splunk)", "dataSources": { "primary": "ds_total" } }
+  },
+  "layout": {
+    "structure": [
+      { "item": "v_intro", "position": { "x": 0, "y": 0, "w": 1200, "h": 100 } },
+
+      { "item": "v_md_clean", "position": { "x": 0,   "y": 100, "w": 300, "h": 200 } },
+      { "item": "v_ok_line",  "position": { "x": 300, "y": 100, "w": 450, "h": 200 } },
+      { "item": "v_ok_pie",   "position": { "x": 750, "y": 100, "w": 450, "h": 200 } },
+
+      { "item": "v_md_render", "position": { "x": 0,   "y": 300, "w": 300, "h": 200 } },
+      { "item": "v_top",       "position": { "x": 300, "y": 300, "w": 450, "h": 200 } },
+      { "item": "v_sort",      "position": { "x": 750, "y": 300, "w": 450, "h": 200 } },
+
+      { "item": "v_md_gap", "position": { "x": 0,   "y": 500, "w": 300, "h": 200 } },
+      { "item": "v_txn",    "position": { "x": 300, "y": 500, "w": 300, "h": 200 } },
+      { "item": "v_mv",     "position": { "x": 600, "y": 500, "w": 300, "h": 200 } },
+      { "item": "v_ip",     "position": { "x": 900, "y": 500, "w": 300, "h": 200 } },
+
+      { "item": "v_md_studio", "position": { "x": 0,   "y": 700, "w": 300, "h": 200 } },
+      { "item": "v_chain",     "position": { "x": 300, "y": 700, "w": 300, "h": 200 } },
+      { "item": "v_saved",     "position": { "x": 600, "y": 700, "w": 300, "h": 200 } },
+      { "item": "v_sankey",    "position": { "x": 900, "y": 700, "w": 300, "h": 200 } },
+
+      { "item": "v_md_deco", "position": { "x": 0,   "y": 900, "w": 300, "h": 200 } },
+      { "item": "v_img",     "position": { "x": 300, "y": 900, "w": 300, "h": 200 } },
+      { "item": "v_rect",    "position": { "x": 600, "y": 900, "w": 300, "h": 200 } },
+      { "item": "v_note",    "position": { "x": 900, "y": 900, "w": 300, "h": 200 } },
+
+      { "item": "v_md_layout", "position": { "x": 0,   "y": 1100, "w": 1200, "h": 100 } },
+      { "item": "v_layout",    "position": { "x": 120, "y": 1200, "w": 960,  "h": 100 } }
+    ],
+    "options": { "width": 1200 }
+  },
+  "inputs": {
+    "input_time": { "type": "input.timerange", "options": { "token": "global_time", "defaultValue": "-24h@h,now" }, "title": "Global Time" },
+    "input_env":  { "type": "input.dropdown",  "options": { "token": "env", "defaultValue": "prod", "items": [{ "label": "prod", "value": "prod" }, { "label": "staging", "value": "staging" }] }, "title": "Environment" }
+  },
+  "defaults": {
+    "dataSources": { "ds.search": { "options": { "queryParameters": { "latest": "$global_time.latest$", "earliest": "$global_time.earliest$" } } } }
+  }
+}
+  ]]></definition>
+</dashboard>
