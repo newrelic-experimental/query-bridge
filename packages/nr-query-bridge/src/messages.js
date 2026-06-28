@@ -212,6 +212,16 @@ export const messages = {
   eval_func_unsupported: (name) =>
     `eval function ${name}() has no NRQL equivalent`,
 
+  // SPL: `* | eval x = strftime(_time, "%s")` — a %-code with no Java pattern letter.
+  strftime_unmappable_code: (code) =>
+    `strftime/strptime format code '${code}' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way`,
+  // SPL: `* | eval t = strptime(ds, "%Y-%m-%d")` — toTimestamp returns ms, strptime seconds.
+  strptime_units_warning: () =>
+    'strptime() result divided by 1000: NRQL toTimestamp() returns milliseconds, Splunk strptime() returns seconds',
+  // SPL: `* | eval d = strftime(epoch_field, "%Y-%m-%d")` — a non-_time epoch field.
+  strftime_epoch_units_warning: () =>
+    'strftime() on a non-_time epoch field assumes milliseconds (NRQL timestamp unit); a seconds-epoch field yields a 1970 date — multiply by 1000 to match',
+
   // ── enrichmentHandlers ────────────────────────────────────────────
 
   // SPL: `* | join type=outer host [search *]`
