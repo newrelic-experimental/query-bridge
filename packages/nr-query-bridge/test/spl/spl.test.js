@@ -2335,6 +2335,14 @@ const cases = [
     verified: 'human',
   },
   {
+    // PR 1 inert: prefix-strip marker recorded internally, but output is
+    // unchanged (still unsupported). PR 2 makes this shape translate.
+    spl: '* | rename log.* as *',
+    unsupportedFunc: ['rename_wildcard'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  {
     spl: '* | rename src_ip as src user_name as user',
     nrql: "FROM Log SELECT src_ip AS 'src', user_name AS 'user', *",
     warningFunc: ['rename_keeps_original'],

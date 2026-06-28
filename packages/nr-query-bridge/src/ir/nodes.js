@@ -117,5 +117,7 @@ export const SelectQuery = (overrides = {}) => ({
   _fieldReplacements: undefined,
   /** @type {Set<string>|undefined} internal: bin _time alias names, stripped from FACET when TIMESERIES present */
   _timeBucketAliases: undefined,
+  /** @type {Array<{direction:string,affix:string,beforeNames:Set<string>}>|undefined} internal: pending wildcard-rename markers, consumed post-loop by applyWildcardRenames */
+  _wildcardRenames: undefined,
   ...overrides,
 });

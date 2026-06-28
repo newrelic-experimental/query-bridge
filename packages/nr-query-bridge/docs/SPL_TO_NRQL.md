@@ -1130,6 +1130,12 @@ SPL:  * | rename properties.* as *
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | rename log.* as *
+🔴 Wildcard rename (log.* as *) not supported in NRQL; rename specific fields
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rename "IsOutlier(count)" as isOutlier
 🔴 Cannot rename field with parentheses in name: "IsOutlier(count)"
