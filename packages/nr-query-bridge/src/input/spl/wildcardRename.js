@@ -7,6 +7,8 @@
  * but ONLY for bare references that are provably safe to rewrite (see
  * applyWildcardRenames). Anything ambiguous stays a loud `unsupported`.
  */
+import { Identifier } from '../../ir/nodes.js';
+import { messages } from '../../messages.js';
 
 /**
  * Recognize a clean single-affix wildcard rename.
@@ -56,4 +58,65 @@ export function collectRefs(ir) {
   if (ir.orderBy) visit(ir.orderBy);
   for (const b of ir.bindings) visit(b.expr);
   return refs;
+}
+
+/**
+ * Consume the ir._wildcardRenames markers (post-pipeline). For the strip shape,
+ * register `<bare> → <affix><bare>` into ir._fieldReplacements for each downstream
+ * bare reference that is eligible (appears nowhere except downstream, and is not a
+ * binding/alias). Loud `unsupported` for >1 marker or an ambiguous (also-pre-rename)
+ * reference; drop-with-warning when nothing eligible references the rename.
+ * @param {object} ir
+ */
+export function applyWildcardRenames(ir) {
+  const marks = ir._wildcardRenames;
+  if (!marks || marks.length === 0) return;
+  if (marks.length > 1) {
+    ir.unsupported.push(messages.wildcard_rename_multiple());
+    return;
+  }
+  const mark = marks[0];
+
+  // Names bound by a real computed column — never rewritten (they are not the
+  // stripped form of a wildcard-matched field).
+  const bound = new Set();
+  for (const s of ir.select) if (s.type === 'Alias') bound.add(s.name);
+  for (const b of ir.bindings) bound.add(b.name);
+  for (const f of ir.facet) if (f.type === 'Alias') bound.add(f.name);
+
+  const downstream = collectRefs(ir);
+  const candidates = [...downstream].filter((n) => isAffixCandidate(n, mark));
+
+  // Ambiguity guard FIRST (bail before any partial rewrite): a candidate that also
+  // existed before the rename could be a real top-level field as well as the stripped
+  // form — never guess.
+  for (const n of candidates) {
+    if (!bound.has(n) && mark.beforeNames.has(n)) {
+      ir.unsupported.push(messages.wildcard_rename_ambiguous(n));
+      return;
+    }
+  }
+
+  const replacements = {};
+  for (const n of candidates) {
+    if (bound.has(n)) continue; // a real computed column — leave as-is
+    replacements[n] = Identifier(affixTarget(n, mark));
+  }
+  if (Object.keys(replacements).length === 0) {
+    ir.warnings.push(messages.wildcard_rename_dropped(mark.affix));
+    return;
+  }
+  ir._fieldReplacements = ir._fieldReplacements || {};
+  Object.assign(ir._fieldReplacements, replacements);
+}
+
+/** strip: every bare name is a candidate. (Task 3 adds the reprefix predicate.) */
+function isAffixCandidate(name, mark) {
+  if (mark.direction === 'strip') return true;
+  return false;
+}
+
+/** strip: `level` → `log.level`. (Task 3 adds the reprefix direction.) */
+function affixTarget(name, mark) {
+  return mark.affix + name; // 'log.' + 'level'
 }

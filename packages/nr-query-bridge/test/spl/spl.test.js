@@ -2328,17 +2328,63 @@ const cases = [
     doc: 'fields-rename',
     verified: 'human',
   },
+  // bare prefix-strip with no downstream reference → drop with a warning.
+  // (Was `verified:'human'` as `rename_wildcard`; this shape now translates — the
+  // strip path makes `properties.* as *` a no-op drop, not a blanket unsupported.)
   {
     spl: '* | rename properties.* as *',
-    unsupportedFunc: ['rename_wildcard'],
+    nrql: 'FROM Log SELECT *',
+    warningFunc: ['wildcard_rename_dropped'],
     doc: 'fields-rename',
-    verified: 'human',
+    verified: false,
   },
+  // prefix-strip: a downstream FACET key is rewritten through the prefix.
+  // `facet_default_limit` fires because FACET has no LIMIT (existing pipeline warning).
   {
-    // PR 1 inert: prefix-strip marker recorded internally, but output is
-    // unchanged (still unsupported). PR 2 makes this shape translate.
-    spl: '* | rename log.* as *',
+    spl: '* | rename log.* as * | stats count by level',
+    nrql: 'FROM Log SELECT count(*) FACET `log.level`',
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // prefix-strip in WHERE.
+  {
+    spl: '* | rename log.* as * | where level="error" | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE `log.level` = 'error'",
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // eval-bound name is NOT rewritten (and, being the only downstream ref, the rename
+  // drops). `flag` is a binding name, so it stays `flag`, not `log.flag`.
+  {
+    spl: '* | rename log.* as * | eval flag = "high" | table flag',
+    nrql: "FROM Log WITH 'high' AS flag SELECT flag",
+    warningFunc: ['wildcard_rename_dropped'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // ambiguity guard: `level` exists BEFORE the rename (pre-rename WHERE) AND after it
+  // (FACET) → cannot attribute it to the rename → loud unsupported.
+  {
+    spl: '* | where level="x" | rename log.* as * | stats count by level',
+    unsupportedFunc: ['wildcard_rename_ambiguous'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // multiple wildcard renames → cannot attribute a bare name to one prefix → unsupported.
+  {
+    spl: '* | rename log.* as * | rename app.* as * | stats count by level',
+    unsupportedFunc: ['wildcard_rename_multiple'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // non-single-affix shape stays the existing unsupported (unchanged).
+  {
+    spl: '* | rename a.*.b as * | stats count by level',
     unsupportedFunc: ['rename_wildcard'],
+    warningFunc: ['facet_default_limit'],
     doc: 'fields-rename',
     verified: false,
   },
