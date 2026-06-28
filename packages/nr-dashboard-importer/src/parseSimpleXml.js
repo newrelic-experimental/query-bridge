@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import { createDashboardModel, createWidget, createVariable } from './model.js';
+import { htmlToMarkdown } from './htmlToMarkdown.js';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -7,6 +8,10 @@ const parser = new XMLParser({
   // Keep single children as objects; we normalize to arrays ourselves.
   isArray: () => false,
   trimValues: true,
+  // Keep <html> panel bodies as RAW HTML (unparsed) for htmlToMarkdown. '*.html'
+  // matches an <html> element at any depth (fast-xml-parser 5.x rewrites '*.x' to
+  // '..x'). <html> is the only raw-HTML element in Simple XML, so this is targeted.
+  stopNodes: ['*.html'],
 });
 
 /**
@@ -26,6 +31,21 @@ const CHART_TYPE_MAP = {
 function asArray(v) {
   if (v === undefined || v === null) return [];
   return Array.isArray(v) ? v : [v];
+}
+
+/**
+ * Raw inner HTML of a stopNode <html> element. With stopNodes it arrives as a
+ * bare string, or as { '#text': '<raw>', '@_attr': … } when the <html> tag had
+ * attributes (e.g. <html encoded="true">). Anything else → '' (dropped upstream).
+ * @param {unknown} node
+ * @returns {string}
+ */
+function htmlRaw(node) {
+  if (typeof node === 'string') return node;
+  if (node && typeof node === 'object' && typeof node['#text'] === 'string') {
+    return node['#text'];
+  }
+  return '';
 }
 
 /** Extract the option[name="charting.chart"] value from a viz element's <option> list. */
@@ -227,7 +247,6 @@ function resolveBaseSearch(vizEl, baseMap) {
 const UNSUPPORTED_VIZ_TAGS = {
   event: 'unknown',
   map: 'map',
-  html: 'unknown',
   viz: 'unknown',
   list: 'unknown',
 };
@@ -302,6 +321,24 @@ export function parseSimpleXml(xml) {
             }),
           );
         }
+      }
+      // <html> panels are static text → clean NR markdown widgets (mirrors the
+      // Studio splunk.markdown path; translateWidgets emits a {vizType:'markdown',
+      // options.text} widget as a clean widget_markdown). An empty/CSS-only body
+      // converts to '' → dropped (no widget, no placeholder), like Studio's
+      // image-without-URL drop. NR's renderer sanitizes link schemes, so we emit
+      // every link faithfully and add no scheme filtering.
+      for (const htmlEl of asArray(panel.html)) {
+        const text = htmlToMarkdown(htmlRaw(htmlEl));
+        if (text === '') continue;
+        widgets.push(
+          createWidget({
+            title: panelTitle,
+            vizType: 'markdown',
+            options: { text },
+            layout,
+          }),
+        );
       }
       // Recognized-but-unsupported viz tags must not vanish: emit a widget with
       // an unsupportedReason so the chokepoint placeholders it (loud, not silent).

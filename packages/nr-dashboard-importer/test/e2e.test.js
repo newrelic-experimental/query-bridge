@@ -26,3 +26,19 @@ describe('end-to-end: realistic Simple XML → Terraform', () => {
     expect(a.files).toEqual(b.files);
   });
 });
+
+describe('end-to-end: <html> panel → clean markdown widget', () => {
+  it('emits a clean widget_markdown for an <html> panel alongside a chart', () => {
+    const xml = `<dashboard><label>HTML demo</label><row>
+      <panel><chart><title>Reqs</title><search><query>index=web | timechart count</query></search></chart></panel>
+      <panel><title>Legend</title><html><b>Key</b></html></panel>
+    </row></dashboard>`;
+    const [out] = runImport(xml, { account: 12345 });
+    const tf = out.files[`${out.slug}.tf`];
+    expect((tf.match(/widget_/g) || []).length).toBe(2);
+    expect(tf).toContain('widget_markdown');
+    expect(tf).toContain('widget_line');
+    expect(tf).toContain('**Key**'); // converted content, not a fenced placeholder
+    expect(tf).not.toContain('```'); // a placeholder fences the original; a clean widget doesn't
+  });
+});

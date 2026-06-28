@@ -369,7 +369,7 @@ describe('importer: emitter & structure [pending]', () => {
     expect(tf).not.toMatch(/widget_markdown \{[^}]*nrql_query/s);
   });
 
-  // BUG 3 — event/map/html/viz panels produce no widget and no placeholder.
+  // BUG 3 — event/map/viz panels produce no widget and no placeholder.
   it('an event panel yields a widget or placeholder, never a silent drop (BUG 3)', () => {
     // AI-DEV: AI **MUST NOT** touch this test. If it fails, the parser stopped
     // classifying unsupported viz tags (BUG3 regression) — fix the code, not the test.

@@ -10,7 +10,7 @@ Columns: **src viz** = visualization elements in the XML; **dropped** = src viz 
 |---|--:|--:|--:|--:|--:|--:|:--:|
 | real/conditional-inputs.xml | 1 | 1 | 1 | 0 | 0 | 0 |  |
 | real/dashboard-panel-example.xml | 3 | 3 | 1 | 2 | 1 | 0 |  |
-| real/mixed-viz-types.xml | 4 | 4 | 1 | 3 | 1 | 0 |  |
+| real/mixed-viz-types.xml | 4 | 4 | 2 | 2 | 1 | 0 |  |
 | real/post-process-search.xml | 2 | 2 | 0 | 2 | 0 | 0 |  |
 | synthetic/panel-title-matrix.xml | 4 | 4 | 4 | 0 | 1 | 0 |  |
 | synthetic/shape-after-aggregation.xml | 2 | 2 | 2 | 0 | 0 | 0 |  |
@@ -20,6 +20,6 @@ Columns: **src viz** = visualization elements in the XML; **dropped** = src viz 
 | synthetic/shape-studio-wrapped.xml | 0 | 0 | 0 | 0 | 0 | 0 |  |
 | synthetic/shape-unsupported-tail.xml | 3 | 3 | 1 | 2 | 0 | 0 |  |
 
-**Totals:** 26 widgets from 26 source viz — 9 placeholder (35%), 3 untitled (12%), **0 silently dropped**.
+**Totals:** 26 widgets from 26 source viz — 8 placeholder (31%), 3 untitled (12%), **0 silently dropped**.
 
 _Note: the **src viz** count matches only Simple-XML viz tags (`chart/table/single/event/map/html/viz`), not Studio (JSON-in-CDATA) visualizations, so a Studio fixture shows an all-zeros row. Studio import is covered by the explicit Studio e2e test instead._

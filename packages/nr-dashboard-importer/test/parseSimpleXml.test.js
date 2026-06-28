@@ -261,3 +261,51 @@ describe('parseSimpleXml — base search resolution', () => {
     expect(m.widgets[0].unsupportedReason).toMatch(/chained or saved-search/);
   });
 });
+
+describe('parseSimpleXml — <html> panels become clean markdown widgets', () => {
+  it('converts an <html> panel to a markdown widget carrying options.text', () => {
+    const xml = `<dashboard><label>D</label><row><panel>
+      <title>Notes</title>
+      <html><b>Money in</b></html>
+    </panel></row></dashboard>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets).toHaveLength(1);
+    expect(m.widgets[0].vizType).toBe('markdown');
+    expect(m.widgets[0].title).toBe('Notes');
+    expect(m.widgets[0].options.text).toBe('**Money in**');
+    expect(m.widgets[0].unsupportedReason).toBeNull();
+  });
+
+  it('converts an attributed <html attr=…> panel (body under #text) like a bare one', () => {
+    // With stopNodes, an <html> element carrying an attribute surfaces its raw
+    // body under #text (vs a bare string for <html>…</html>); htmlRaw must read
+    // both shapes identically. (Entity-decoding of encoded="true" bodies is
+    // deliberately deferred — spec concern #3 — so this uses a literal body and
+    // a non-encoded attribute to pin only the #text-shape behavior.)
+    const xml = `<dashboard><label>D</label><row><panel>
+      <title>Notes</title>
+      <html tokens="true"><b>Money in</b></html>
+    </panel></row></dashboard>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets).toHaveLength(1);
+    expect(m.widgets[0].vizType).toBe('markdown');
+    expect(m.widgets[0].options.text).toBe('**Money in**');
+  });
+
+  it('drops an empty <html> panel — no widget, no placeholder', () => {
+    const xml = `<dashboard><label>D</label><row><panel>
+      <html>   </html>
+    </panel></row></dashboard>`;
+    expect(parseSimpleXml(xml).widgets).toHaveLength(0);
+  });
+
+  it('still parses a normal <chart> panel after the stopNodes change', () => {
+    const xml = `<dashboard><label>D</label><row><panel>
+      <chart><title>Reqs</title><search><query>index=web | timechart count</query></search></chart>
+    </panel></row></dashboard>`;
+    const m = parseSimpleXml(xml);
+    expect(m.widgets).toHaveLength(1);
+    expect(m.widgets[0].vizType).toBe('line');
+    expect(m.widgets[0].rawSpl).toBe('index=web | timechart count');
+  });
+});
