@@ -1144,6 +1144,21 @@ NRQL: FROM Log WITH 'high' AS flag SELECT flag
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | rename * as fld_* | stats count by fld_level
+NRQL: FROM Log SELECT count(*) FACET level
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename * as fld_* | stats count by host
+NRQL: FROM Log SELECT count(*) FACET host
+🟡 Wildcard rename (fld_* as *) dropped: no downstream field references it, so fields keep their original names.
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rename src_ip as src user_name as user
 NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *

@@ -2388,6 +2388,22 @@ const cases = [
     doc: 'fields-rename',
     verified: false,
   },
+  // re-prefix: a downstream `fld_level` maps back to its stored name `level`.
+  {
+    spl: '* | rename * as fld_* | stats count by fld_level',
+    nrql: 'FROM Log SELECT count(*) FACET level',
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // re-prefix with no affixed downstream reference (`host` lacks `fld_`) → dropped.
+  {
+    spl: '* | rename * as fld_* | stats count by host',
+    nrql: 'FROM Log SELECT count(*) FACET host',
+    warningFunc: ['wildcard_rename_dropped', 'facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
   {
     spl: '* | rename src_ip as src user_name as user',
     nrql: "FROM Log SELECT src_ip AS 'src', user_name AS 'user', *",
