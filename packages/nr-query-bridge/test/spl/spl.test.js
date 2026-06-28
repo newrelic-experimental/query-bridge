@@ -3897,11 +3897,26 @@ const cases = [
   //
   // ── Append edge cases (TODO: verify these produce correct results) ──
   //
-  // Different indexes on each side — filter() WHERE clauses must reflect different sources
+  // Defect 1: cross-source — different index per side has no single-FROM NRQL form.
+  // Was a skipped filter() case that silently returned 0 (NR Log carries no `index`).
   {
-    skip: true,
     spl: 'index=web | stats count as web_count | append [search index=api | stats count as api_count]',
-    nrql: "FROM Log SELECT filter(count(*), WHERE index = 'web') AS 'web_count', filter(count(*), WHERE index = 'api') AS 'api_count'",
+    unsupportedFunc: ['append_cross_source'],
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Regression: same-source, different-WHERE stays the faithful filter() merge.
+  {
+    spl: 'status=200 | stats count | append [search status=500 | stats count]',
+    nrql: "FROM Log SELECT filter(count(*), WHERE status = '200' OR numeric(status) = 200), filter(count(*), WHERE status = '500' OR numeric(status) = 500)",
+    warningFunc: ['append_filter_warning'],
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Regression: SAME index on both sides is not cross-source — stays faithful.
+  {
+    spl: 'index=web error | stats count | append [search index=web success | stats count]',
+    nrql: "FROM Log SELECT filter(count(*), WHERE index = 'web' AND message LIKE '%error%'), filter(count(*), WHERE index = 'web' AND message LIKE '%success%')",
     warningFunc: ['append_filter_warning'],
     doc: 'correlation-append',
     verified: false,
