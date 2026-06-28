@@ -2402,6 +2402,12 @@ SPL:  * | eval x = strftime(_time, "%s")
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | stats count by host | eval d = strftime(_time, "%Y-%m-%d")
+🔴 `this` compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | eval json_content=replace(json_content, "'", "\"") | spath input=json_content
 🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
