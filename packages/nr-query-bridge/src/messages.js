@@ -400,6 +400,18 @@ export const messages = {
     `dashboard variable ${token}'s values must include % wildcards (e.g. %value%); New Relic ` +
     'substitutes the value as-is and does not add wildcards.',
 
+  // SPL: `app="$env:app$"` — Splunk's $env:…$ runtime-context namespace (current
+  // app/page/user/locale + user-profile fields injected at render time). NR dashboards
+  // expose no widget-level runtime-context token, and ':' cannot appear inside an NRQL
+  // {{…}} variable (a hard NRDB parse error) — so an env: token can never become a
+  // faithful {{…}}. Flag unsupported, never emit a dead {{env:…}}.
+  splunk_env_token: (token) =>
+    `$${token}$ is a Splunk runtime-context token (the $env:…$ namespace — current ` +
+    'app/page/user/locale). New Relic dashboards have no equivalent runtime-context ' +
+    'variable, and the colon cannot appear in an NRQL {{…}} template variable, so this ' +
+    'filter cannot be translated. Remove the env-scoped filter or re-scope the widget ' +
+    'with a New Relic template variable.',
+
   // SPL: `_raw=*error*`
   raw_mapped_to_message: () =>
     '_raw is not a valid NRQL field; mapped to message',

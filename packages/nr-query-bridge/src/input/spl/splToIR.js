@@ -113,6 +113,14 @@ function findUnimplementedRhsFuncInAst(node) {
 /**
  * Main entry: translate a parsed SPL AST into an IR query plan.
  */
+// A Splunk `$env:…$` runtime-context token (current app/page/user/locale + user-profile
+// fields). Detected by the literal `env:` prefix — the colon is required, so a plain
+// `$env$` user variable (no colon) is never reclassified. NR has no widget-level
+// runtime-context token, so an env: token can never become a faithful {{…}} variable.
+function isEnvToken(name) {
+  return name.startsWith('env:');
+}
+
 export function translateAstToIR(ast) {
   const ir = SelectQuery();
 
@@ -375,6 +383,10 @@ export function translateSearchExpr(node, ir) {
           typeof value === 'object' &&
           value.type === 'TemplateVariable'
         ) {
+          if (isEnvToken(value.name)) {
+            unsupported.push(messages.splunk_env_token(value.name));
+            return null;
+          }
           return BinOp(op, Identifier(field), Identifier(`{{${value.name}}}`));
         }
 
@@ -387,6 +399,10 @@ export function translateSearchExpr(node, ir) {
         if (typeof value === 'string') {
           const tokenOnly = /^\$([A-Za-z0-9_.:-]+)\$$/.exec(value);
           if (tokenOnly) {
+            if (isEnvToken(tokenOnly[1])) {
+              unsupported.push(messages.splunk_env_token(tokenOnly[1]));
+              return null;
+            }
             return BinOp(
               op,
               Identifier(field),
@@ -405,6 +421,10 @@ export function translateSearchExpr(node, ir) {
         if (typeof value === 'string' && /\$[A-Za-z0-9_.:-]+\$/.test(value)) {
           const wildcardToken = /^\*?\$([A-Za-z0-9_.:-]+)\$\*?$/.exec(value);
           if (wildcardToken && value.includes('*')) {
+            if (isEnvToken(wildcardToken[1])) {
+              unsupported.push(messages.splunk_env_token(wildcardToken[1]));
+              return null;
+            }
             warnings.push(
               messages.wildcard_token_like(field, wildcardToken[1]),
             );
@@ -592,6 +612,10 @@ export function translateSearchExpr(node, ir) {
             messages.time_token_bound_dropped(param, `$${node.name}$`),
           );
           return null; // drop: do NOT set since/until to {{…}}
+        }
+        if (isEnvToken(node.name)) {
+          unsupported.push(messages.splunk_env_token(node.name));
+          return null;
         }
         return Identifier(`{{${node.name}}}`); // non-time variable: unchanged
       }
