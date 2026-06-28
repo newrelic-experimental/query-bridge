@@ -471,6 +471,15 @@ export const messages = {
     'dashboard variable only in value position, so only an equality comparison ' +
     'with a non-token operand can be rewritten — this one cannot be translated.',
 
+  // SPL: `$tok$="*"` (the multiselect "means-all" sentinel). Flipped to
+  // `'*' = {{tok}}` (B′): when the variable is "*" the literal self-match is true
+  // (match all); otherwise a surrounding `OR field = {{tok}}` filters. "All" is
+  // realized by the New Relic variable's values, not a literal asterisk match.
+  means_all_token: (token) =>
+    `The means-all sentinel $${token}$ = "*" was rewritten as '*' = {{${token}}}; ` +
+    `"all" is realized by the New Relic variable ${token}'s values, not a literal ` +
+    "asterisk match (NRQL `= '*'` matches a literal asterisk, i.e. nothing).",
+
   // SPL: `app="$env:app$"` — Splunk's $env:…$ runtime-context namespace (current
   // app/page/user/locale + user-profile fields injected at render time). NR dashboards
   // expose no widget-level runtime-context token, and ':' cannot appear inside an NRQL

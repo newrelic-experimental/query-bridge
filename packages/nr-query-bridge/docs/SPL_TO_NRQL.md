@@ -3427,6 +3427,27 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 ```
 
 ```
+❓ Not confirmed
+SPL:  * $cat$="*" | stats count
+NRQL: FROM Log SELECT count(*) WHERE '*' = {{cat}}
+🟡 The means-all sentinel $cat$ = "*" was rewritten as '*' = {{cat}}; "all" is realized by the New Relic variable cat's values, not a literal asterisk match (NRQL `= '*'` matches a literal asterisk, i.e. nothing).
+```
+
+```
+❓ Not confirmed
+SPL:  * ($cat$="*" OR category="$cat$") | stats count
+NRQL: FROM Log SELECT count(*) WHERE '*' = {{cat}} OR category = {{cat}}
+🟡 The means-all sentinel $cat$ = "*" was rewritten as '*' = {{cat}}; "all" is realized by the New Relic variable cat's values, not a literal asterisk match (NRQL `= '*'` matches a literal asterisk, i.e. nothing).
+```
+
+```
+❓ Not confirmed
+SPL:  * | where ($cat$="*" OR category="$cat$")
+NRQL: FROM Log SELECT * WHERE '*' = {{cat}} OR category = {{cat}}
+🟡 The means-all sentinel $cat$ = "*" was rewritten as '*' = {{cat}}; "all" is realized by the New Relic variable cat's values, not a literal asterisk match (NRQL `= '*'` matches a literal asterisk, i.e. nothing).
+```
+
+```
 🤖 Confirmed by LLM
 SPL:  index=web $tok.earliest$ | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = 'web'
@@ -3547,19 +3568,13 @@ NRQL: FROM Log SELECT * WHERE index = 'web'
 
 ```
 ❓ Not confirmed
-SPL:  * $cat$="*" | stats count
-🔴 $cat$ appears in comparison field position; New Relic substitutes a dashboard variable only in value position, so only an equality comparison with a non-token operand can be rewritten — this one cannot be translated.
-```
-
-```
-❓ Not confirmed
-SPL:  * | where ($cat$="*" OR category="$cat$")
-🔴 $cat$ appears in comparison field position; New Relic substitutes a dashboard variable only in value position, so only an equality comparison with a non-token operand can be rewritten — this one cannot be translated.
-```
-
-```
-❓ Not confirmed
 SPL:  * | where $cat$ = $other$
+🔴 $cat$ appears in comparison field position; New Relic substitutes a dashboard variable only in value position, so only an equality comparison with a non-token operand can be rewritten — this one cannot be translated.
+```
+
+```
+❓ Not confirmed
+SPL:  * | where $cat$ > 5
 🔴 $cat$ appears in comparison field position; New Relic substitutes a dashboard variable only in value position, so only an equality comparison with a non-token operand can be rewritten — this one cannot be translated.
 ```
 

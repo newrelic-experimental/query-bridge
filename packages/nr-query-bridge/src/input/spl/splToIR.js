@@ -267,12 +267,35 @@ export function translateSearchExpr(node, ir) {
         // Dashboard token in comparison LHS/field position ($tok$ = …). The
         // grammar emits `lhsToken` (a TemplateVariable node). New Relic
         // substitutes {{var}} in VALUE position only, so a token can never stay
-        // in field position. PR1: loud clause-level unsupported for ALL token-LHS
-        // (kills the parse error / whole-command poisoning). PR2 replaces this
-        // block with the B′ operand flip for the flippable shapes.
+        // in field position. An equality comparison with a non-token operand is
+        // flipped (B′ — `$tok$="*"` → `'*' = {{tok}}`); a non-equality operator
+        // or a token-vs-token comparison can't flip → loud unsupported (A).
         if (node.lhsToken) {
-          unsupported.push(messages.token_lhs_unsupported(node.lhsToken.name));
-          return null;
+          const tok = node.lhsToken.name;
+          const op = node.operator;
+          const value = node.value;
+          // RHS is itself a token? (a TemplateVariable node in base position, or
+          // a `$other$` string in where position) → can't flip → Option A.
+          const rhsIsToken =
+            (value &&
+              typeof value === 'object' &&
+              value.type === 'TemplateVariable') ||
+            (typeof value === 'string' && /^\$[A-Za-z0-9_.:-]+\$$/.test(value));
+          // Only equality is commutative; an ordering op would need operator
+          // inversion (out of scope) → Option A.
+          const flippable = op === '=' || op === '!=';
+          if (!flippable || rhsIsToken) {
+            unsupported.push(messages.token_lhs_unsupported(tok));
+            return null;
+          }
+          // B′ operand flip: <literal> op {{tok}}. Base-search comparison RHS
+          // values are literals, so the flipped LHS is a string literal. The
+          // means-all sentinel ('*') is realized by the NR variable, not a
+          // literal asterisk match → warn.
+          if (value === '*') {
+            warnings.push(messages.means_all_token(tok));
+          }
+          return BinOp(op, Literal(value, 'string'), Identifier(`{{${tok}}}`));
         }
 
         // New typed-node RHS (grammar `field op u_add`). Branch before the
