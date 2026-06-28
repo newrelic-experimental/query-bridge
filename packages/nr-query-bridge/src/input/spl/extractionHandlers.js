@@ -73,7 +73,26 @@ export function handleRex(cmd, ir) {
 
 export function handleSpath(cmd, ir) {
   if (!cmd.path) {
-    ir.unsupported.push(messages.spath_no_path());
+    // No path= → Splunk auto-extracts all JSON fields. There's no NRQL "extract
+    // everything", but if the downstream references a small enumerable set of
+    // fields (computed in splToIR), bind each as jparse(<source>, '<field>').
+    // Non-enumerable / auto-extract-all → loud spath_no_path.
+    const fields = cmd._autoExtractFields;
+    if (!fields || fields.length === 0) {
+      ir.unsupported.push(messages.spath_no_path());
+      return;
+    }
+    const autoInput = cmd.input || 'message';
+    const autoSource = autoInput === '_raw' ? 'message' : autoInput;
+    for (const f of fields) {
+      ir.bindings.push(
+        Binding(
+          f,
+          Func('jparse', [Identifier(autoSource), Literal(f, 'string')]),
+        ),
+      );
+    }
+    ir.warnings.push(messages.spath_auto_extract(fields.join(', ')));
     return;
   }
   const rawInput = cmd.input || 'message';

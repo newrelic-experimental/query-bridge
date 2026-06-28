@@ -39,6 +39,11 @@ export const messages = {
   spath_json_only: () =>
     'jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead',
 
+  // SPL: `* | spath | stats count by status` — no path= auto-extract, rewritten to
+  // per-field jparse for the enumerable downstream references.
+  spath_auto_extract: (fields) =>
+    `spath without path= auto-extracts all fields; rewrote downstream reference(s) ${fields} as jparse(<source>, '<field>') — confirm each is a JSON property of the source`,
+
   // SPL: `* | regex foo=$bar$` (unquoted RHS or template variable, no quoted pattern)
   regex_command_unparsed: (rawText) =>
     `regex command pattern could not be parsed: ${rawText.trim()}`,

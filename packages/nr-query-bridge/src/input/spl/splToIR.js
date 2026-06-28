@@ -27,6 +27,7 @@ import {
 } from './splExprUtils.js';
 import * as parser from './splParser.js';
 import { messages } from '../../messages.js';
+import { collectAutoExtractFields } from './spathAutoExtract.js';
 import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
 import {
   handleTable,
@@ -163,7 +164,8 @@ export function translateAstToIR(ast) {
   // Pipeline: each command transforms the IR
   let sawDedup = false;
   let mvexpandCount = 0;
-  for (const cmd of ast.commands) {
+  for (let i = 0; i < ast.commands.length; i++) {
+    const cmd = ast.commands[i];
     if (cmd.type === 'DedupCommand') sawDedup = true;
     if (cmd.type === 'MvexpandCommand') mvexpandCount++;
     // Gap #2, #9: warn when dedup precedes aggregation
@@ -177,6 +179,14 @@ export function translateAstToIR(ast) {
       if (cmd.type === 'TimechartCommand') {
         ir.warnings.push(messages.dedup_timeseries_warning());
       }
+    }
+    // spath auto-extract (no path=): enumerate the fields referenced downstream so
+    // handleSpath can bind each as jparse(<source>, '<field>'). null when not safely
+    // enumerable → handleSpath emits the loud spath_no_path.
+    if (cmd.type === 'SpathCommand' && !cmd.path) {
+      cmd._autoExtractFields = collectAutoExtractFields(
+        ast.commands.slice(i + 1),
+      );
     }
     applyCommand(cmd, ir);
   }
