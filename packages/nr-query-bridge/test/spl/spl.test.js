@@ -706,6 +706,30 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: 'llm',
   },
+  // ── Token in comparison LHS/field position (parser robustness) ──────────
+  // Base-search position: `$tok$="*"` used to be a HARD PARSE ERROR. PR1: it
+  // parses and produces a LOCAL clause-level unsupported — no whole-command poison.
+  {
+    spl: '* $cat$="*" | stats count',
+    unsupportedFunc: ['token_lhs_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Pipeline (where) position: used to degrade to unsupported_command('where').
+  // PR1: parses to a Comparison and emits the SPECIFIC token-LHS unsupported.
+  {
+    spl: '* | where ($cat$="*" OR category="$cat$")',
+    unsupportedFunc: ['token_lhs_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Token-vs-token can never flip → stays unsupported in PR1 AND PR2 (Option A).
+  {
+    spl: '* | where $cat$ = $other$',
+    unsupportedFunc: ['token_lhs_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
   // ── Dashboard time tokens: Path 2 (standalone TemplateVariable) ──
   // FIXME(path-2-semantics): These three standalone-body token cases drop the
   // token AS A TIME BOUND, but that's semantically wrong. Two independent SPL
