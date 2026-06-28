@@ -459,6 +459,12 @@ export const messages = {
   kvparse_unsupported: () =>
     'key=value extraction from unstructured text has no NRQL equivalent; use Grok parsing rules to extract fields at ingest time, or restructure logs as JSON',
 
+  // SPL: `* | transaction user_id maxspan=30s` — no NRQL sessionization primitive (Option A).
+  transaction_unsupported: (windowArg) =>
+    windowArg
+      ? `SPL 'transaction' groups loglines into per-key sessions and the '${windowArg}' arg splits them on a time gap/boundary; NRQL has no sessionization primitive (FACET groups globally, TIMESERIES buckets by wall-clock), so it has no equivalent`
+      : `SPL 'transaction' groups loglines into per-key sessions; NRQL has no sessionization primitive, and even bare 'transaction' is not a plain FACET (Splunk's maxevents=1000 splits high-cardinality keys and connected=true groups by stream connectivity), so it has no equivalent`,
+
   // SPL: `* | stats list(eventType) by orderId`
   list_order_warning: () =>
     'SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved',

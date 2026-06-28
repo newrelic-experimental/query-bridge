@@ -3268,10 +3268,32 @@ const cases = [
   //
   // ── Unsupported commands (distributed by Splunk category) ─────
   {
+    // windowed: maxspan splits a key's session on a time gap — no NRQL equivalent
     spl: '* | transaction clientip maxspan=10m',
-    unsupportedFunc: ['unsupported_command'],
+    unsupportedFunc: ['transaction_unsupported'],
     doc: 'correlation-transaction',
-    verified: 'human',
+    verified: false,
+  },
+  {
+    // bare (no window): still not a plain FACET — maxevents=1000 + connected=true
+    spl: '* | transaction user_id',
+    unsupportedFunc: ['transaction_unsupported'],
+    doc: 'correlation-transaction',
+    verified: false,
+  },
+  {
+    // no fields at all
+    spl: '* | transaction',
+    unsupportedFunc: ['transaction_unsupported'],
+    doc: 'correlation-transaction',
+    verified: false,
+  },
+  {
+    // boundary args (startswith/endswith) — exercises the window-arg scan
+    spl: '* | transaction user_id startswith="login" endswith="logout"',
+    unsupportedFunc: ['transaction_unsupported'],
+    doc: 'correlation-transaction',
+    verified: false,
   },
   // eventstats with BY → subquery JOIN
   {

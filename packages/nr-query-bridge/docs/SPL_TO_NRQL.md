@@ -1834,9 +1834,27 @@ Splunk's `transaction` groups a sequence of events that share a field value (lik
 
 <!-- spl-cases: correlation-transaction -->
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | transaction clientip maxspan=10m
-🔴 SPL command 'transaction' has no known NRQL equivalent
+🔴 SPL 'transaction' groups loglines into per-key sessions and the 'maxspan' arg splits them on a time gap/boundary; NRQL has no sessionization primitive (FACET groups globally, TIMESERIES buckets by wall-clock), so it has no equivalent
+```
+
+```
+❓ Not confirmed
+SPL:  * | transaction user_id
+🔴 SPL 'transaction' groups loglines into per-key sessions; NRQL has no sessionization primitive, and even bare 'transaction' is not a plain FACET (Splunk's maxevents=1000 splits high-cardinality keys and connected=true groups by stream connectivity), so it has no equivalent
+```
+
+```
+❓ Not confirmed
+SPL:  * | transaction
+🔴 SPL 'transaction' groups loglines into per-key sessions; NRQL has no sessionization primitive, and even bare 'transaction' is not a plain FACET (Splunk's maxevents=1000 splits high-cardinality keys and connected=true groups by stream connectivity), so it has no equivalent
+```
+
+```
+❓ Not confirmed
+SPL:  * | transaction user_id startswith="login" endswith="logout"
+🔴 SPL 'transaction' groups loglines into per-key sessions and the 'startswith' arg splits them on a time gap/boundary; NRQL has no sessionization primitive (FACET groups globally, TIMESERIES buckets by wall-clock), so it has no equivalent
 ```
 <!-- /spl-cases -->
 
