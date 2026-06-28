@@ -185,6 +185,16 @@ Mechanics verified via `dashboardCreate` + NRQL execution on staging account 1 (
 
 **Translation consequence (SPL `$tok$`):** a wildcard-only Splunk token (`"*$tok$*"`, `"$tok$*"`, `"*$tok$"`) → `f LIKE {{tok}}` (the `%` must live in the variable's values); a literal-affixed token (`"*fps-$tok$*"`, `"$tok$-suffix"`) has no faithful translation and is emitted as `unsupported`. See the **Dashboard tokens** bullet in `.claude/rules/design-decisions.md`.
 
+### Markdown (text) widgets — a second `{{var}}` context, and what they support
+
+A dashboard **markdown widget** (NerdGraph `viz.markdown`, single `text` field = "Markdown content of the widget"; Terraform `widget_markdown { text = … }`) is a second `{{var}}` substitution context **beyond NRQL**: New Relic substitutes a template variable directly inside the markdown body, so `Current: {{products}}` renders with the selected value ([NR docs](https://docs.newrelic.com/docs/query-your-data/explore-query-data/dashboards/dashboard-template-variables/): "when you save and view the dashboard, the variables are replaced with their actual values"; the editor preview shows the literal `{{var}}`). So `{{var}}` is live in markdown text, not just in NRQL queries.
+
+Content is **GitHub-flavored Markdown** ([NR docs](https://docs.newrelic.com/docs/query-your-data/explore-query-data/dashboards/manage-your-dashboard/#markdown), which points to GitHub's guide): formatted text, checklists, images, code snippets, hyperlinks, tables, and **Mermaid diagrams**. A documented use is "direct links to specific UI pages or dashboards," so internal/relative links are intended.
+
+**Links — two distinct things, don't conflate:**
+- **Inline body links** use GFM `[text](url)`. All schemes can be emitted as-is — `http(s)`, `mailto:`, relative/internal NR links, even `javascript:` — because NR's markdown renderer is the display-time sanitizer (standard practice; NR renders GitHub-flavored Markdown, which neutralizes `javascript:`/`data:`). Not separately render-verified here. So a tool emitting NR markdown needn't filter schemes itself.
+- The widget's separate **`link` field** makes the widget *title* clickable — NOT an inline body link. It must be `http://`/`https://` and ≤2,048 chars ([NerdGraph docs](https://docs.newrelic.com/docs/apis/nerdgraph/examples/create-widgets-dashboards-api/)). (The web claim that "markdown links must be http(s)/≤2048" comes from confusing this title `link` field with body links — verified false against the source.)
+
 ## Subqueries
 
 ### In WHERE clause
