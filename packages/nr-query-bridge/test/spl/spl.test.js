@@ -2040,6 +2040,36 @@ const cases = [
     doc: 'fields-rex-pcre',
     verified: 'human',
   },
+  // backreference — capture() (RE2) rejects \1 at runtime; must be loud, not a
+  // silently-broken capture() (the confirmed-live bug).
+  {
+    spl: '* | rex field=x "(?<a>\\w+)=\\1"',
+    unsupportedFunc: ['rex_backreference'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // backreference inside a character class — NOT a preserved literal in RE2;
+  // capture() rejects `\1` everywhere (re2js-confirmed).
+  {
+    spl: '* | rex field=x "x[\\1]y(?<a>\\w+)"',
+    unsupportedFunc: ['rex_backreference'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // no-regression: a plain named group still translates unchanged.
+  {
+    spl: '* | rex field=x "user=(?<user_id>\\w+)"',
+    nrql: "FROM Log WITH capture(x, r'.*user=(?P<user_id>\\w+).*') AS (user_id) SELECT *",
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // no-regression: multi-capture destructuring still translates.
+  {
+    spl: '* | rex field=x "(?<a>\\w+) (?<b>\\w+)"',
+    nrql: "FROM Log WITH capture(x, r'.*(?P<a>\\w+) (?P<b>\\w+).*') AS (a, b) SELECT *",
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
   //
   // ── spath command ───────────────────────────────────────────────
   //

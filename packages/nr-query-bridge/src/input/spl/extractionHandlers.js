@@ -15,6 +15,10 @@ import {
   Binding,
 } from '../../ir/nodes.js';
 import { messages } from '../../messages.js';
+import {
+  getRe2Compatibility,
+  resolveConstructMessageKey,
+} from './re2Compat.js';
 // Circular import — safe because translateSearchExpr is only called at runtime
 import { translateSearchExpr } from './splToIR.js';
 
@@ -63,6 +67,23 @@ export function handleRex(cmd, ir) {
   const prefix = /^\.[*+]/.test(normalizedPattern) ? '' : '.*';
   const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '.*';
   const fullPattern = `${prefix}${normalizedPattern}${suffix}`;
+
+  // RE2-compatibility gate: capture() is backed by RE2/J, which rejects
+  // backreferences, atomic groups, possessive quantifiers, recursion, and
+  // conditionals. re2js is a faithful RE2 oracle — if it can't compile the
+  // emitted pattern, capture() will reject it at runtime. Emit unsupported
+  // (loud) rather than a capture() that breaks live. (Lookaround is caught
+  // above with its own message.)
+  const { compatible, reason } = getRe2Compatibility(fullPattern);
+  if (!compatible) {
+    const key = resolveConstructMessageKey(cmd.pattern);
+    if (key) {
+      ir.unsupported.push(messages[key]());
+    } else {
+      ir.unsupported.push(messages.rex_re2_incompatible(reason));
+    }
+    return;
+  }
 
   // Single capture() call with tuple destructuring for multiple groups:
   // WITH capture(field, r'...(?P<a>...)...(?P<b>...)...') AS (a, b)
