@@ -33,6 +33,14 @@ export function getRe2Compatibility(pattern) {
 const CONSTRUCT_PROBES = [
   // numbered \1..\9, named \k<name>, named (?P=name)
   { re: /\\[1-9]|\\k<|\(\?P=/, key: 'rex_backreference' },
+  // atomic group (?>...)
+  { re: /\(\?>/, key: 'rex_atomic_group' },
+  // possessive quantifiers: *+ ++ ?+ {n,m}+
+  { re: /(?:[*+?]|\})\+/, key: 'rex_possessive_quantifier' },
+  // recursion / subroutine: (?R) (?1) \g<name>
+  { re: /\(\?R\)|\(\?\d+\)|\\g</, key: 'rex_recursion' },
+  // conditional: (?(1)...|...)
+  { re: /\(\?\(/, key: 'rex_conditional' },
 ];
 
 /**

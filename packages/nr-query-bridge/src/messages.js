@@ -35,6 +35,22 @@ export const messages = {
   rex_re2_incompatible: (reason) =>
     `rex pattern is not compatible with NRQL capture() (RE2): ${reason}; rewrite the regex without the unsupported construct`,
 
+  // SPL: `* | rex field=x "(?>(?<a>\\w+))"`
+  rex_atomic_group: () =>
+    'rex pattern uses an atomic group (?>...), which NRQL capture() (RE2) does not support; rewrite the regex without atomic groups',
+
+  // SPL: `* | rex field=x "(?<a>\\w++)"`
+  rex_possessive_quantifier: () =>
+    'rex pattern uses a possessive quantifier (*+, ++, ?+, {n,m}+), which NRQL capture() (RE2) does not support; use a greedy quantifier instead',
+
+  // SPL: `* | rex field=x "(?<a>\\w+)(?1)"`
+  rex_recursion: () =>
+    'rex pattern uses recursion or a subroutine reference ((?R), (?1), \\g<name>), which NRQL capture() (RE2) does not support',
+
+  // SPL: `* | rex field=x "(?(1)yes|no)(?<a>\\w+)"`
+  rex_conditional: () =>
+    'rex pattern uses a conditional ((?(1)...)), which NRQL capture() (RE2) does not support',
+
   // SPL: `* | rex "(?<a>\\w+)" | rex "(?<b>\\w+)" | ... (6+ rex commands)`
   rex_capture_limit: (count) =>
     `query uses ${count} rex extractions but NRQL capture() is limited to 5 per query; consider using aparse() for anchor-based patterns`,
