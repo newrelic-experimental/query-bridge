@@ -843,6 +843,28 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: false,
   },
+  // A (non-env) dashboard token whose NAME contains '-' → unsupported. Emitting
+  // {{my-var}} is a hard NRDB parse error ('-' doesn't tokenize — verified acct 1).
+  {
+    spl: 'host="$my-var$" | stats count',
+    unsupportedFunc: ['token_name_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // A non-env colon token (NOT the env: namespace) → unsupported (':' doesn't tokenize).
+  {
+    spl: 'host="$a:b$" | stats count',
+    unsupportedFunc: ['token_name_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Unquoted hyphen token (TemplateVariable-node site) → unsupported too.
+  {
+    spl: 'host=$my-var$ | stats count',
+    unsupportedFunc: ['token_name_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
   // Wildcard-ONLY token (`*$tok$*`, `$tok$*`, `*$tok$`) → `field LIKE {{tok}}`. New Relic
   // substitutes the variable in value position, so the % wildcards must live in the
   // variable's VALUE; the warning says so. Verified accepted by dashboardCreate + NRQL

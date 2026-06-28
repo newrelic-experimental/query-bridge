@@ -412,6 +412,16 @@ export const messages = {
     'filter cannot be translated. Remove the env-scoped filter or re-scope the widget ' +
     'with a New Relic template variable.',
 
+  // SPL: `host="$my-var$"` / `$a:b$` — a (non-env) dashboard token whose NAME contains
+  // ':' or '-'. Those chars do not tokenize inside an NRQL {{…}} variable, so emitting
+  // {{my-var}} is a hard NRDB parse error (verified acct 1). The variable itself is
+  // legitimate (unlike env:); only the NAME is untranslatable. Loud failure over a
+  // parse-erroring {{…}}.
+  token_name_unsupported: (name) =>
+    `$${name}$ is a dashboard token whose name contains ':' or '-', which New Relic's ` +
+    '{{…}} template-variable syntax does not allow (a hard NRQL parse error). Rename the ' +
+    "dashboard variable to use only letters, digits, '_', and '.', or remove the filter.",
+
   // SPL: `_raw=*error*`
   raw_mapped_to_message: () =>
     '_raw is not a valid NRQL field; mapped to message',
