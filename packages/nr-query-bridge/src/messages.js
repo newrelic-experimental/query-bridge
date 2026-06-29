@@ -121,6 +121,14 @@ export const messages = {
   compound_trailing_regroup_unsupported: (field) =>
     `trailing 'stats … by ${field}' regroups by a field the inner aggregation does not produce; cannot translate faithfully`,
 
+  // SPL: `index=$env$ | stats count by host | where count > 5`
+  // A dashboard template variable ({{var}}) the post-aggregation fold pushed inside a
+  // FROM (subquery …): New Relic substitutes variables only at the OUTER query level,
+  // so it reaches NRDB unbound and the widget fails to render. (Console/NerdGraph
+  // accept it — a render-fail.) Loud unsupported over a silently-broken widget.
+  template_var_in_subquery: () =>
+    'dashboard template variable ({{var}}) lands inside a FROM (subquery …); New Relic substitutes variables only at the outer query level, so it reaches the database unbound and the widget fails to render. Filter on the variable before the aggregation that forces the subquery.',
+
   // SPL: `* | bin size span=10`
   bin_unsupported: () =>
     'bin command not fully supported; use TIMESERIES for time or histogram() for numeric fields',

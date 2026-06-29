@@ -3272,6 +3272,13 @@ NRQL: FROM Log SELECT count(*) WHERE index = {{idx}}
 
 ```
 ❓ Not confirmed
+SPL:  index=$env$ | stats count by host
+NRQL: FROM Log SELECT count(*) WHERE index = {{env}} FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
 SPL:  index="$env$" | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = {{env}}
 ```
@@ -3363,6 +3370,18 @@ SPL:  index=web earliest=$tok.earliest$ latest=-2h | stats count
 SPL:  index=web $tok.latest$ earliest=-24h | stats count
 🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
 🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+❓ Not confirmed
+SPL:  index=$env$ | stats count by host | where count > 5
+🔴 `dashboard` template variable ({{var}}) lands inside a FROM (subquery …); New Relic substitutes variables only at the outer query level, so it reaches the database unbound and the widget fails to render. Filter on the variable before the aggregation that forces the subquery.
+```
+
+```
+❓ Not confirmed
+SPL:  status=$sev$ | stats count by host | stats avg(count)
+🔴 `dashboard` template variable ({{var}}) lands inside a FROM (subquery …); New Relic substitutes variables only at the outer query level, so it reaches the database unbound and the widget fails to render. Filter on the variable before the aggregation that forces the subquery.
 ```
 
 ```

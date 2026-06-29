@@ -798,6 +798,31 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: false,
   },
+  // ── Template variable stranded inside a subquery (render-fail) ──
+  // New Relic substitutes {{var}} only at the OUTER query level, never inside a
+  // FROM (subquery …). A {{var}} the post-aggregation fold pushes into the inner
+  // reaches NRDB unbound (the widget fails to render), so it is loud unsupported.
+  {
+    spl: 'index=$env$ | stats count by host | where count > 5',
+    unsupportedFunc: ['template_var_in_subquery'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  {
+    spl: 'status=$sev$ | stats count by host | stats avg(count)',
+    unsupportedFunc: ['template_var_in_subquery'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Regression: a {{var}} that stays at the OUTER level (no post-aggregation wrap)
+  // is fine — NR substitutes it there. The faceted form fires facet_default_limit.
+  {
+    spl: 'index=$env$ | stats count by host',
+    nrql: 'FROM Log SELECT count(*) WHERE index = {{env}} FACET host',
+    warningFunc: ['facet_default_limit'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
   // Double-quoted standalone token → {{token}}, same as unquoted. Quoting is a
   // Splunk idiom for values that may contain spaces; a quoted literal '$env$'
   // would match nothing.

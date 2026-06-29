@@ -7,6 +7,7 @@
 import { transformTree } from './transform.js';
 import { Identifier, BinOp, Func, Literal, Wildcard } from './nodes.js';
 import { foldPostAggregationPass } from './foldPostAggregation.js';
+import { messages } from '../messages.js';
 
 // ── Pass 1: Double-NOT elimination ──────────────────────────
 
@@ -133,6 +134,73 @@ function expandDualChecks(ir) {
   });
 }
 
+// ── Pass 7: Template-variable-in-subquery detection ─────────
+// A dashboard template variable ({{var}}) is substituted by New Relic's interpolator
+// only at the OUTER query level — never inside a `FROM (subquery …)`. A {{var}} that
+// the post-aggregation fold pushed into a SubquerySource therefore reaches NRDB
+// unbound and the widget fails to render ("undefined template variable"), even though
+// the console / NerdGraph accept it. Detect it and fail loud rather than emit the
+// render-failing query. (Hoisting a hoistable pre-aggregation filter to the outer —
+// only valid when its field is an exposed facet key — is a deferred follow-up.)
+
+/** True if any Identifier/Like under `node` is a {{template var}}. */
+function hasTemplateVar(node) {
+  if (!node || typeof node !== 'object') return false;
+  if (
+    node.type === 'Identifier' &&
+    typeof node.name === 'string' &&
+    node.name.startsWith('{{')
+  ) {
+    return true;
+  }
+  if (
+    node.type === 'Like' &&
+    typeof node.pattern === 'string' &&
+    node.pattern.startsWith('{{')
+  ) {
+    return true;
+  }
+  for (const key of Object.keys(node)) {
+    const v = node[key];
+    if (Array.isArray(v)) {
+      if (v.some(hasTemplateVar)) return true;
+    } else if (v && typeof v === 'object' && hasTemplateVar(v)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True if a {{template var}} sits inside any SubquerySource's inner query. */
+function hasTemplateVarInSubquery(ir) {
+  let found = false;
+  const walk = (node) => {
+    if (found || !node || typeof node !== 'object') return;
+    if (
+      node.type === 'SubquerySource' &&
+      node.query &&
+      hasTemplateVar(node.query)
+    ) {
+      found = true;
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      const v = node[key];
+      if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === 'object') walk(v);
+    }
+  };
+  walk(ir);
+  return found;
+}
+
+function detectTemplateVarInSubquery(ir) {
+  if (hasTemplateVarInSubquery(ir)) {
+    ir.unsupported.push(messages.template_var_in_subquery());
+  }
+  return ir;
+}
+
 // ── Pipeline ────────────────────────────────────────────────
 
 const passes = [
@@ -143,6 +211,7 @@ const passes = [
   foldPostAggregationPass, // ← collapse over-nested post-aggregation chains; catch-all unsupported
   applyFillnull,
   applyFieldReplacements,
+  detectTemplateVarInSubquery, // ← render-fail guard: {{var}} stranded inside a subquery
 ];
 
 export function optimize(ir) {
