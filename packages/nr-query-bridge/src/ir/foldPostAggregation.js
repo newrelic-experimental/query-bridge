@@ -90,7 +90,7 @@ function exposedInnerColumns(inner) {
 // exists. Given an inner aggregate's DEFINING expr, return the extraction a
 // cross-boundary reference needs: { key } for median/percentile (median → '50',
 // percentile(x, N) → String(N)); { list: true } for uniques; null for a scalar.
-function extractNonScalar(innerExpr) {
+export function extractNonScalar(innerExpr) {
   const fn =
     innerExpr?.type === 'Function'
       ? innerExpr
@@ -190,7 +190,7 @@ function partitionNonScalarRefs(refNames, exposed) {
 // translation; the extraction branches must bail loud (mirrors handleEval's collision
 // check). Mirrors exposedInnerColumns' naming (Alias → its name; bare func → func name,
 // stddev→standarddeviation; bare Identifier → its name) but counts duplicates.
-function duplicateExposedName(inner) {
+export function duplicateExposedName(inner) {
   const seen = new Set();
   const nameOf = (item) => {
     if (item.type === 'Alias') return item.name;

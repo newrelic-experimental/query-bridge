@@ -144,7 +144,7 @@ const passes = [
   foldPostAggregationPass, // ← collapse over-nested post-aggregation chains; catch-all unsupported
   applyFillnull,
   applyFieldReplacements,
-  orderByOnAggregationPass, // ← ORDER BY on an aggregation: drop / unsupported (Task 2 adds restructure)
+  orderByOnAggregationPass, // ← ORDER BY on an aggregation: drop / restructure / unsupported
 ];
 
 export function optimize(ir) {

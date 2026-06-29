@@ -1410,24 +1410,34 @@ describe('metamorphic property tests', () => {
     );
   });
 
-  it('a flat faceted aggregation never carries ORDER BY (it is dropped or unsupported)', () => {
+  it('a faceted aggregation never carries ORDER BY on a flat result (dropped, or on a subquery outer)', () => {
     // NRDB ignores ORDER BY on an aggregation, so the late ORDER BY-on-aggregation
-    // pass either drops the redundant implicit ranking (sort -count == DESC by the
-    // first aggregate) or marks a non-implicit order unsupported (no NRQL emitted).
-    // Either way a flat (FACET + aggregate, not a subquery `FROM (`) result must
-    // never carry ORDER BY.
+    // pass yields one of three shapes: it drops the redundant implicit ranking
+    // (sort -count == DESC by the first aggregate → flat FACET, no ORDER BY); it
+    // restructures a faithful-but-non-redundant order (sort count) into a subquery
+    // whose row-wise outer carries the ORDER BY (`FROM (…) … ORDER BY`); or it marks
+    // an order unsupported (no NRQL). The invariant: whenever ORDER BY survives onto a
+    // faceted-aggregation query, it sits on a subquery outer (`FROM (`), never on a
+    // flat (FACET + aggregate, no `FROM (`) result.
     fc.assert(
-      fc.property(arbField, (field) => {
-        const sorted = nrql(`* | stats count by ${field} | sort -count`);
-        if (!sorted) return; // unsupported → no NRQL to inspect
-        const isFlatFacetedAgg =
-          sorted.includes('FACET') &&
-          sorted.includes('count(') &&
-          !sorted.includes('FROM (');
-        if (isFlatFacetedAgg) {
-          expect(sorted).not.toContain('ORDER BY');
-        }
-      }),
+      fc.property(
+        arbField,
+        fc.constantFrom('-count', 'count'),
+        (field, sortArg) => {
+          const sorted = nrql(`* | stats count by ${field} | sort ${sortArg}`);
+          if (!sorted) return; // unsupported → no NRQL to inspect
+          const isFlatFacetedAgg =
+            sorted.includes('FACET') &&
+            sorted.includes('count(') &&
+            !sorted.includes('FROM (');
+          if (isFlatFacetedAgg) {
+            expect(sorted).not.toContain('ORDER BY');
+          } else if (sorted.includes('ORDER BY')) {
+            // ORDER BY survived → it must be on a subquery outer, not a flat agg.
+            expect(sorted).toContain('FROM (');
+          }
+        },
+      ),
       { numRuns: 100 },
     );
   });
