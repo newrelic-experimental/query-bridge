@@ -1410,13 +1410,16 @@ describe('metamorphic property tests', () => {
     );
   });
 
-  it('adding | sort -X should introduce ORDER BY', () => {
+  it('sort -<first-agg> on a faceted aggregation drops the redundant ORDER BY', () => {
     fc.assert(
       fc.property(arbField, (field) => {
-        const base = nrql(`* | stats count by ${field}`);
         const sorted = nrql(`* | stats count by ${field} | sort -count`);
-        if (!base || !sorted) return;
-        expect(sorted).toContain('ORDER BY');
+        if (!sorted) return;
+        // NRDB ignores ORDER BY on a faceted aggregation (it returns top-N DESC by the
+        // first aggregate) and the dashboard widget rejects it, so a descending sort by
+        // that aggregate is redundant and dropped — the FACET aggregation survives.
+        expect(sorted).toContain('FACET');
+        expect(sorted).not.toContain('ORDER BY');
       }),
       { numRuns: 100 },
     );
@@ -1657,7 +1660,20 @@ class SortCommand {
     const r = m.translate();
     expect(r.nrql).not.toContain('[object Object]');
     if (r.nrql) {
-      expect(r.nrql).toContain('ORDER BY');
+      // NRDB ignores ORDER BY on a FLAT faceted aggregation (it always returns top-N
+      // DESC by the first aggregate) and the dashboard widget rejects it, so the
+      // translator drops a matching sort or marks a non-matching one unsupported —
+      // a flat faceted aggregation (FACET, no subquery FROM) never carries ORDER BY.
+      // A subquery outer (`FROM (…) SELECT * … ORDER BY`) or a non-faceted query may.
+      const hasAggregate =
+        /\b(?:count|average|sum|min|max|latest|earliest|uniqueCount|median|percentile|stddev|uniques|rate|histogram)\(/.test(
+          r.nrql,
+        );
+      const isFlatFacetedAgg =
+        hasAggregate && r.nrql.includes('FACET') && !r.nrql.includes('FROM (');
+      if (isFlatFacetedAgg) {
+        expect(r.nrql).not.toContain('ORDER BY');
+      }
     }
   }
   toString() {

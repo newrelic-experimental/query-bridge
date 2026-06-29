@@ -2662,82 +2662,147 @@ const cases = [
   //
   {
     spl: '* | top categoryId',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId LIMIT 10",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | top 20 host',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host LIMIT 20",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // limit=N keyword form
   {
     spl: '* | top limit=20 host',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host LIMIT 20",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // limit=0 means unlimited → LIMIT MAX
   {
     spl: '* | top limit=0 status',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status LIMIT MAX",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // countfield option renames the count column
   {
     spl: '* | top limit=5 countfield=total host',
-    nrql: "FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5",
+    nrql: "FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host LIMIT 5",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // showperc=false suppresses percent select
   {
     spl: '* | top 10 showperc=false host',
-    nrql: 'FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 10',
+    nrql: 'FROM Log SELECT count(*) FACET host LIMIT 10',
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // useother=true warns about no NRQL equivalent
   {
     spl: '* | top 5 useother=true status',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status LIMIT 5",
     warningFunc: ['top_useother'],
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // percentfield option renames the percent column
   {
     spl: '* | top 5 percentfield=pct host',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host LIMIT 5",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // limit=N after field name
   {
     spl: '* | top delay limit=10',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay LIMIT 10",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   // percent subquery includes WHERE from search
   {
     spl: 'error | top 5 status',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status LIMIT 5",
     doc: 'reports-top',
-    verified: 'human',
+    verified: false,
   },
   //
   // ── top with groupby ────────────────────────────────────────────
   //
   {
     spl: '* | top 5 status by host',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host LIMIT 5",
     warningFunc: ['top_groupby_warning'],
     doc: 'reports-top-groupby',
-    verified: 'human',
+    verified: false,
+  },
+  //
+  // ── ORDER BY on a faceted aggregation (render-fail) ──────────────
+  // NRDB ignores an explicit ORDER BY on a faceted aggregation (it always returns
+  // top-N DESC by the FIRST aggregate — direction AND key ignored, live-verified) and
+  // the dashboard widget rejects the clause. A sort matching that implicit order is
+  // dropped; any other order would silently return the wrong rows → loud unsupported.
+  //
+  // first aggregate, descending = the implicit order → drop the redundant ORDER BY
+  {
+    spl: '* | stats count by host | sort -count',
+    nrql: 'FROM Log SELECT count(*) FACET host',
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-sort',
+    verified: false,
+  },
+  // single non-count aggregate, descending → also the implicit order → drop (guards
+  // against only special-casing `count`)
+  {
+    spl: '* | stats avg(duration) as a by host | sort -a',
+    nrql: "FROM Log SELECT average(duration) AS 'a' FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-sort',
+    verified: false,
+  },
+  // ascending → NRDB returns top-N DESC (wrong rows; ASC≡DESC verified) → unsupported
+  {
+    spl: '* | stats count by host | sort +count',
+    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-sort',
+    verified: false,
+  },
+  // sort by a SECONDARY aggregate → NRDB orders by the first (count) → unsupported
+  {
+    spl: '* | stats count, avg(duration) as a by host | sort -a',
+    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-sort',
+    verified: false,
+  },
+  // sort by a facet key → ignored by NRDB (orders by the first aggregate) → unsupported
+  {
+    spl: '* | stats count by host | sort -host',
+    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-sort',
+    verified: false,
+  },
+  // multi-field sort on a faceted aggregation: the secondary tiebreak can't be honored
+  // (NRDB orders only by the first aggregate) → unsupported, not a silent drop
+  {
+    spl: '* | stats count by host | sort -count, +name',
+    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-sort',
+    verified: false,
+  },
+  // regression: a sort on the SELECT * outer of a where-after-stats subquery is NOT a
+  // flat faceted aggregation, so ORDER BY is honored normally and kept (unchanged).
+  {
+    spl: '* | stats count by host | where count > 5 | sort -count',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeric(count) > 5 ORDER BY count DESC',
+    doc: 'results-sort',
+    verified: false,
   },
   //
   // ── Multiple aggregation ────────────────────────────────────────
@@ -3562,9 +3627,9 @@ const cases = [
   },
   {
     spl: '* | stats count by host | sort - count | head 5',
-    nrql: 'FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5',
+    nrql: 'FROM Log SELECT count(*) FACET host LIMIT 5',
     doc: 'edge-cases',
-    verified: 'human',
+    verified: false,
   },
   //
   //
@@ -4014,16 +4079,16 @@ const cases = [
   // ── top multi-field parse ─────────────────────────────────────────
   {
     spl: 'index=x | top limit=10 cs_user_agent, sc_status',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET cs_user_agent, sc_status ORDER BY count DESC LIMIT 10",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET cs_user_agent, sc_status LIMIT 10",
     doc: 'top-multifield',
-    verified: 'llm',
+    verified: false,
   },
   {
     spl: 'index=x | top host by region',
-    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET host, region ORDER BY count DESC LIMIT 10",
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'x') AS 'percent' WHERE index = 'x' FACET host, region LIMIT 10",
     warningFunc: ['top_groupby_warning'],
     doc: 'top-multifield-regression',
-    verified: 'llm',
+    verified: false,
   },
 
   // ── bin/bucket as-alias ───────────────────────────────────────────

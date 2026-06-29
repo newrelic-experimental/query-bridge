@@ -53,6 +53,10 @@ export const messages = {
   sort_single_field: () =>
     'NRQL ORDER BY supports only one field; additional sort fields ignored',
 
+  // SPL: `* | stats count by host | sort +count`
+  order_on_aggregation_unsupported: (field) =>
+    `sort by '${field}' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate — direction and key are both ignored), so this order would silently return the wrong rows`,
+
   // SPL: `* | rename * as prefix_*`
   rename_wildcard: (from, to) =>
     `Wildcard rename (${from} as ${to}) not supported in NRQL; rename specific fields`,

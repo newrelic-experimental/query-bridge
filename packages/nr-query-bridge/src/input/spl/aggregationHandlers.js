@@ -121,7 +121,9 @@ export function handleTop(cmd, ir) {
     ir.facet.push(...cmd.groupBy.map(Identifier));
     ir.warnings.push(messages.top_groupby_warning());
   }
-  ir.orderBy = OrderBy(Identifier('count'), true);
+  // No ORDER BY: a faceted aggregation already returns top-N DESC by the first
+  // aggregate (count) implicitly — NRDB ignores an explicit ORDER BY on it, and the
+  // dashboard widget rejects the clause — so emitting it is redundant + render-failing.
 
   // limit=0 means unlimited in SPL
   ir.limit = cmd.count === 0 ? 'MAX' : cmd.count || 10;

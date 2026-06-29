@@ -31,11 +31,74 @@ export function handleFields(cmd, ir) {
   }
 }
 
+// NRQL aggregate function names a faceted SELECT can expose (after the SPL→NRQL
+// function mapping in handleStats — e.g. avg→average, dc→uniqueCount).
+const AGGREGATE_FUNCS = new Set([
+  'count',
+  'average',
+  'sum',
+  'min',
+  'max',
+  'latest',
+  'earliest',
+  'uniqueCount',
+  'median',
+  'percentile',
+  'stddev',
+  'uniques',
+  'rate',
+  'histogram',
+]);
+
+function isAggregateItem(item) {
+  const fn = item?.type === 'Alias' ? item.expr : item;
+  return fn?.type === 'Function' && AGGREGATE_FUNCS.has(fn.name);
+}
+
+function exposedName(item) {
+  return item?.type === 'Alias' ? item.name : item.name;
+}
+
 export function handleSort(cmd, ir) {
-  if (cmd.fields.length > 0) {
-    const first = cmd.fields[0];
-    ir.orderBy = OrderBy(Identifier(first.field), first.direction === 'desc');
+  if (cmd.fields.length === 0) return;
+  const first = cmd.fields[0];
+
+  // On a FLAT faceted aggregation, NRDB ignores an explicit ORDER BY entirely: it
+  // always returns top-N descending by the FIRST aggregate (both direction AND key
+  // ignored — live-verified), and the dashboard widget rejects the clause. So a sort
+  // that matches that implicit order (a single descending key on the first aggregate)
+  // is redundant → drop it; any other order would silently return the wrong rows →
+  // loud unsupported. A sort on the SELECT * outer of a where-after-stats subquery, or
+  // on raw events, is NOT a flat faceted aggregation and is left untouched.
+  const isFlatFacetedAgg =
+    ir._hasAggregation &&
+    ir.facet.length > 0 &&
+    ir.dataSource?.type !== 'SubquerySource';
+  if (isFlatFacetedAgg) {
+    const aggregates = ir.select.filter(isAggregateItem);
+    if (aggregates.length > 0) {
+      const facetKeys = new Set(ir.facet.map((f) => f.name));
+      const sortsByFirstAgg =
+        aggregates.length === 1
+          ? !facetKeys.has(first.field) // sole aggregate: anything but a facet key
+          : first.field === exposedName(aggregates[0]);
+      const isImplicitOrder =
+        cmd.fields.length === 1 &&
+        first.direction === 'desc' &&
+        sortsByFirstAgg;
+      if (isImplicitOrder) {
+        // redundant — drop ORDER BY, keep any row limit
+        if (cmd.limit != null && cmd.limit > 0) ir.limit = cmd.limit;
+        return;
+      }
+      ir.unsupported.push(
+        messages.order_on_aggregation_unsupported(first.field),
+      );
+      return;
+    }
   }
+
+  ir.orderBy = OrderBy(Identifier(first.field), first.direction === 'desc');
   // Additional sort fields become ORDER BY field1 DESC, field2 ASC
   // NRQL only supports single ORDER BY — warn if multiple
   if (cmd.fields.length > 1) {
