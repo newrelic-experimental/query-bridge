@@ -137,3 +137,49 @@ describe('translateWidgets — warnings attach but stay clean', () => {
     expect(Array.isArray(out[0].warnings)).toBe(true);
   });
 });
+
+describe('translateWidgets — SELECT * (raw events) routes to a table viz', () => {
+  it('routes a raw-events query in a line widget to a table with a warning', () => {
+    const widgets = [
+      createWidget({
+        title: 'Raw',
+        vizType: 'line',
+        rawSpl: 'index=web error',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('clean');
+    expect(out[0].nrql).toMatch(/SELECT \*/);
+    expect(out[0].vizType).toBe('table'); // re-routed from line
+    expect(
+      out[0].warnings.some((w) => /routed to a table widget/.test(w)),
+    ).toBe(true);
+  });
+
+  it('leaves a raw-events query that is already a table unchanged (no spurious warning)', () => {
+    const widgets = [
+      createWidget({ title: 'T', vizType: 'table', rawSpl: 'index=web error' }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].vizType).toBe('table');
+    expect(out[0].nrql).toMatch(/SELECT \*/);
+    expect(out[0].warnings.some((w) => /routed to a table/.test(w))).toBe(
+      false,
+    );
+  });
+
+  it('does not re-route an aggregate query in a line widget', () => {
+    const widgets = [
+      createWidget({
+        title: 'Agg',
+        vizType: 'line',
+        rawSpl: 'index=web | stats count',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].vizType).toBe('line'); // SELECT count(*), not SELECT * → kept
+    expect(out[0].warnings.some((w) => /routed to a table/.test(w))).toBe(
+      false,
+    );
+  });
+});

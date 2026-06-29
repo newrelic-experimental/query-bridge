@@ -138,13 +138,32 @@ export function translateWidgets(widgets, opts = {}) {
         warnings: result.warnings,
       };
     }
+    const finalNrql = multiSelectTokens.size
+      ? rewriteMultiSelectComparisons(result.nrql, multiSelectTokens)
+      : result.nrql;
+    // A no-aggregate `SELECT *` (raw events) has nothing to plot in a chart or
+    // billboard widget — only a table renders raw events; a bar/line/billboard/pie
+    // shows blank. Route it to a table regardless of the Splunk viz type. This is at
+    // least as faithful as Splunk, whose charts also cannot plot a non-transforming
+    // search (raw events go to Splunk's events list, not a chart).
+    const warnings = [...result.warnings];
+    let vizType = widget.vizType;
+    if (
+      /\bSELECT \*(?:\s|,|$)/.test(finalNrql) &&
+      vizType !== 'table' &&
+      vizType !== 'markdown'
+    ) {
+      warnings.push(
+        `raw-events (SELECT *) query routed to a table widget; a ${vizType} widget renders blank for a non-aggregate query`,
+      );
+      vizType = 'table';
+    }
     return {
       ...widget,
+      vizType,
       outcome: 'clean',
-      nrql: multiSelectTokens.size
-        ? rewriteMultiSelectComparisons(result.nrql, multiSelectTokens)
-        : result.nrql,
-      warnings: result.warnings,
+      nrql: finalNrql,
+      warnings,
     };
   });
 }
