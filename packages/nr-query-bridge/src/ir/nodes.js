@@ -111,6 +111,8 @@ export const SelectQuery = (overrides = {}) => ({
   _hasAggregation: false,
   /** @type {boolean} internal: true when a head/tail ran between two aggregations (→ unsupported) */
   _headBetweenAgg: false,
+  /** @type {('tail'|'reverse')|undefined} internal: ORDER BY intent the late pass can't recover from (field,dir) */
+  _orderByKind: undefined,
   /** @type {Object|undefined} internal: fillnull default-value map, consumed during IR build */
   _fillnullMap: undefined,
   /** @type {Map<string,string>|undefined} internal: field rename map, consumed during IR build */

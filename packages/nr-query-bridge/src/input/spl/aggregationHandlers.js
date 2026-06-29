@@ -121,7 +121,11 @@ export function handleTop(cmd, ir) {
     ir.facet.push(...cmd.groupBy.map(Identifier));
     ir.warnings.push(messages.top_groupby_warning());
   }
-  ir.orderBy = OrderBy(Identifier('count'), true);
+  // Order by the count column's EXPOSED name (the countfield alias when set, else
+  // 'count') so the late orderByOnAggregation pass can recognize this as the implicit
+  // top-N-by-count ranking and drop the redundant clause — not misread a renamed
+  // count column as an unorderable field.
+  ir.orderBy = OrderBy(Identifier(cmd.countfield || 'count'), true);
 
   // limit=0 means unlimited in SPL
   ir.limit = cmd.count === 0 ? 'MAX' : cmd.count || 10;

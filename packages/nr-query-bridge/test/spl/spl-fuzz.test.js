@@ -1410,13 +1410,23 @@ describe('metamorphic property tests', () => {
     );
   });
 
-  it('adding | sort -X should introduce ORDER BY', () => {
+  it('a flat faceted aggregation never carries ORDER BY (it is dropped or unsupported)', () => {
+    // NRDB ignores ORDER BY on an aggregation, so the late ORDER BY-on-aggregation
+    // pass either drops the redundant implicit ranking (sort -count == DESC by the
+    // first aggregate) or marks a non-implicit order unsupported (no NRQL emitted).
+    // Either way a flat (FACET + aggregate, not a subquery `FROM (`) result must
+    // never carry ORDER BY.
     fc.assert(
       fc.property(arbField, (field) => {
-        const base = nrql(`* | stats count by ${field}`);
         const sorted = nrql(`* | stats count by ${field} | sort -count`);
-        if (!base || !sorted) return;
-        expect(sorted).toContain('ORDER BY');
+        if (!sorted) return; // unsupported → no NRQL to inspect
+        const isFlatFacetedAgg =
+          sorted.includes('FACET') &&
+          sorted.includes('count(') &&
+          !sorted.includes('FROM (');
+        if (isFlatFacetedAgg) {
+          expect(sorted).not.toContain('ORDER BY');
+        }
       }),
       { numRuns: 100 },
     );
@@ -1656,8 +1666,17 @@ class SortCommand {
     m.hasOrderBy = true;
     const r = m.translate();
     expect(r.nrql).not.toContain('[object Object]');
-    if (r.nrql) {
-      expect(r.nrql).toContain('ORDER BY');
+    // sort lands on an aggregation: NRDB ignores ORDER BY there, so the late pass
+    // either drops the redundant implicit ranking (sort -count) or marks a
+    // non-implicit order unsupported (no NRQL). A flat faceted aggregation result
+    // must therefore never carry ORDER BY.
+    if (
+      r.nrql &&
+      r.nrql.includes('FACET') &&
+      r.nrql.includes('count(') &&
+      !r.nrql.includes('FROM (')
+    ) {
+      expect(r.nrql).not.toContain('ORDER BY');
     }
   }
   toString() {

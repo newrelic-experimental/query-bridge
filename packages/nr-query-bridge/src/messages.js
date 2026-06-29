@@ -125,9 +125,20 @@ export const messages = {
   bin_unsupported: () =>
     'bin command not fully supported; use TIMESERIES for time or histogram() for numeric fields',
 
-  // SPL: `* | stats count | reverse`
-  reverse_after_agg: () =>
-    'reverse after aggregation may not produce correct results; NRQL ORDER BY timestamp ASC does not match SPL row-order reversal',
+  // SPL: `* | stats count by host | sort host`
+  // NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate,
+  // descending), so any non-implicit faceted order would silently return the wrong
+  // rows. Loud unsupported over wrong (Task 2 restructures the faithful cases).
+  order_on_aggregation_unsupported: (field) =>
+    `cannot order a faceted aggregation by '${field}': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows`,
+
+  // SPL: `* | stats count by host | tail 5`
+  order_tail_after_aggregation: () =>
+    `'tail' after an aggregation cannot be translated: it takes the last N rows in Splunk's stats order, which NRQL has no stable equivalent of`,
+
+  // SPL: `* | stats count by host | reverse`
+  order_reverse_after_aggregation: () =>
+    `'reverse' after an aggregation cannot be translated: it flips Splunk's result order, which NRQL does not define for an aggregation`,
 
   // SPL: `* | fillnull value=0`
   fillnull_no_fields: () =>

@@ -1721,64 +1721,64 @@ Shows the most common values of a field. Translates to NRQL `SELECT count(*) FAC
 
 <!-- spl-cases: reports-top -->
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top categoryId
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId ORDER BY count DESC LIMIT 10
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET categoryId LIMIT 10
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top 20 host
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host LIMIT 20
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top limit=20 host
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 20
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host LIMIT 20
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top limit=0 status
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT MAX
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status LIMIT MAX
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top limit=5 countfield=total host
-NRQL: FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host ORDER BY count DESC LIMIT 5
+NRQL: FROM Log SELECT count(*) AS 'total', count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host LIMIT 5
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top 10 showperc=false host
-NRQL: FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 10
+NRQL: FROM Log SELECT count(*) FACET host LIMIT 10
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top 5 useother=true status
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status ORDER BY count DESC LIMIT 5
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status LIMIT 5
 🟡 `useother`: NRQL pie chart automatically shows an "Other" category for values outside LIMIT
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top 5 percentfield=pct host
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host ORDER BY count DESC LIMIT 5
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'pct' FACET host LIMIT 5
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top delay limit=10
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay ORDER BY count DESC LIMIT 10
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET delay LIMIT 10
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  error | top 5 status
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status LIMIT 5
 ```
 <!-- /spl-cases -->
 
@@ -1788,9 +1788,9 @@ Top values per group. SPL `top 5 status by host` returns the top 5 statuses **pe
 
 <!-- spl-cases: reports-top-groupby -->
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | top 5 status by host
-NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host ORDER BY count DESC LIMIT 5
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET status, host LIMIT 5
 🟡 `top` with groupBy: NRQL FACET groups all fields together; SPL groups within each by-field value
 ```
 <!-- /spl-cases -->
@@ -2726,39 +2726,39 @@ Shows the least common values of a field. Translates to NRQL `SELECT count(*) ..
 
 <!-- spl-cases: reports-rare -->
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare status
-NRQL: FROM Log SELECT count(*) FACET status ORDER BY count ASC LIMIT 10
+🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare 5 uri_path
-NRQL: FROM Log SELECT count(*) FACET uri_path ORDER BY count ASC LIMIT 5
+🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare status by host
-NRQL: FROM Log SELECT count(*) FACET status, host ORDER BY count ASC LIMIT 10
+🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  status>=400 | rare 20 uri_path
-NRQL: FROM Log SELECT count(*) WHERE numeric(status) >= 400 FACET uri_path ORDER BY count ASC LIMIT 20
+🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare app limit=20
-NRQL: FROM Log SELECT count(*) FACET app ORDER BY count ASC LIMIT 20
+🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare limit=20 "details.error"
-NRQL: FROM Log SELECT count(*) FACET `details.error` ORDER BY count ASC LIMIT 20
+🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
 ```
 <!-- /spl-cases -->
 
@@ -2786,9 +2786,56 @@ NRQL: FROM Log SELECT message WHERE message LIKE '%error%' ORDER BY timestamp AS
 ```
 ❓ Not confirmed
 SPL:  * | stats count by host | reverse
-NRQL: FROM Log SELECT count(*) FACET host ORDER BY timestamp ASC
-🟡 `reverse` after aggregation may not produce correct results; NRQL ORDER BY timestamp ASC does not match SPL row-order reversal
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 'reverse' after an aggregation cannot be translated: it flips Splunk's result order, which NRQL does not define for an aggregation
+```
+<!-- /spl-cases -->
+
+## `ORDER BY` on an aggregation — drop or unsupported
+
+NRDB honors `ORDER BY` only on a non-aggregating result; on a faceted aggregation it is
+ignored (rows are ranked by the first aggregate, descending). A late optimizer pass drops
+the redundant implicit order (`sort -count` after `stats … by`, `top`'s implicit count-DESC,
+a non-faceted single-row `stats`) and emits `unsupported` for any order with no faithful flat
+form (an ascending or arbitrary faceted order, `tail`/`reverse` after an aggregation).
+
+<!-- spl-cases: orderby-on-agg -->
+```
+❓ Not confirmed
+SPL:  * | stats count by host | sort -count
+NRQL: FROM Log SELECT count(*) FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | top host
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS 'percent' FACET host LIMIT 10
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count | sort -count
+NRQL: FROM Log SELECT count(*)
+```
+
+```
+❓ Not confirmed
+SPL:  * | sort count desc
+NRQL: FROM Log SELECT * ORDER BY count DESC
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count by host | sort count
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count by host | tail 5
+🔴 'tail' after an aggregation cannot be translated: it takes the last N rows in Splunk's stats order, which NRQL has no stable equivalent of
 ```
 <!-- /spl-cases -->
 
@@ -3994,9 +4041,9 @@ NRQL: FROM Log SELECT count(*)
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | stats count by host | sort - count | head 5
-NRQL: FROM Log SELECT count(*) FACET host ORDER BY count DESC LIMIT 5
+NRQL: FROM Log SELECT count(*) FACET host LIMIT 5
 ```
 
 ```
