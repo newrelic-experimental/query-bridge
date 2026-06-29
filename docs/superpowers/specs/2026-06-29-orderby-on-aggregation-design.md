@@ -23,7 +23,7 @@ FROM (FROM Log SELECT <aggs> FACET <keys> LIMIT MAX)
 SELECT <keys>, <aggs> ORDER BY <sortKey> <dir> LIMIT N
 ```
 
-The inner returns all groups (`LIMIT MAX`); the outer does the real ordering and selection. **The outer MUST NOT re-aggregate** — if it is itself a faceted aggregation, its `ORDER BY` is ignored exactly as in the flat case (live-tested: a faceted outer `ORDER BY aa ASC` came back unsorted). The deciding property is "the outer does not aggregate," not "the rows are events." **Verified live (staging acct 1, 2026-06-29):**
+The inner requests all groups (`LIMIT MAX`) — though a subquery result is capped at **5000 rows regardless of `LIMIT MAX`** (verified, `.claude/references/nrql-reference.md`; see the caveat below); within that cap the outer does the real ordering and selection. **The outer MUST NOT re-aggregate** — if it is itself a faceted aggregation, its `ORDER BY` is ignored exactly as in the flat case (live-tested: a faceted outer `ORDER BY aa ASC` came back unsorted). The deciding property is "the outer does not aggregate," not "the rows are events." **Verified live (staging acct 1, 2026-06-29):**
 
 | shape | result |
 |---|---|
@@ -33,7 +33,7 @@ The inner returns all groups (`LIMIT MAX`); the outer does the real ordering and
 | subquery, outer `ORDER BY <facet-key> ASC` | alphabetical by the key — **correct** |
 | event-record `SELECT attr ORDER BY attr ASC` vs `DESC` (control) | different rows (smallest vs largest) — **honored** |
 
-**Caveat (warnable):** the inner `FACET … LIMIT MAX` caps at 5000 groups, kept **by the first aggregate, descending**. So for >5000 distinct values, any order other than first-aggregate-DESC keeps the *wrong* 5000 — worst for ascending / `rare`, where the cap discards exactly the least-common rows the query wants (it returns the rarest of the 5000 *most*-common — wrong, not merely approximate; live-confirmed: `min(c)` = 2 on a capped set whose true min is 1). Faithful for cardinality ≤5000 (the overwhelming majority); emit a specific warning above. Residual policy choice (see PR breakdown): if we'd rather never risk it, ascending / `rare` could stay `unsupported` instead of subquery-restructured.
+**Caveat (warnable):** because the inner is a subquery, its result is capped at **5000 rows regardless of `LIMIT MAX`** — the *subquery result cap*, not `LIMIT MAX` itself (`LIMIT MAX` requests all groups, but the subquery layer truncates the result to 5000; verified, `nrql-reference.md`), kept **by the first aggregate, descending**. So for >5000 distinct values, any order other than first-aggregate-DESC keeps the *wrong* 5000 — worst for ascending / `rare`, where the cap discards exactly the least-common rows the query wants (it returns the rarest of the 5000 *most*-common — wrong, not merely approximate; live-confirmed: `min(c)` = 2 on a capped set whose true min is 1). Faithful for cardinality ≤5000 (the overwhelming majority); emit a specific warning above. Residual policy choice (see PR breakdown): if we'd rather never risk it, ascending / `rare` could stay `unsupported` instead of subquery-restructured.
 
 **Output wart (accepted — no action):** the non-aggregating outer carries a synthetic `timestamp` column (the query-execution time, identical across rows). Cosmetic; we ignore it, not worth a warning.
 
@@ -46,7 +46,7 @@ For an `ORDER BY` that lands on an aggregation:
 3. **No faithful NRDB form** → **`unsupported`**:
    - `tail` after an aggregation — "the last N rows in *stats order*"; NRDB has no stable stats order to slice or reverse.
    - `reverse` after an aggregation — reverses a Splunk-specific result order NRDB does not define (reviewer-approved; drop the wrong `timestamp` clause it emits today).
-   - A **non-faceted, single-row** aggregation sort (`stats count | sort -count`) has nothing to order → **drop** the no-op clause (faithful; also clears the widget reject).
+   - A **non-faceted, single-row** aggregation sort (e.g. `stats count | sort -count`) — a degenerate query (one row, nothing to order), but the unified pass must still **drop** the clause: left untouched, today's code falls through PR #95's faceted-only guard and emits `SELECT count(*) ORDER BY count DESC`, a no-op the widget engine nonetheless rejects.
 
 ## Affected sites (audit, against master)
 
@@ -63,7 +63,7 @@ For an `ORDER BY` that lands on an aggregation:
 
 ## Resolved decisions (reviewer, 2026-06-29)
 
-- **`reverse` after an aggregation → `unsupported`** (approved). It reverses a Splunk-specific result order NRDB does not define; today's `ORDER BY timestamp ASC` is both ignored and semantically wrong. Drop the clause and fail loud. Revisit only if the corpus shows demand.
+- **`reverse` after an aggregation → `unsupported`** (approved, corpus-confirmed). It reverses a Splunk-specific result order NRDB does not define; today's `ORDER BY timestamp ASC` is both ignored and semantically wrong. Drop the clause and fail loud. **Corpus (2026-06-29):** `reverse` appears in only 73 / 32,436 SPL queries (~0.2%), almost all `| reverse` on raw event records early in the pipeline (the event-record case, unchanged); `reverse` *after* an aggregation is ~5 queries (<0.02%), every one a "flip a `chart`/`stats` natural ordering" (≈ order-by-split-field descending) — translatable only by baking in Splunk's implicit post-transform order, which we decline. Revisit if that handful grows.
 - **The outer's spurious `timestamp` column → ignore it** (approved). No warning; it's cosmetic.
 - **Residual (open):** for ascending / `rare` over a possibly-high-cardinality field, subquery-restructure-with-warning vs `unsupported` (the 5000-cap discards the requested rows above 5000). Default in this spec: restructure + a specific cap warning; flip to `unsupported` for those two shapes if you prefer never-wrong over best-effort.
 
@@ -77,7 +77,7 @@ Two engine guards the restructure MUST respect (both live-tested):
 
 ## Testing
 
-Data-driven `cases` in `test/spl/spl.test.js`: the restructured forms (rare, ascending, secondary-aggregate, facet-key) each with the 5000-cap warning; the drop cases (top, `sort -<first-agg>`, non-faceted single-row); the `unsupported` cases (`tail`). Regression: event-record sorts unchanged; the four restructured shapes are staging-validated (above). `test/messages.test.js` references for any new keys. Fuzz ×20. Widget-layer (`dashboardCreate`) validation of one restructured form before graduating.
+Data-driven `cases` in `test/spl/spl.test.js`: the restructured forms (rare, ascending, secondary-aggregate, facet-key) each with the 5000-cap warning; the drop cases (top, `sort -<first-agg>`, non-faceted single-row); the `unsupported` cases (`tail`). Regression: event-record sorts unchanged; the four restructured shapes are staging-validated (above). **Fold-stability:** a test asserting the optimizer is a fixed point on a restructured `SubquerySource` — `foldPostAggregationPass` must NOT collapse or re-nest the intentional ordering subquery back to the flat (ignored-`ORDER BY`) form. Assert both at the IR level (`optimize(ir)` idempotent on the restructured node) and end-to-end (the emitted NRQL keeps its `FROM (…) SELECT … ORDER BY` shape). `test/messages.test.js` references for any new keys. Fuzz ×20. Widget-layer (`dashboardCreate`) validation of one restructured form before graduating.
 
 ## PR breakdown
 
