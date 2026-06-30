@@ -17,6 +17,7 @@ import {
 } from '../../ir/nodes.js';
 import { mapFunction, formatSpan, wrapAsSubquery } from './splExprUtils.js';
 import { walkEvalExpr } from './evalHandlers.js';
+import { walkStatsEvalExpr, isNrqlAggregate } from './statsEvalHandlers.js';
 import { messages } from '../../messages.js';
 
 export function handleStats(cmd, ir) {
@@ -42,9 +43,13 @@ export function handleStats(cmd, ir) {
 
   for (const fn of cmd.functions) {
     if (fn.statsEval) {
-      // Bare eval() stats metric. Task 3 upgrades this to faithful translation;
-      // for now fail loud rather than silently drop the metric to SELECT *.
-      ir.unsupported.push(messages.stats_eval_unsupported(fn.rawText));
+      const expr = walkStatsEvalExpr(fn.evalExpr, ir);
+      if (!expr || !isNrqlAggregate(expr)) {
+        // No aggregate (constant/row-wise), or a non-fold-safe function over one.
+        ir.unsupported.push(messages.stats_eval_unsupported(fn.rawText));
+        continue;
+      }
+      ir.select.push(fn.alias ? Alias(expr, fn.alias) : expr);
       continue;
     }
     if (fn.evalFilter) {

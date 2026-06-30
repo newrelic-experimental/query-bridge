@@ -318,7 +318,6 @@ SPL:  (routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.
 🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
 🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
 🟡 `dedup` with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.
-🔴 'eval((sum(orders)*100)/sum(addtobags)) as completionRate' has no faithful NRQL form as a stats/timechart metric — a bare eval() metric must reduce to arithmetic over aggregates with fold-safe functions; an expression with no aggregate, or a non-fold-safe function over an aggregate, is unsupported
 🔴 `this` compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported
 ```
 <!-- /spl-cases -->
