@@ -3416,6 +3416,24 @@ SPL:  app="*$env:app$*" | stats count
 
 ```
 ❓ Not confirmed
+SPL:  host="$my-var$" | stats count
+🔴 $my-var$ is a dashboard token whose name contains ':' or '-', which New Relic's {{…}} template-variable syntax does not allow (a hard NRQL parse error). Rename the dashboard variable to use only letters, digits, '_', and '.', or remove the filter.
+```
+
+```
+❓ Not confirmed
+SPL:  host="$a:b$" | stats count
+🔴 $a:b$ is a dashboard token whose name contains ':' or '-', which New Relic's {{…}} template-variable syntax does not allow (a hard NRQL parse error). Rename the dashboard variable to use only letters, digits, '_', and '.', or remove the filter.
+```
+
+```
+❓ Not confirmed
+SPL:  host=$my-var$ | stats count
+🔴 $my-var$ is a dashboard token whose name contains ':' or '-', which New Relic's {{…}} template-variable syntax does not allow (a hard NRQL parse error). Rename the dashboard variable to use only letters, digits, '_', and '.', or remove the filter.
+```
+
+```
+❓ Not confirmed
 SPL:  index="*fps-$env$*" | stats count
 🔴 Index="*fps-$env$*" embeds a dashboard token inside literal text. New Relic substitutes a dashboard variable only in value position, never inside a string, so this cannot be translated. Use a standalone token (field=$tok$) or a wildcard-only token (field="*$tok$*").
 ```

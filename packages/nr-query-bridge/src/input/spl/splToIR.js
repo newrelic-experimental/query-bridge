@@ -121,6 +121,12 @@ function isEnvToken(name) {
   return name.startsWith('env:');
 }
 
+// A token NAME containing ':' or '-' cannot tokenize inside an NRQL {{…}} variable
+// (a hard NRDB parse error — verified acct 1). Emitted as {{name}} it would not run.
+function hasUntranslatableTokenChar(name) {
+  return name.includes(':') || name.includes('-');
+}
+
 export function translateAstToIR(ast) {
   const ir = SelectQuery();
 
@@ -387,6 +393,10 @@ export function translateSearchExpr(node, ir) {
             unsupported.push(messages.splunk_env_token(value.name));
             return null;
           }
+          if (hasUntranslatableTokenChar(value.name)) {
+            unsupported.push(messages.token_name_unsupported(value.name));
+            return null;
+          }
           return BinOp(op, Identifier(field), Identifier(`{{${value.name}}}`));
         }
 
@@ -401,6 +411,10 @@ export function translateSearchExpr(node, ir) {
           if (tokenOnly) {
             if (isEnvToken(tokenOnly[1])) {
               unsupported.push(messages.splunk_env_token(tokenOnly[1]));
+              return null;
+            }
+            if (hasUntranslatableTokenChar(tokenOnly[1])) {
+              unsupported.push(messages.token_name_unsupported(tokenOnly[1]));
               return null;
             }
             return BinOp(
@@ -423,6 +437,12 @@ export function translateSearchExpr(node, ir) {
           if (wildcardToken && value.includes('*')) {
             if (isEnvToken(wildcardToken[1])) {
               unsupported.push(messages.splunk_env_token(wildcardToken[1]));
+              return null;
+            }
+            if (hasUntranslatableTokenChar(wildcardToken[1])) {
+              unsupported.push(
+                messages.token_name_unsupported(wildcardToken[1]),
+              );
               return null;
             }
             warnings.push(
@@ -615,6 +635,10 @@ export function translateSearchExpr(node, ir) {
         }
         if (isEnvToken(node.name)) {
           unsupported.push(messages.splunk_env_token(node.name));
+          return null;
+        }
+        if (hasUntranslatableTokenChar(node.name)) {
+          unsupported.push(messages.token_name_unsupported(node.name));
           return null;
         }
         return Identifier(`{{${node.name}}}`); // non-time variable: unchanged
