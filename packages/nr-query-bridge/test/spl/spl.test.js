@@ -2394,11 +2394,11 @@ const cases = [
     verified: false,
   },
   {
-    // bare-field operand in the arithmetic (walked via the string-atom path).
+    // aggregate mixed with a bare event field has no valid NRQL form — NRDB
+    // rejects it ("Value must be constant in its context", verified staging) →
+    // loud unsupported, not compiling-but-invalid NRQL.
     spl: '* | stats eval(sum(x) + offset) as t',
-    nrql: "FROM Log SELECT sum(x) + `offset` AS 't'",
-    warningFunc: [],
-    unsupportedFunc: [],
+    unsupportedFunc: ['stats_eval_unsupported'],
     doc: 'stats-eval-grammar',
     verified: false,
   },

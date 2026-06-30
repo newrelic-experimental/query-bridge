@@ -23,6 +23,24 @@ export function isNrqlAggregate(expr) {
   return false;
 }
 
+// A bare event-field reference (Identifier) sitting OUTSIDE an aggregate — e.g.
+// the `offset` in `sum(x) + offset`. NRDB rejects an aggregate combined with a
+// row-level event field in one SELECT expression ("Value must be constant in
+// its context" — verified on staging), so such a metric has no valid NRQL form.
+// A field INSIDE an aggregate (the `x` in sum(x)) is consumed by the aggregate
+// and is not free. Used with isNrqlAggregate: agg + free field → unsupported.
+export function hasFreeFieldRef(expr) {
+  if (!expr) return false;
+  if (expr.type === 'Identifier') return true;
+  if (expr.type === 'BinOp')
+    return hasFreeFieldRef(expr.left) || hasFreeFieldRef(expr.right);
+  if (expr.type === 'Function') {
+    if (NRQL_AGG_FUNCS.has(expr.name)) return false; // args consumed by the aggregate
+    return expr.args.some(hasFreeFieldRef); // fold-safe fn: a field arg is still free
+  }
+  return false; // Literal and other constant leaves
+}
+
 // IR expression, or null if any node is untranslatable in stats context
 // (non-fold-safe function, string concat, comparison/boolean node).
 export function walkStatsEvalExpr(node, ir) {

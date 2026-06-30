@@ -17,7 +17,11 @@ import {
 } from '../../ir/nodes.js';
 import { mapFunction, formatSpan, wrapAsSubquery } from './splExprUtils.js';
 import { walkEvalExpr } from './evalHandlers.js';
-import { walkStatsEvalExpr, isNrqlAggregate } from './statsEvalHandlers.js';
+import {
+  walkStatsEvalExpr,
+  isNrqlAggregate,
+  hasFreeFieldRef,
+} from './statsEvalHandlers.js';
 import { messages } from '../../messages.js';
 
 export function handleStats(cmd, ir) {
@@ -44,8 +48,9 @@ export function handleStats(cmd, ir) {
   for (const fn of cmd.functions) {
     if (fn.statsEval) {
       const expr = walkStatsEvalExpr(fn.evalExpr, ir);
-      if (!expr || !isNrqlAggregate(expr)) {
-        // No aggregate (constant/row-wise), or a non-fold-safe function over one.
+      if (!expr || !isNrqlAggregate(expr) || hasFreeFieldRef(expr)) {
+        // No aggregate (constant/row-wise), a non-fold-safe function over one,
+        // or an aggregate mixed with a bare event field (invalid NRQL).
         ir.unsupported.push(messages.stats_eval_unsupported(fn.rawText));
         continue;
       }
