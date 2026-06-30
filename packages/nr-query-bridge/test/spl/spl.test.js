@@ -2349,7 +2349,7 @@ const cases = [
     warningFunc: [],
     unsupportedFunc: [],
     doc: 'stats-eval-grammar',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | timechart span=5m eval(avg(CPU) * avg(MEM)) by host',
@@ -2357,7 +2357,7 @@ const cases = [
     warningFunc: ['facet_default_limit'],
     unsupportedFunc: [],
     doc: 'stats-eval-grammar',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | timechart eval(round(avg(cpu_seconds), 2)) by processor',
@@ -2365,7 +2365,7 @@ const cases = [
     warningFunc: ['facet_default_limit'],
     unsupportedFunc: [],
     doc: 'stats-eval-grammar',
-    verified: false,
+    verified: 'llm',
   },
   {
     spl: '* | stats eval(sum(errors)*100/sum(reqs)) as rate',
@@ -2373,7 +2373,7 @@ const cases = [
     warningFunc: [],
     unsupportedFunc: [],
     doc: 'stats-eval-grammar',
-    verified: false,
+    verified: 'llm',
   },
   {
     // no alias, no by, constant operand — still translatable (has an aggregate)
@@ -2382,7 +2382,7 @@ const cases = [
     warningFunc: [],
     unsupportedFunc: [],
     doc: 'stats-eval-grammar',
-    verified: false,
+    verified: 'llm',
   },
   {
     // fold-safe function with StringLiteral args over an aggregate — translatable.
@@ -2391,7 +2391,7 @@ const cases = [
     warningFunc: [],
     unsupportedFunc: [],
     doc: 'stats-eval-grammar',
-    verified: false,
+    verified: 'llm',
   },
   {
     // aggregate mixed with a bare event field has no valid NRQL form — NRDB
