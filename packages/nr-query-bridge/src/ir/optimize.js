@@ -139,9 +139,10 @@ function expandDualChecks(ir) {
 // only at the OUTER query level — never inside a `FROM (subquery …)`. A {{var}} that
 // the post-aggregation fold pushed into a SubquerySource therefore reaches NRDB
 // unbound and the widget fails to render ("undefined template variable"), even though
-// the console / NerdGraph accept it. Detect it and fail loud rather than emit the
-// render-failing query. (Hoisting a hoistable pre-aggregation filter to the outer —
-// only valid when its field is an exposed facet key — is a deferred follow-up.)
+// the console / NerdGraph accept it. A {{var}} filtering on an exposed facet key IS
+// rescuable — hoistFacetKeyTemplateVars (below) moves it to the outer query (filtering
+// by a grouping key commutes with the aggregation); only the un-hoistable {{var}}s
+// (non-facet field, deeper subquery, non-simple predicate) remain loud unsupported.
 
 /** True if any Identifier/Like under `node` is a {{template var}}. */
 function hasTemplateVar(node) {
