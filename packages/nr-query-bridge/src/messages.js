@@ -129,6 +129,13 @@ export const messages = {
   template_var_in_subquery: () =>
     'dashboard template variable ({{var}}) lands inside a FROM (subquery …); New Relic substitutes variables only at the outer query level, so it reaches the database unbound and the widget fails to render. Filter on the variable before the aggregation that forces the subquery.',
 
+  // SPL: `host="$host$" | stats count by host | where count > 5`
+  // The {{var}} filtered on a FACET KEY, so the fold-stranded predicate is hoisted to
+  // the outer WHERE (where NR substitutes it). Filtering by a grouping key commutes with
+  // the aggregation → faithful, modulo the 5000-group subquery cap.
+  template_var_hoisted: (field) =>
+    `hoisted the '${field}' = {{var}} filter out of the subquery to the outer query so the dashboard variable resolves; '${field}' is a grouping key so the filter is faithful, but the inner aggregation is bounded by the 5000-group subquery cap — above that, the filtered group may be dropped`,
+
   // SPL: `* | bin size span=10`
   bin_unsupported: () =>
     'bin command not fully supported; use TIMESERIES for time or histogram() for numeric fields',

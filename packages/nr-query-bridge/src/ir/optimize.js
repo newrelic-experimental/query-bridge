@@ -194,8 +194,51 @@ function hasTemplateVarInSubquery(ir) {
   return found;
 }
 
+// Field a simple predicate filters on (the side that is NOT the {{var}}): a BinOp's
+// left Identifier, or a Like's field. null when the shape isn't a simple field filter.
+function fieldNameOf(cond) {
+  if (cond?.type === 'BinOp' && cond.left?.type === 'Identifier') {
+    return cond.left.name;
+  }
+  if (cond?.type === 'Like') {
+    return cond.field?.type === 'Identifier'
+      ? cond.field.name
+      : (cond.field ?? null);
+  }
+  return null;
+}
+
+// Rescue hoistable {{var}} predicates from the TOP-LEVEL subquery: a {{var}} filter
+// whose field is an exposed inner facet key commutes with the aggregation, so it can
+// move to the outer ir.where (where NR substitutes {{var}}). Deeper-nested subqueries,
+// non-facet fields, and {{var}}s outside a simple WHERE predicate are left in place
+// (→ still flagged unsupported below).
+function hoistFacetKeyTemplateVars(ir) {
+  const ds = ir.dataSource;
+  if (ds?.type !== 'SubquerySource' || !ds.query) return;
+  const inner = ds.query;
+  const facetNames = new Set(
+    inner.facet.filter((f) => f.type === 'Identifier').map((f) => f.name),
+  );
+  const kept = [];
+  for (const cond of inner.where) {
+    const field = fieldNameOf(cond);
+    if (hasTemplateVar(cond) && field && facetNames.has(field)) {
+      ir.where.push(cond); // hoist to the outer WHERE — interpolator substitutes here
+      ir.warnings.push(messages.template_var_hoisted(field));
+    } else {
+      kept.push(cond);
+    }
+  }
+  inner.where = kept;
+}
+
 function detectTemplateVarInSubquery(ir) {
+  if (!hasTemplateVarInSubquery(ir)) return ir;
+  hoistFacetKeyTemplateVars(ir); // rescue facet-key {{var}} filters…
   if (hasTemplateVarInSubquery(ir)) {
+    // …anything still stranded (non-facet field, deeper subquery, or a {{var}} outside
+    // a simple WHERE predicate) has no faithful form → loud.
     ir.unsupported.push(messages.template_var_in_subquery());
   }
   return ir;
