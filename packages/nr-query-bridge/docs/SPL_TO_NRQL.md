@@ -3385,6 +3385,37 @@ SPL:  index=web $tok.latest$ earliest=-24h | stats count
 
 ```
 ❓ Not confirmed
+SPL:  app="$env:app$" | stats count
+🔴 $env:app$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  app=$env:user$ | stats count
+🔴 $env:user$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web $env:page$ | stats count
+🔴 $env:page$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  app="$env:app$" page="$env:page$" | stats count
+🔴 $env:app$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+🔴 $env:page$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  app="*$env:app$*" | stats count
+🔴 $env:app$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
 SPL:  index="*fps-$env$*" | stats count
 🔴 Index="*fps-$env$*" embeds a dashboard token inside literal text. New Relic substitutes a dashboard variable only in value position, never inside a string, so this cannot be translated. Use a standalone token (field=$tok$) or a wildcard-only token (field="*$tok$*").
 ```

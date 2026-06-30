@@ -807,6 +807,42 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: false,
   },
+  // Splunk $env:…$ runtime-context token in WHERE/value position → unsupported,
+  // not {{env:app}} (a hard NRDB parse error — ':' doesn't tokenize). Quoted standalone.
+  {
+    spl: 'app="$env:app$" | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Unquoted form: hits the TemplateVariable-node comparison site.
+  {
+    spl: 'app=$env:user$ | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Bare standalone env token (search-term position) → also unsupported, no {{}} leak.
+  {
+    spl: 'index=web $env:page$ | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Multiple env tokens → splunk_env_token fires (listed once, exhaustive); no {{env:…}}.
+  {
+    spl: 'app="$env:app$" page="$env:page$" | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Wildcard-only wrap of an env token → unsupported too (not LIKE {{env:app}}).
+  {
+    spl: 'app="*$env:app$*" | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
   // Wildcard-ONLY token (`*$tok$*`, `$tok$*`, `*$tok$`) → `field LIKE {{tok}}`. New Relic
   // substitutes the variable in value position, so the % wildcards must live in the
   // variable's VALUE; the warning says so. Verified accepted by dashboardCreate + NRQL
