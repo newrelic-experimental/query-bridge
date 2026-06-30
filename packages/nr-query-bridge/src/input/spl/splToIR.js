@@ -757,6 +757,15 @@ function applyCommand(cmd, ir) {
         ir.unsupported.push(messages.streamstats_unsupported());
       } else if (name === 'kvparse' || name === 'extract' || name === 'kv') {
         ir.unsupported.push(messages.kvparse_unsupported());
+      } else if (name === 'transaction') {
+        // No faithful NRQL equivalent: NRQL has no sessionization primitive, and
+        // even bare transaction != FACET (maxevents=1000 + connected=true). Name
+        // the first blocking window/boundary arg when one is present.
+        const windowMatch = /\b(maxspan|maxpause|startswith|endswith)\b/i.exec(
+          cmd.rawText || '',
+        );
+        const windowArg = windowMatch ? windowMatch[1].toLowerCase() : null;
+        ir.unsupported.push(messages.transaction_unsupported(windowArg));
       } else {
         ir.unsupported.push(messages.unsupported_command(name));
       }
