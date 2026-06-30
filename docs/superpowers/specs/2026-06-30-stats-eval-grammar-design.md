@@ -44,7 +44,7 @@ Verified today (`bin/spl2nrql.js`):
 
 ## Testing
 
-Data-driven `cases` in `test/spl/spl.test.js`: the translatable forms (agg arithmetic, fold-safe-func-over-agg, with/without `as`, with/without `by`/`span`), the `unsupported` forms (no aggregate; non-fold-safe), and the `count(eval(...))` regression. `test/messages.test.js` for the new key. Grammar: `npm run build:parsers` after the `.grammar` edit; a parser-level unit confirming `eval(u_expr)` parses as a stats function and `count(eval(...))` still parses as an aggregate-of-eval. Fuzz ×20 (the grammar change is the risk — a bare `eval(` must not mis-parse adjacent constructs). Staging: the translatable outputs execute (arithmetic-over-aggregates already confirmed; spot-check one `eval()`-derived query).
+Data-driven `cases` in `test/spl/spl.test.js`: the translatable forms (agg arithmetic, fold-safe-func-over-agg, with/without `as`, with/without `by`/`span`), the `unsupported` forms (no aggregate; non-fold-safe), and the `count(eval(...))` regression. (No `test/messages.test.js` exists — message-key consistency is the forward-only spy loop in `test/spl/spl.test.js`; the new key is exercised by its consumer's `unsupportedFunc` cases.) Grammar: `npm run build:parsers` after the `.grammar` edit; a parser-level unit confirming `eval(u_expr)` parses as a stats function and `count(eval(...))` still parses as an aggregate-of-eval. Fuzz ×20 (the grammar change is the risk — a bare `eval(` must not mis-parse adjacent constructs). Staging: the translatable outputs execute (arithmetic-over-aggregates already confirmed; spot-check one `eval()`-derived query).
 
 ## PR breakdown
 

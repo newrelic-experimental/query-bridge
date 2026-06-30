@@ -15,7 +15,7 @@
 - Dev requires **Node 24**: prefix every command (including `git commit`) with `ASDF_NODEJS_VERSION=24.14.0`. Hooks need it.
 - Conventional commits, lowercase subject ≤72 chars, body lines ≤100. Use `git commit -F <file>` for multi-line bodies. Push with `git push origin HEAD`.
 - **Loud failure over silent wrong:** any expression that can't translate faithfully pushes `messages.stats_eval_unsupported(...)`, never compiling-but-wrong NRQL and never a silent `SELECT *`.
-- All user-facing messages live in `src/messages.js`; handlers call `messages.key()` — no inline strings. `test/messages.test.js` enforces bidirectional key consistency, so every new key needs a matching test reference.
+- All user-facing messages live in `src/messages.js`; handlers call `messages.key()` — no inline strings. There is no `test/messages.test.js`; message-key consistency is the forward-only spy loop in `test/spl/spl.test.js` (every *fired* key must be listed in a case's `warningFunc`/`unsupportedFunc`), so a new key is exercised by adding a case that fires it.
 - New/changed translations land at `verified: 'llm'` at most; only a human promotes to `'human'`.
 - Translator tests are data-driven `cases` in `test/spl/spl.test.js` (the sanctioned exception to the explicit-test rule). Each case lists `warningFunc`/`unsupportedFunc` **exhaustively** (every message key that fires).
 - Run one package: `ASDF_NODEJS_VERSION=24.14.0 npm run test --workspace=@newrelic/query-bridge -- spl`. Regenerate the parser after any grammar edit: `ASDF_NODEJS_VERSION=24.14.0 npm run build:parsers`.
@@ -26,7 +26,7 @@
 | File | Responsibility | Change |
 |---|---|---|
 | `src/messages.js` | message catalog | add `stats_eval_unsupported(expr)` |
-| `test/messages.test.js` | message-key consistency | reference the new key |
+| `test/spl/spl.test.js` | message-key spy loop (no `messages.test.js` exists) | the new key is fired by its Task 2 `unsupportedFunc` cases |
 | `src/input/spl/spl.grammar` | SPL → AST | add a bare-`eval(u_expr)` alternative to `stats_function` (line 111) |
 | `src/input/spl/splParser.js` | generated parser | regenerated via `build:parsers` (never hand-edited) |
 | `src/input/spl/aggregationHandlers.js` | `handleStats`/`handleTimechart` | add a `fn.statsEval` branch in the function loop |
@@ -41,34 +41,30 @@
 
 **Files:**
 - Modify: `src/messages.js`
-- Test: `test/messages.test.js`
+- (No separate test file — there is no `test/messages.test.js`. The key is tested by its consumer in Task 2: the `unsupportedFunc: ['stats_eval_unsupported']` cases in `test/spl/spl.test.js`.)
 
 **Interfaces:**
 - Produces: `messages.stats_eval_unsupported(expr: string) => string` — consumed by the handler branch in Task 2/3.
 
-- [ ] **Step 1: Add a failing reference** in `test/messages.test.js`. Find the existing list/array of referenced message keys (the test asserts every `messages` key is referenced and vice-versa) and add `'stats_eval_unsupported'` to it.
-
-- [ ] **Step 2: Run, confirm red.**
-
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm run test --workspace=@newrelic/query-bridge -- messages`
-Expected: FAIL — `stats_eval_unsupported` referenced but not defined (or the reciprocal "defined but not referenced" once Step 3 lands first; either direction proves the link).
-
-- [ ] **Step 3: Add the message** to `src/messages.js` (place it near the other stats/eval messages):
+- [ ] **Step 1: Add the message** to `src/messages.js` (place it near the other stats/eval messages):
 
 ```js
 stats_eval_unsupported: (expr) =>
   `'${expr}' has no faithful NRQL form as a stats/timechart metric — a bare eval() metric must reduce to arithmetic over aggregates with fold-safe functions; an expression with no aggregate, or a non-fold-safe function over an aggregate, is unsupported`,
 ```
 
-- [ ] **Step 4: Run, confirm green.**
+There is **no RED step**: `test/messages.test.js` does not exist (the only message-key enforcement is the forward-only spy loop in `test/spl/spl.test.js`), and nothing consumes the key until Task 2 — so adding the message is a no-op for the suite. The key's real test lands with its consumer in Task 2 (the `unsupportedFunc: ['stats_eval_unsupported']` cases fire it).
 
-Run: `ASDF_NODEJS_VERSION=24.14.0 npm run test --workspace=@newrelic/query-bridge -- messages`
-Expected: PASS.
+- [ ] **Step 2: Confirm the suite still passes** (sanity — an unused message changes nothing):
 
-- [ ] **Step 5: Commit.**
+Run: `ASDF_NODEJS_VERSION=24.14.0 npm run test --workspace=@newrelic/query-bridge`
+Expected: PASS (coverage gate included).
+
+- [ ] **Step 3: Commit** (stage only `src/messages.js`):
 
 ```bash
-ASDF_NODEJS_VERSION=24.14.0 git commit -am "feat: add stats_eval_unsupported message"
+ASDF_NODEJS_VERSION=24.14.0 git add src/messages.js
+ASDF_NODEJS_VERSION=24.14.0 git commit -m "feat: add stats_eval_unsupported message"
 ```
 
 ---
