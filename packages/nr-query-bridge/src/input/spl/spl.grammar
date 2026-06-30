@@ -113,6 +113,10 @@ stats_function
     {
       return { name: name, args: [], alias: alias, evalFilter: evalExpr };
     }
+  / _* 'eval'i !([a-zA-Z0-9_]) _* '(' _* evalExpr:u_expr _* ')' alias:as_clause?
+    {
+      return { statsEval: true, evalExpr: evalExpr, rawText: text().trim(), alias: alias, args: [] };
+    }
   / _* name:function_name '(' _* args:function_args _* ')' alias:as_clause?
     {
       return { name: name, args: args, alias: alias };

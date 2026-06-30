@@ -2322,6 +2322,35 @@ const cases = [
     doc: 'reports-stats',
     verified: 'human',
   },
+  {
+    spl: '* | stats eval(upper(host)) as h',
+    unsupportedFunc: ['stats_eval_unsupported'],
+    doc: 'stats-eval-grammar',
+    verified: false,
+  },
+  {
+    // non-fold-safe function OVER an aggregate (distinct path from upper(host),
+    // which has no aggregate at all) — both → unsupported.
+    spl: '* | stats eval(mvjoin(values(x), ",")) as j',
+    unsupportedFunc: ['stats_eval_unsupported'],
+    doc: 'stats-eval-grammar',
+    verified: false,
+  },
+  {
+    spl: '* | eventstats eval(sum(bytes)) by host',
+    unsupportedFunc: ['stats_eval_unsupported'],
+    doc: 'stats-eval-grammar',
+    verified: false,
+  },
+  {
+    // Regression: count(eval(...)) is the DISTINCT fn(eval()) form and must not change.
+    spl: '* | stats count(eval(status>=500)) as errors',
+    nrql: "FROM Log SELECT filter(count(*), WHERE numeric(status) >= 500) AS 'errors'",
+    warningFunc: [],
+    unsupportedFunc: [],
+    doc: 'stats-eval-grammar',
+    verified: false,
+  },
   //
   // ── stats functions ─────────────────────────────────────────────
   //

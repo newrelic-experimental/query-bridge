@@ -41,6 +41,12 @@ export function handleStats(cmd, ir) {
   ir.facet = [];
 
   for (const fn of cmd.functions) {
+    if (fn.statsEval) {
+      // Bare eval() stats metric. Task 3 upgrades this to faithful translation;
+      // for now fail loud rather than silently drop the metric to SELECT *.
+      ir.unsupported.push(messages.stats_eval_unsupported(fn.rawText));
+      continue;
+    }
     if (fn.evalFilter) {
       // count(eval(expr)) → filter(count(*), WHERE expr)
       const filterCondition = walkEvalExpr(fn.evalFilter, ir);
@@ -147,6 +153,10 @@ export function handleRare(cmd, ir) {
 export function handleEventstats(cmd, ir) {
   const subSelect = [];
   for (const fn of cmd.functions) {
+    if (fn.statsEval) {
+      ir.unsupported.push(messages.stats_eval_unsupported(fn.rawText));
+      continue;
+    }
     const mapped = mapFunction(fn.name, fn.args);
     if (mapped.warning) ir.warnings.push(mapped.warning);
     if (mapped.expr) {

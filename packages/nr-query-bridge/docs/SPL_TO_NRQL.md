@@ -11,7 +11,7 @@
      fails loudly. Do NOT remove a tag from this list to silence that failure
      without either adding a real sentinel section or deleting the tag from its
      test cases. -->
-<!-- spl-table-tags: bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression, eval-like-apostrophe-regression, where-in-func-regression, regex-apostrophe-regression, regex-template-var-regression, compound-eval-eval, compound-eval-where, compound-eval-stats, compound-where-where, compound-stats-stats -->
+<!-- spl-table-tags: bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression, eval-like-apostrophe-regression, where-in-func-regression, regex-apostrophe-regression, regex-template-var-regression, compound-eval-eval, compound-eval-where, compound-eval-stats, compound-where-where, compound-stats-stats, stats-eval-grammar -->
 
 See [CLI.md](CLI.md) for the command-line tool documentation.
 
@@ -318,7 +318,7 @@ SPL:  (routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.
 🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
 🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
 🟡 `dedup` with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.
-🟡 SPL function eval() has no known NRQL equivalent
+🔴 'eval((sum(orders)*100)/sum(addtobags)) as completionRate' has no faithful NRQL form as a stats/timechart metric — a bare eval() metric must reduce to arithmetic over aggregates with fold-safe functions; an expression with no aggregate, or a non-fold-safe function over an aggregate, is unsupported
 🔴 `this` compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported
 ```
 <!-- /spl-cases -->
