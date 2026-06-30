@@ -289,6 +289,11 @@ export const messages = {
     `${label} subsearch reads a different index/sourcetype/source than the main search; ` +
     'NR Log has no UNION or multi-source FROM, so one FROM Log query cannot read both datasets',
 
+  // SPL: `earliest=-1d | stats count | append [search * earliest=-2d latest=-1d | stats count]`
+  append_divergent_timerange: (label) =>
+    `${label} subsearch has its own time window (earliest/latest) that differs from the main query's; ` +
+    'NRQL applies one SINCE/UNTIL per query, so the two sides cannot run over different time ranges — the merge would silently run both over the main window',
+
   // SPL: `* | inputlookup geo_data.csv` / `* | lookup users_lookup user`
   lookup_upload_reminder: (table) =>
     `Ensure lookup table '${table}' is uploaded via the Lookups UI`,

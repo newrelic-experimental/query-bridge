@@ -103,6 +103,20 @@ NRQL: FROM Log SELECT filter(count(*), WHERE index = 'web' AND message LIKE '%er
 
 ```
 ❓ Not confirmed
+SPL:  earliest=-1d | stats count | append [search error earliest=-1d | stats count]
+NRQL: FROM Log SELECT count(*), filter(count(*), WHERE message LIKE '%error%') SINCE 1 day ago
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
+
+```
+❓ Not confirmed
+SPL:  earliest=-1d | stats count | append [search error | stats count]
+NRQL: FROM Log SELECT count(*), filter(count(*), WHERE message LIKE '%error%') SINCE 1 day ago
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
+
+```
+❓ Not confirmed
 SPL:  * | where status=500 | stats avg(duration) as err_dur | append [search * | stats avg(duration) as all_dur]
 NRQL: FROM Log SELECT filter(average(duration), WHERE status = '500' OR numeric(status) = 500) AS 'err_dur', average(duration) AS 'all_dur'
 🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
@@ -125,6 +139,18 @@ SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
 ❓ Not confirmed
 SPL:  index=web | stats count as web_count | append [search index=api | stats count as api_count]
 🔴 `append` subsearch reads a different index/sourcetype/source than the main search; NR Log has no UNION or multi-source FROM, so one FROM Log query cannot read both datasets
+```
+
+```
+❓ Not confirmed
+SPL:  earliest=-1d latest=now | stats count | append [search * earliest=-2d latest=-1d | stats count]
+🔴 `append` subsearch has its own time window (earliest/latest) that differs from the main query's; NRQL applies one SINCE/UNTIL per query, so the two sides cannot run over different time ranges — the merge would silently run both over the main window
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count | append [search * earliest=-2d | stats count]
+🔴 `append` subsearch has its own time window (earliest/latest) that differs from the main query's; NRQL applies one SINCE/UNTIL per query, so the two sides cannot run over different time ranges — the merge would silently run both over the main window
 ```
 
 ```

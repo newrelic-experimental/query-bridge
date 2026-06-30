@@ -161,7 +161,16 @@ export function handleAppend(cmd, ir, label) {
   // Parse and translate the subsearch
   let subIR;
   try {
-    const subAst = parser.parse(normalizeSubsearch(cmd.subsearch));
+    // A `search`-prefixed subsearch is already a valid LEADING query — parse it as-is
+    // so its own earliest/latest populate subIR.since/until. normalizeSubsearch would
+    // prepend `|`, turning it into a PIPED `search` whose earliest/latest are silently
+    // dropped — which is exactly the divergent time window the guard below must detect.
+    // Other subsearch forms (inputlookup, bare `stats`, …) still need the `|` prefix.
+    const raw = cmd.subsearch.trim();
+    const toParse = /^search\b/i.test(raw)
+      ? raw
+      : normalizeSubsearch(cmd.subsearch);
+    const subAst = parser.parse(toParse);
     subIR = translateAstToIR(subAst);
   } catch (e) {
     ir.unsupported.push(messages.append_parse_failed(label, e.message));
@@ -202,6 +211,20 @@ export function handleAppend(cmd, ir, label) {
     collectSourceDiscriminators(subIR.where)
   ) {
     ir.unsupported.push(messages.append_cross_source(label));
+    return;
+  }
+
+  // Defect 2 — divergent per-side time window. handleAppend merges select/facet/where
+  // but not since/until, so a subsearch carrying its own earliest/latest is silently
+  // dropped and both aggregates run over the main window. NRQL has one SINCE/UNTIL per
+  // query, so there is no faithful single-query form when the windows differ. A
+  // subsearch with no window inherits the main's (not divergent).
+  const subHasWindow = subIR.since != null || subIR.until != null;
+  if (
+    subHasWindow &&
+    (!exprsEqual(subIR.since, ir.since) || !exprsEqual(subIR.until, ir.until))
+  ) {
+    ir.unsupported.push(messages.append_divergent_timerange(label));
     return;
   }
 

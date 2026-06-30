@@ -3921,6 +3921,37 @@ const cases = [
     doc: 'correlation-append',
     verified: false,
   },
+  // Defect 2: divergent per-side time window — the subsearch carries its own
+  // earliest/latest, which NRQL cannot apply alongside the main window.
+  {
+    spl: 'earliest=-1d latest=now | stats count | append [search * earliest=-2d latest=-1d | stats count]',
+    unsupportedFunc: ['append_divergent_timerange'],
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Sub sets a window the main lacks → still divergent (can't apply the sub window).
+  {
+    spl: '* | stats count | append [search * earliest=-2d | stats count]',
+    unsupportedFunc: ['append_divergent_timerange'],
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Regression: same window on both sides stays the faithful filter() merge.
+  {
+    spl: 'earliest=-1d | stats count | append [search error earliest=-1d | stats count]',
+    nrql: "FROM Log SELECT count(*), filter(count(*), WHERE message LIKE '%error%') SINCE 1 day ago",
+    warningFunc: ['append_filter_warning'],
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Regression: no sub window inherits the main window — faithful (not divergent).
+  {
+    spl: 'earliest=-1d | stats count | append [search error | stats count]',
+    nrql: "FROM Log SELECT count(*), filter(count(*), WHERE message LIKE '%error%') SINCE 1 day ago",
+    warningFunc: ['append_filter_warning'],
+    doc: 'correlation-append',
+    verified: false,
+  },
   // Pre-stats WHERE filtering — outer has where before stats, subsearch doesn't
   {
     skip: true,
