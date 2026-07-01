@@ -58,7 +58,25 @@ describe('resolveConstructMessageKey', () => {
       'rex_backreference',
     );
   });
+  it('names an atomic group', () => {
+    expect(resolveConstructMessageKey('(?>(?P<a>\\w+))')).toBe(
+      'rex_atomic_group',
+    );
+  });
+  it('names a possessive quantifier', () => {
+    expect(resolveConstructMessageKey('(?P<a>\\w++)')).toBe(
+      'rex_possessive_quantifier',
+    );
+  });
+  it('names a recursion/subroutine reference', () => {
+    expect(resolveConstructMessageKey('(?P<a>\\w+)(?1)')).toBe('rex_recursion');
+  });
+  it('names a conditional', () => {
+    expect(resolveConstructMessageKey('(?(1)yes|no)(?P<a>\\w+)')).toBe(
+      'rex_conditional',
+    );
+  });
   it('returns null for a pattern with no known construct', () => {
-    expect(resolveConstructMessageKey('(?>(?P<a>\\w+))')).toBeNull();
+    expect(resolveConstructMessageKey('plain(?P<a>\\w+)')).toBeNull();
   });
 });

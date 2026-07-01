@@ -1285,6 +1285,12 @@ NRQL: FROM Log WITH capture(x, r'.*(?P<a>\w+) (?P<b>\w+).*') AS (a, b) SELECT *
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | rex field=x "(?i:foo)(?<a>\w+)"
+NRQL: FROM Log WITH capture(x, r'.*(?i:foo)(?P<a>\w+).*') AS (a) SELECT *
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rex field=message "(?<=prefix)(?<val>\w+)"
 🔴 `rex` pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround
@@ -1300,6 +1306,36 @@ SPL:  * | rex field=x "(?<a>\w+)=\1"
 ❓ Not confirmed
 SPL:  * | rex field=x "x[\1]y(?<a>\w+)"
 🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?>(?<a>\w+))"
+🔴 `rex` pattern uses an atomic group (?>...), which NRQL capture() (RE2) does not support; rewrite the regex without atomic groups
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>\w++)"
+🔴 `rex` pattern uses a possessive quantifier (*+, ++, ?+, {n,m}+), which NRQL capture() (RE2) does not support; use a greedy quantifier instead
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>\w+)(?1)"
+🔴 `rex` pattern uses recursion or a subroutine reference ((?R), (?1), \g<name>), which NRQL capture() (RE2) does not support
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?(1)yes|no)(?<a>\w+)"
+🔴 `rex` pattern uses a conditional ((?(1)...)), which NRQL capture() (RE2) does not support
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>a{3,1})"
+🔴 `rex` pattern is not compatible with NRQL capture() (RE2): error parsing regexp: invalid repeat count: `{3,1}`; rewrite the regex without the unsupported construct
 ```
 <!-- /spl-cases -->
 

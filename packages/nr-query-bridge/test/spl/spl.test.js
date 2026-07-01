@@ -2070,6 +2070,49 @@ const cases = [
     doc: 'fields-rex-pcre',
     verified: false,
   },
+  // atomic group → unsupported (re2js-confirmed rejected).
+  {
+    spl: '* | rex field=x "(?>(?<a>\\w+))"',
+    unsupportedFunc: ['rex_atomic_group'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // possessive quantifier → unsupported.
+  {
+    spl: '* | rex field=x "(?<a>\\w++)"',
+    unsupportedFunc: ['rex_possessive_quantifier'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // recursion / subroutine reference → unsupported.
+  {
+    spl: '* | rex field=x "(?<a>\\w+)(?1)"',
+    unsupportedFunc: ['rex_recursion'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // conditional → unsupported.
+  {
+    spl: '* | rex field=x "(?(1)yes|no)(?<a>\\w+)"',
+    unsupportedFunc: ['rex_conditional'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // RE2-incompatible with no known construct → generic message surfacing
+  // re2js's own reason (here: invalid repeat count {3,1}).
+  {
+    spl: '* | rex field=x "(?<a>a{3,1})"',
+    unsupportedFunc: ['rex_re2_incompatible'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // scoped inline flag MUST NOT be rejected (capture() accepts it — staging-verified).
+  {
+    spl: '* | rex field=x "(?i:foo)(?<a>\\w+)"',
+    nrql: "FROM Log WITH capture(x, r'.*(?i:foo)(?P<a>\\w+).*') AS (a) SELECT *",
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
   //
   // ── spath command ───────────────────────────────────────────────
   //
