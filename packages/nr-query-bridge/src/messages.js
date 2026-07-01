@@ -109,7 +109,7 @@ export const messages = {
   // After folding, a residual row-wise SubquerySource inner means the chain cannot
   // be collapsed into legal NRQL. Loud unsupported over non-compiling NRQL.
   compound_collapse_unsupported: () =>
-    'this compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported',
+    'Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported',
 
   // SPL: `* | stats count by host | stats sum(count) by region`
   // A trailing aggregating layer over an aggregating inner subquery is legal NRQL

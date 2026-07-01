@@ -3403,6 +3403,17 @@ const cases = [
     doc: 'eval-string',
     verified: false,
   },
+  // strftime on raw _time AFTER a transforming stats: timestamp isn't exposed
+  // post-aggregation, so it must fail LOUDLY — never flat-fold into an NRDB-invalid
+  // `SELECT count(*), toDatetime(timestamp,…) FACET host`. toDatetime is deliberately
+  // NOT in FOLD_SAFE_FUNCS; the eval-after-aggregation guard catches it. (Regression
+  // guard against a future fold-safe mistake.)
+  {
+    spl: '* | stats count by host | eval d = strftime(_time, "%Y-%m-%d")',
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'eval-string',
+    verified: false,
+  },
   // eventstats with BY → subquery JOIN
   {
     spl: '* | eventstats count by host',
