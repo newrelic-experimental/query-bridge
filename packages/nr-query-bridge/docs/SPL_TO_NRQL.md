@@ -1305,13 +1305,13 @@ SPL:  * | rex field=message "(?<=prefix)(?<val>\w+)"
 ```
 ❓ Not confirmed
 SPL:  * | rex field=x "(?<a>\w+)=\1"
-🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() (RE2) does not support; rewrite the regex without backreferences
+🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | rex field=x "x[\1]y(?<a>\w+)"
-🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() (RE2) does not support; rewrite the regex without backreferences
+🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences
 ```
 
 ```
