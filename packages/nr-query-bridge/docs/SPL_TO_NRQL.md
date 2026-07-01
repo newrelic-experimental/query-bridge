@@ -2402,6 +2402,20 @@ SPL:  * | eval x = strftime(_time, "%s")
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | eval x = strftime(_time, "%Q %c %s")
+🔴 Strftime/strptime format code '%Q' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%c' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%s' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval d = strftime(_time, myfmt)
+🔴 `strftime()` needs a quoted string format literal; a field or expression format can't be precompiled to a Java DateTimeFormatter pattern
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | eval json_content=replace(json_content, "'", "\"") | spath input=json_content
 🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
