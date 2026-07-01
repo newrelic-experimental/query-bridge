@@ -625,16 +625,33 @@ function walkEvalFunc(node, ir) {
 
     case 'strftime':
     case 'strptime': {
+      // The format must be a quoted string literal (StringLiteral node). A bare
+      // field arrives as a raw string (its NAME); a computed format as a typed
+      // node — neither is a static format we can precompile. Baking a field name
+      // in as a literal pattern is silent-wrong (strftime(_time, myfmt) →
+      // toDatetime(.., 'myfmt')), so require a literal and fail loud otherwise.
       const fmtArg = args[1];
-      const fmt =
-        typeof fmtArg === 'string' ? fmtArg : (fmtArg && fmtArg.value) || '';
-      const { pattern, unmappable } = splFormatToJava(fmt);
+      if (
+        !fmtArg ||
+        fmtArg.type !== 'StringLiteral' ||
+        typeof fmtArg.value !== 'string'
+      ) {
+        ir.unsupported.push(messages.strftime_nonliteral_format(name));
+        return null;
+      }
+      const { pattern, unmappable } = splFormatToJava(fmtArg.value);
       if (unmappable.length) {
-        ir.unsupported.push(messages.strftime_unmappable_code(unmappable[0]));
+        // One message per unmappable code so the user sees them all at once,
+        // instead of fixing one, re-running, and hitting the next.
+        for (const code of unmappable) {
+          ir.unsupported.push(messages.strftime_unmappable_code(code));
+        }
         return null;
       }
       const src = walkEvalExpr(args[0], ir);
       if (!src) {
+        // src is null when the epoch/source arg is itself untranslatable — e.g.
+        // strftime(<unsupported-func>(x), "%Y"). Reachable, so keep the guard.
         ir.unsupported.push(messages.eval_func_unsupported(name));
         return null;
       }
