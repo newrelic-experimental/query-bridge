@@ -2403,6 +2403,20 @@ SPL:  * | eval x = strftime(_time, "%s")
 
 ```
 ❓ Not confirmed
+SPL:  * | eval x = strftime(_time, "%Q %c %s")
+🔴 Strftime/strptime format code '%Q' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%c' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%s' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval d = strftime(_time, myfmt)
+🔴 `strftime()` needs a quoted string format literal; a field or expression format can't be precompiled to a Java DateTimeFormatter pattern
+```
+
+```
+❓ Not confirmed
 SPL:  * | stats count by host | eval d = strftime(_time, "%Y-%m-%d")
 🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
 ```

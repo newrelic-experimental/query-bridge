@@ -215,6 +215,9 @@ export const messages = {
   // SPL: `* | eval x = strftime(_time, "%s")` — a %-code with no Java pattern letter.
   strftime_unmappable_code: (code) =>
     `strftime/strptime format code '${code}' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way`,
+  // SPL: `* | eval d = strftime(_time, fmtField)` — format isn't a quoted literal.
+  strftime_nonliteral_format: (name) =>
+    `${name}() needs a quoted string format literal; a field or expression format can't be precompiled to a Java DateTimeFormatter pattern`,
   // SPL: `* | eval t = strptime(ds, "%Y-%m-%d")` — toTimestamp returns ms, strptime seconds.
   strptime_units_warning: () =>
     'strptime() result divided by 1000: NRQL toTimestamp() returns milliseconds, Splunk strptime() returns seconds',
