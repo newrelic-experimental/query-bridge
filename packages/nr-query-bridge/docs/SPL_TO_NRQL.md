@@ -1126,7 +1126,7 @@ NRQL: FROM Log SELECT *
 ```
 ❓ Not confirmed
 SPL:  * | rename log.* as * | stats count by level
-NRQL: FROM Log SELECT count(*) FACET `log.level`
+NRQL: FROM Log SELECT count(*) FACET `log.level` AS 'level'
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 

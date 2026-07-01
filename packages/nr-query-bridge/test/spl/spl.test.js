@@ -2342,7 +2342,7 @@ const cases = [
   // `facet_default_limit` fires because FACET has no LIMIT (existing pipeline warning).
   {
     spl: '* | rename log.* as * | stats count by level',
-    nrql: 'FROM Log SELECT count(*) FACET `log.level`',
+    nrql: "FROM Log SELECT count(*) FACET `log.level` AS 'level'",
     warningFunc: ['facet_default_limit'],
     doc: 'fields-rename',
     verified: false,
