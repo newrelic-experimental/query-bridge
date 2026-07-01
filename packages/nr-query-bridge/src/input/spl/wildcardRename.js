@@ -110,13 +110,13 @@ export function applyWildcardRenames(ir) {
   Object.assign(ir._fieldReplacements, replacements);
 }
 
-/** strip: every bare name is a candidate. (Task 3 adds the reprefix predicate.) */
+/** strip: every downstream bare name is a candidate for reprefixing. */
 function isAffixCandidate(name, mark) {
   if (mark.direction === 'strip') return true;
   return false;
 }
 
-/** strip: `level` → `log.level`. (Task 3 adds the reprefix direction.) */
+/** strip: reprefix a stripped name back to its original — e.g. `level` → `log.level`. */
 function affixTarget(name, mark) {
   return mark.affix + name; // 'log.' + 'level'
 }
