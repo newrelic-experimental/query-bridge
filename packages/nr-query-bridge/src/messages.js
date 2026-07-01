@@ -29,7 +29,7 @@ export const messages = {
 
   // SPL: `* | rex field=x "(?<a>\\w+)=\\1"` (backreference — \1..\9, \k<name>, (?P=name))
   rex_backreference: () =>
-    'rex pattern uses a backreference (\\1, \\k<name>, or (?P=name)), which NRQL capture() (RE2) does not support; rewrite the regex without backreferences',
+    'rex pattern uses a backreference (\\1, \\k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences',
 
   // SPL: any rex pattern RE2 rejects without a more specific message
   rex_re2_incompatible: (reason) =>
