@@ -2335,8 +2335,8 @@ const cases = [
     verified: 'human',
   },
   {
-    // PR 1 inert: prefix-strip marker recorded internally, but output is
-    // unchanged (still unsupported). PR 2 makes this shape translate.
+    // prefix-strip marker recorded internally, but output is
+    // unchanged (still unsupported).
     spl: '* | rename log.* as *',
     unsupportedFunc: ['rename_wildcard'],
     doc: 'fields-rename',
