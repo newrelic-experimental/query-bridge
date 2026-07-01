@@ -1273,9 +1273,33 @@ PCRE features like lookaheads/lookbehinds and backreferences. NRQL's RE2 regex e
 
 <!-- spl-cases: fields-rex-pcre -->
 ```
+❓ Not confirmed
+SPL:  * | rex field=x "user=(?<user_id>\w+)"
+NRQL: FROM Log WITH capture(x, r'.*user=(?P<user_id>\w+).*') AS (user_id) SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>\w+) (?<b>\w+)"
+NRQL: FROM Log WITH capture(x, r'.*(?P<a>\w+) (?P<b>\w+).*') AS (a, b) SELECT *
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rex field=message "(?<=prefix)(?<val>\w+)"
 🔴 `rex` pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>\w+)=\1"
+🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "x[\1]y(?<a>\w+)"
+🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences
 ```
 <!-- /spl-cases -->
 

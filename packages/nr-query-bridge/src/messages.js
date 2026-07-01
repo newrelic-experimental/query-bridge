@@ -27,6 +27,14 @@ export const messages = {
   rex_lookaround: () =>
     'rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround',
 
+  // SPL: `* | rex field=x "(?<a>\\w+)=\\1"` (backreference — \1..\9, \k<name>, (?P=name))
+  rex_backreference: () =>
+    'rex pattern uses a backreference (\\1, \\k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences',
+
+  // SPL: any rex pattern RE2 rejects without a more specific message
+  rex_re2_incompatible: (reason) =>
+    `rex pattern is not compatible with NRQL capture() (RE2): ${reason}; rewrite the regex without the unsupported construct`,
+
   // SPL: `* | rex "(?<a>\\w+)" | rex "(?<b>\\w+)" | ... (6+ rex commands)`
   rex_capture_limit: (count) =>
     `query uses ${count} rex extractions but NRQL capture() is limited to 5 per query; consider using aparse() for anchor-based patterns`,
