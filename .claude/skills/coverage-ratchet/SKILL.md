@@ -16,5 +16,6 @@ The gate is **per-file** (`perFile:true`, `all:true`) with statements/branches/f
 ## Gotchas
 
 - A **single-file test run under-covers** and trips the per-file gate — iterate with `--coverage.enabled=false` and gate-check with the whole-package run.
+- **Never run `--coverage` concurrently with another vitest run in the same package** — they share `coverage/.tmp` (`reportsDirectory`) and corrupt each other (`Something removed the coverage/.tmp directory... don't run multiple Vitests with the same reportsDirectory`). Run the 3× stability passes **serially**, or give each an isolated `reportsDirectory`/worktree. (This bites when multiple agents measure coverage in one working tree at once.)
 - Before adding tests to lift a funcs gap, **confirm the "uncovered" function isn't already exercised**. The append filter/merge helpers (`wrapInFilter`/`exprsEqual`) are covered via the `append_filter_warning`/`append_merged` cases — a funcs shortfall there is v8 arrow-callback miscounting, not a real gap, and adding tests would just duplicate existing ones.
 - Don't chase every metric in one PR. Raising the stable ones (branches, stmt/lines) substantially while honestly holding a flaky one (funcs) is a complete ratchet.
