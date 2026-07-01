@@ -89,8 +89,15 @@ NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), f
 
 ```
 ❓ Not confirmed
-SPL:  index=web | stats count as web_count | append [search index=api | stats count as api_count]
-NRQL: FROM Log SELECT filter(count(*), WHERE index = 'web') AS 'web_count', filter(count(*), WHERE index = 'api') AS 'api_count'
+SPL:  status=200 | stats count | append [search status=500 | stats count]
+NRQL: FROM Log SELECT filter(count(*), WHERE status = '200' OR numeric(status) = 200), filter(count(*), WHERE status = '500' OR numeric(status) = 500)
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
+
+```
+❓ Not confirmed
+SPL:  index=web error | stats count | append [search index=web success | stats count]
+NRQL: FROM Log SELECT filter(count(*), WHERE index = 'web' AND message LIKE '%error%'), filter(count(*), WHERE index = 'web' AND message LIKE '%success%')
 🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
 
@@ -112,6 +119,12 @@ SPL:  index=web | append [search index=api]
 SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
 🟡 `append` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `append` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as web_count | append [search index=api | stats count as api_count]
+🔴 `append` subsearch reads a different index/sourcetype/source than the main search; NR Log has no UNION or multi-source FROM, so one FROM Log query cannot read both datasets
 ```
 
 ```

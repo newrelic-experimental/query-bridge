@@ -287,6 +287,11 @@ export const messages = {
   append_filter_warning: (label) =>
     `${label} translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log`,
 
+  // SPL: `index=web | stats count | append [search index=payments | stats count]`
+  append_cross_source: (label) =>
+    `${label} subsearch reads a different index/sourcetype/source than the main search; ` +
+    'NR Log has no UNION or multi-source FROM, so one FROM Log query cannot read both datasets',
+
   // SPL: `* | inputlookup geo_data.csv` / `* | lookup users_lookup user`
   lookup_upload_reminder: (table) =>
     `Ensure lookup table '${table}' is uploaded via the Lookups UI`,
