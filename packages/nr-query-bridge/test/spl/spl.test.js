@@ -2076,6 +2076,29 @@ const cases = [
     doc: 'fields-spath',
     verified: 'human',
   },
+  // Auto-extract (no path) with an enumerable downstream → per-field jparse bindings.
+  {
+    spl: '* | spath | stats count by status',
+    nrql: "FROM Log WITH jparse(message, 'status') AS status SELECT count(*) FACET status",
+    warningFunc: ['spath_auto_extract', 'facet_default_limit'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  // Auto-extract with input= + a downstream where (DualCheck RHS comes from the where).
+  {
+    spl: '* | spath input=payload | where code="500" | stats count',
+    nrql: "FROM Log WITH jparse(payload, 'code') AS code SELECT count(*) WHERE code = '500' OR numeric(code) = 500",
+    warningFunc: ['spath_auto_extract'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  // Auto-extract-all for display (table *) → stays unsupported (no enumerable ref).
+  {
+    spl: '* | spath | table *',
+    unsupportedFunc: ['spath_no_path'],
+    doc: 'fields-spath',
+    verified: false,
+  },
   // Spath piped to stats
   {
     spl: '* | spath path=response.code output=code | stats count by code',

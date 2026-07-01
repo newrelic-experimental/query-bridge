@@ -1337,6 +1337,21 @@ NRQL: FROM Log WITH jparse(message, 'data.id') AS id SELECT *
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | spath | stats count by status
+NRQL: FROM Log WITH jparse(message, 'status') AS status SELECT count(*) FACET status
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) status as jparse(<source>, '<field>') — confirm each is a JSON property of the source
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | spath input=payload | where code="500" | stats count
+NRQL: FROM Log WITH jparse(payload, 'code') AS code SELECT count(*) WHERE code = '500' OR numeric(code) = 500
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) code as jparse(<source>, '<field>') — confirm each is a JSON property of the source
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | spath path=response.code output=code | stats count by code
 NRQL: FROM Log WITH jparse(message, 'response.code') AS code SELECT count(*) FACET code
@@ -1402,6 +1417,12 @@ NRQL: FROM Log WITH jparse(payload, 'user.id') AS user_id SELECT *
 ```
 ✅ Confirmed by human
 SPL:  * | spath
+🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
+```
+
+```
+❓ Not confirmed
+SPL:  * | spath | table *
 🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 ```
 
