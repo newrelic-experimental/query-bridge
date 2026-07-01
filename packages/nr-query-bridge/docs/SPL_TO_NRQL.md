@@ -332,7 +332,7 @@ SPL:  (routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.
 🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
 🟡 `dedup` with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.
 🟡 SPL function eval() has no known NRQL equivalent
-🔴 `this` compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported
+🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
 ```
 <!-- /spl-cases -->
 
@@ -2278,7 +2278,7 @@ NRQL: FROM Log WITH if(status = '500' OR numeric(status) = 500, 1, 0) AS r SELEC
 ```
 ❓ Not confirmed
 SPL:  * | stats count | eval x = round(total/count, 2)
-🔴 `this` compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported
+🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
 ```
 <!-- /spl-cases -->
 
@@ -2497,8 +2497,22 @@ SPL:  * | eval x = strftime(_time, "%s")
 
 ```
 ❓ Not confirmed
+SPL:  * | eval x = strftime(_time, "%Q %c %s")
+🔴 Strftime/strptime format code '%Q' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%c' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%s' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval d = strftime(_time, myfmt)
+🔴 `strftime()` needs a quoted string format literal; a field or expression format can't be precompiled to a Java DateTimeFormatter pattern
+```
+
+```
+❓ Not confirmed
 SPL:  * | stats count by host | eval d = strftime(_time, "%Y-%m-%d")
-🔴 `this` compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported
+🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
 ```
 
 ```
