@@ -109,7 +109,7 @@ export const messages = {
   // After folding, a residual row-wise SubquerySource inner means the chain cannot
   // be collapsed into legal NRQL. Loud unsupported over non-compiling NRQL.
   compound_collapse_unsupported: () =>
-    'this compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported',
+    'Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported',
 
   // SPL: `* | stats count by host | stats sum(count) by region`
   // A trailing aggregating layer over an aggregating inner subquery is legal NRQL
@@ -215,6 +215,9 @@ export const messages = {
   // SPL: `* | eval x = strftime(_time, "%s")` — a %-code with no Java pattern letter.
   strftime_unmappable_code: (code) =>
     `strftime/strptime format code '${code}' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way`,
+  // SPL: `* | eval d = strftime(_time, fmtField)` — format isn't a quoted literal.
+  strftime_nonliteral_format: (name) =>
+    `${name}() needs a quoted string format literal; a field or expression format can't be precompiled to a Java DateTimeFormatter pattern`,
   // SPL: `* | eval t = strptime(ds, "%Y-%m-%d")` — toTimestamp returns ms, strptime seconds.
   strptime_units_warning: () =>
     'strptime() result divided by 1000: NRQL toTimestamp() returns milliseconds, Splunk strptime() returns seconds',
