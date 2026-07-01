@@ -27,6 +27,7 @@ import {
 // Circular import — safe because translateSearchExpr is only called at runtime, not at module load time
 import { translateSearchExpr } from './splToIR.js';
 import { messages } from '../../messages.js';
+import { splFormatToJava } from './splFormatCodes.js';
 
 // ── Command handlers ────────────────────────────────────────
 
@@ -620,6 +621,55 @@ function walkEvalFunc(node, ir) {
       // Convert Splunk {} array notation to [] for jparse
       path = path.replace(/\{(\d*)\}/g, (_, n) => (n ? `[${n}]` : '[*]'));
       return Func('jparse', [fieldArg, Literal(path, 'string')]);
+    }
+
+    case 'strftime':
+    case 'strptime': {
+      // The format must be a quoted string literal (StringLiteral node). A bare
+      // field arrives as a raw string (its NAME); a computed format as a typed
+      // node — neither is a static format we can precompile. Baking a field name
+      // in as a literal pattern is silent-wrong (strftime(_time, myfmt) →
+      // toDatetime(.., 'myfmt')), so require a literal and fail loud otherwise.
+      const fmtArg = args[1];
+      if (
+        !fmtArg ||
+        fmtArg.type !== 'StringLiteral' ||
+        typeof fmtArg.value !== 'string'
+      ) {
+        ir.unsupported.push(messages.strftime_nonliteral_format(name));
+        return null;
+      }
+      const { pattern, unmappable } = splFormatToJava(fmtArg.value);
+      if (unmappable.length) {
+        // One message per unmappable code so the user sees them all at once,
+        // instead of fixing one, re-running, and hitting the next.
+        for (const code of unmappable) {
+          ir.unsupported.push(messages.strftime_unmappable_code(code));
+        }
+        return null;
+      }
+      const src = walkEvalExpr(args[0], ir);
+      if (!src) {
+        // src is null when the epoch/source arg is itself untranslatable — e.g.
+        // strftime(<unsupported-func>(x), "%Y"). Reachable, so keep the guard.
+        ir.unsupported.push(messages.eval_func_unsupported(name));
+        return null;
+      }
+      if (name === 'strptime') {
+        // toTimestamp returns ms; Splunk strptime returns seconds → /1000.
+        ir.warnings.push(messages.strptime_units_warning());
+        return BinOp(
+          '/',
+          Func('toTimestamp', [src, Literal(pattern, 'string')]),
+          Literal(1000, 'number'),
+        );
+      }
+      // strftime → toDatetime; warn when the epoch source isn't _time/timestamp
+      // (a seconds-epoch field would render a 1970 date — NR timestamp is ms).
+      if (!(src.type === 'Identifier' && src.name === 'timestamp')) {
+        ir.warnings.push(messages.strftime_epoch_units_warning());
+      }
+      return Func('toDatetime', [src, Literal(pattern, 'string')]);
     }
 
     case 'typeof':

@@ -2280,6 +2280,26 @@ NRQL: FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | eval d = strftime(_time, "%Y-%m-%d")
+NRQL: FROM Log WITH toDatetime(timestamp, 'yyyy-MM-dd') AS d SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval t = strptime(ds, "%Y-%m-%d %H:%M:%S")
+NRQL: FROM Log WITH toTimestamp(ds, 'yyyy-MM-dd HH:mm:ss') / 1000 AS t SELECT *
+🟡 `strptime()` result divided by 1000: NRQL toTimestamp() returns milliseconds, Splunk strptime() returns seconds
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval d = strftime(epoch_field, "%Y-%m-%d")
+NRQL: FROM Log WITH toDatetime(epoch_field, 'yyyy-MM-dd') AS d SELECT *
+🟡 `strftime()` on a non-_time epoch field assumes milliseconds (NRQL timestamp unit); a seconds-epoch field yields a 1970 date — multiply by 1000 to match
+```
+
+```
 🤖 Confirmed by LLM
 SPL:  index=x | eval z = businessDate + " "
 NRQL: FROM Log WITH concat(businessDate, ' ') AS z SELECT * WHERE index = 'x'
@@ -2373,6 +2393,26 @@ SPL:  * | eval x=replace(name, "\s+", " ")
 ✅ Confirmed by human
 SPL:  * | eval x=replace(uri, "https://example.com/.*", "")
 🔴 `replace()` with regex pattern 'https://example.com/.*' not supported — NRQL replace() is literal-only
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval x = strftime(_time, "%s")
+🔴 Strftime/strptime format code '%s' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval x = strftime(_time, "%Q %c %s")
+🔴 Strftime/strptime format code '%Q' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%c' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%s' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval d = strftime(_time, myfmt)
+🔴 `strftime()` needs a quoted string format literal; a field or expression format can't be precompiled to a Java DateTimeFormatter pattern
 ```
 
 ```

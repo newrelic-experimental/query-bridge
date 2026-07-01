@@ -3353,6 +3353,56 @@ const cases = [
     doc: 'correlation-transaction',
     verified: false,
   },
+  // strftime(epoch, fmt) → toDatetime(epoch, javaFmt); _time → timestamp (NR ms).
+  {
+    spl: '* | eval d = strftime(_time, "%Y-%m-%d")',
+    nrql: "FROM Log WITH toDatetime(timestamp, 'yyyy-MM-dd') AS d SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  // strptime(str, fmt) → toTimestamp(str, javaFmt) / 1000 (ms → Splunk seconds).
+  {
+    spl: '* | eval t = strptime(ds, "%Y-%m-%d %H:%M:%S")',
+    nrql: "FROM Log WITH toTimestamp(ds, 'yyyy-MM-dd HH:mm:ss') / 1000 AS t SELECT *",
+    warningFunc: ['strptime_units_warning'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // An unmappable %-code (%s = epoch seconds) → whole-function unsupported.
+  {
+    spl: '* | eval x = strftime(_time, "%s")',
+    unsupportedFunc: ['strftime_unmappable_code'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // Multiple unmappable codes → ONE unsupported per code, so the user sees them
+  // all at once instead of fixing one, re-running, and hitting the next.
+  {
+    spl: '* | eval x = strftime(_time, "%Q %c %s")',
+    unsupportedFunc: [
+      'strftime_unmappable_code',
+      'strftime_unmappable_code',
+      'strftime_unmappable_code',
+    ],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // A non-literal format (bare field) can't be precompiled to a Java pattern →
+  // unsupported (loud), not silently baked in as the literal string "myfmt".
+  {
+    spl: '* | eval d = strftime(_time, myfmt)',
+    unsupportedFunc: ['strftime_nonliteral_format'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // A non-_time epoch field → translated, but warns (seconds-vs-ms ambiguity).
+  {
+    spl: '* | eval d = strftime(epoch_field, "%Y-%m-%d")',
+    nrql: "FROM Log WITH toDatetime(epoch_field, 'yyyy-MM-dd') AS d SELECT *",
+    warningFunc: ['strftime_epoch_units_warning'],
+    doc: 'eval-string',
+    verified: false,
+  },
   // eventstats with BY → subquery JOIN
   {
     spl: '* | eventstats count by host',
