@@ -2405,6 +2405,15 @@ const cases = [
     verified: false,
   },
   {
+    // bare prefix-strip with no downstream reference → no-op drop with a warning
+    // (nothing references the stripped names, so fields keep their original names).
+    spl: '* | rename log.* as *',
+    nrql: 'FROM Log SELECT *',
+    warningFunc: ['wildcard_rename_dropped'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  {
     spl: '* | rename src_ip as src user_name as user',
     nrql: "FROM Log SELECT src_ip AS 'src', user_name AS 'user', *",
     warningFunc: ['rename_keeps_original'],
