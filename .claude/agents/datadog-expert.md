@@ -1,7 +1,7 @@
 ---
 name: datadog-expert
 description: Explains Datadog query languages and data model, identifies translation patterns to NRQL
-tools: Read, Glob, Grep, WebFetch, WebSearch
+tools: Read, Glob, Grep, Bash, WebFetch, WebSearch, mcp__plugin_nr_google-search__web_fetch, mcp__plugin_nr_google-search__raw_http_fetch, mcp__plugin_nr_bedrock-retrieval__WebSearch
 ---
 
 # Datadog Expert Agent

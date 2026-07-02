@@ -330,11 +330,32 @@ ops on an aggregate **column a subquery already exposes** (a row value), e.g.
 ## WHERE operators
 
 - Comparison: `=`, `!=`, `<`, `>`, `<=`, `>=`
-- String: `LIKE '%pattern%'`, `NOT LIKE`, `RLIKE 'regex'`
+- String: `LIKE '%pattern%'`, `NOT LIKE`, `RLIKE 'regex'`. **`LIKE` is case-INSENSITIVE**
+  (`level LIKE 'INFO'` also matches `info`) — unlike `=`, which is case-sensitive; and `LIKE`
+  without a `%` is an anchored full-string match, NOT a substring (`LIKE 'NFO'` matches nothing,
+  not `INFO`). So `field LIKE 'v'` ≠ `field = 'v'`. Staging-verified acct 1, 2026-07-02.
 - Null: `IS NULL`, `IS NOT NULL`
 - Set: `IN ('a', 'b')`, `NOT IN`
 - Boolean: `AND`, `OR`, `NOT`
 - Existence: `field IS NOT NULL` (field exists)
+- All-column search: `allColumnSearch('<literal>', insensitive: true|false)` — searches every
+  attribute of the event for the substring. Case-sensitive by default; composes with
+  `AND`/`NOT` and inside `filter(...)`.
+  **Cap: max 2 `allColumnSearch()` calls per query** (3+ → error). Staging-verified acct 1,
+  2026-07-02 (works via both `execute_nrql_query` and raw NerdGraph). The wrong name
+  `anyColumnSearch()` errors with `Unknown filter`.
+  **NOT the faithful translation of a Splunk bare search term** — a Splunk bare term matches
+  `_raw`/index-time tokens only, so `allColumnSearch` (which scans every attribute VALUE,
+  including search-time-derived ones) over-matches. Use `message LIKE '%term%'` for a Splunk
+  bare term; reserve `allColumnSearch` for a genuine "is this substring anywhere on the event"
+  need.
+- Dynamic field existence: a dashboard `{{var}}` set to `replacementStrategy: IDENTIFIER`
+  substitutes as a BARE IDENTIFIER, so `WHERE {{var}} IS NOT NULL` becomes `WHERE level IS
+  NOT NULL` (field-existence on the field NAMED by the variable's value). This is the only
+  way a `{{var}}` reaches attribute-name position — the default/STRING strategy quotes it
+  (`'level'`, a value). Staging-verified acct 1, 2026-07-02 (dashboardCreate + live render).
+  Caveat: the value must be a valid identifier — `* IS NOT NULL` is a syntax error, so an
+  "All"→`*` sentinel breaks this form.
 
 ## TIMESERIES
 

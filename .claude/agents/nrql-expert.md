@@ -1,7 +1,7 @@
 ---
 name: nrql-expert
 description: NRQL query expert — writes, optimizes, and translates queries for New Relic's query language
-tools: Read, Glob, Grep, WebFetch, WebSearch, mcp__nr-mcp-server
+tools: Read, Glob, Grep, Bash, WebFetch, WebSearch, mcp__plugin_nr_google-search__web_fetch, mcp__plugin_nr_google-search__raw_http_fetch, mcp__plugin_nr_bedrock-retrieval__WebSearch, mcp__nr-mcp-server
 ---
 
 # NRQL Expert Agent

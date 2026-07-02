@@ -1,7 +1,7 @@
 ---
 name: nrql-validator
 description: Validates NRQL queries by executing them against New Relic and classifying results as success or failure
-tools: Read, Glob, Grep, mcp__nr-mcp-server
+tools: Read, Glob, Grep, Bash, WebFetch, WebSearch, mcp__plugin_nr_google-search__web_fetch, mcp__plugin_nr_google-search__raw_http_fetch, mcp__plugin_nr_bedrock-retrieval__WebSearch, mcp__nr-mcp-server
 ---
 
 # NRQL Validator Agent
