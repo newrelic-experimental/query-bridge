@@ -1160,6 +1160,19 @@ NRQL: FROM Log SELECT count(*) FACET host
 
 ```
 ❓ Not confirmed
+SPL:  * | rename * as fld_* | stats count by fld_a, fld_b
+NRQL: FROM Log SELECT count(*) FACET a AS 'fld_a', b AS 'fld_b'
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename * as fld_* | where fld_level="x" | stats count
+NRQL: FROM Log SELECT count(*) WHERE level = 'x'
+```
+
+```
+❓ Not confirmed
 SPL:  * | rename log.* as *
 NRQL: FROM Log SELECT *
 🟡 Wildcard rename (log.* as *) dropped: no downstream field references it, so fields keep their original names.
@@ -1191,6 +1204,20 @@ SPL:  * | rename log.* as * | rename app.* as * | stats count by level
 SPL:  * | rename a.*.b as * | stats count by level
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 Wildcard rename (a.*.b as *) not supported in NRQL; rename specific fields
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename * as pre_*_suf | stats count by pre_level_suf
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 Wildcard rename (* as pre_*_suf) not supported in NRQL; rename specific fields
+```
+
+```
+❓ Not confirmed
+SPL:  * | where fld_level="x" | rename * as fld_* | stats count by fld_level
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 Wildcard rename is ambiguous for "fld_level": it is referenced both before and after the rename, so it cannot be safely attributed to the prefix. Rename the specific field instead.
 ```
 
 ```
