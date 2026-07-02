@@ -2366,7 +2366,7 @@ const cases = [
   // `facet_default_limit` fires because FACET has no LIMIT (existing pipeline warning).
   {
     spl: '* | rename log.* as * | stats count by level',
-    nrql: 'FROM Log SELECT count(*) FACET `log.level`',
+    nrql: "FROM Log SELECT count(*) FACET `log.level` AS 'level'",
     warningFunc: ['facet_default_limit'],
     doc: 'fields-rename',
     verified: false,
@@ -2415,7 +2415,7 @@ const cases = [
   // re-prefix: a downstream `fld_level` maps back to its stored name `level`.
   {
     spl: '* | rename * as fld_* | stats count by fld_level',
-    nrql: 'FROM Log SELECT count(*) FACET level',
+    nrql: "FROM Log SELECT count(*) FACET level AS 'fld_level'",
     warningFunc: ['facet_default_limit'],
     doc: 'fields-rename',
     verified: false,
@@ -2425,6 +2425,49 @@ const cases = [
     spl: '* | rename * as fld_* | stats count by host',
     nrql: 'FROM Log SELECT count(*) FACET host',
     warningFunc: ['wildcard_rename_dropped', 'facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // re-prefix, two affixed fields → each facet column relabeled independently.
+  {
+    spl: '* | rename * as fld_* | stats count by fld_a, fld_b',
+    nrql: "FROM Log SELECT count(*) FACET a AS 'fld_a', b AS 'fld_b'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // re-prefix is position-aware: an affixed name in WHERE substitutes to its stored
+  // name PLAIN (no `AS` — WHERE is not an output position). Only select/facet relabel.
+  {
+    spl: '* | rename * as fld_* | where fld_level="x" | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE level = 'x'",
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // re-prefix with a wildcard between prefix and suffix (`pre_*_suf`) is not a clean
+  // single-affix rename → loud unsupported, never a wrong-but-compiling guess.
+  {
+    spl: '* | rename * as pre_*_suf | stats count by pre_level_suf',
+    unsupportedFunc: ['rename_wildcard'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // ambiguity guard (re-prefix): `fld_level` exists BEFORE the rename (pre-rename WHERE)
+  // AND after it (FACET) → cannot attribute it to the prefix → loud unsupported.
+  {
+    spl: '* | where fld_level="x" | rename * as fld_* | stats count by fld_level',
+    unsupportedFunc: ['wildcard_rename_ambiguous'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  {
+    // bare prefix-strip with no downstream reference → no-op drop with a warning
+    // (nothing references the stripped names, so fields keep their original names).
+    spl: '* | rename log.* as *',
+    nrql: 'FROM Log SELECT *',
+    warningFunc: ['wildcard_rename_dropped'],
     doc: 'fields-rename',
     verified: false,
   },
