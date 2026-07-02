@@ -5,7 +5,7 @@
  * AST→IR translation and NRQL emission.
  */
 import { transformTree } from './transform.js';
-import { Identifier, BinOp, Func, Literal, Wildcard } from './nodes.js';
+import { Identifier, BinOp, Func, Literal, Wildcard, Alias } from './nodes.js';
 import { foldPostAggregationPass } from './foldPostAggregation.js';
 
 // ── Pass 1: Double-NOT elimination ──────────────────────────
@@ -102,13 +102,41 @@ function applyFieldReplacements(ir) {
   const map = ir._fieldReplacements;
   const substituted = new Set();
 
-  const walked = transformTree(ir, (node) => {
+  // Plain substitution: Identifier(key) -> map[key], anywhere it appears.
+  const sub = (node) => {
     if (node.type === 'Identifier' && map[node.name]) {
       substituted.add(node.name);
       return map[node.name];
     }
     return node;
-  });
+  };
+
+  // Output positions (select, facet) preserve the RENAMED column name: a top-level
+  // Identifier that is a pure field-for-field rename (map value is itself an
+  // Identifier — e.g. wildcard rename `level -> log.level`, or `fld_level -> level`)
+  // becomes `realattr AS renamedname`, so `rename log.* as * | stats count by level`
+  // emits `FACET log.level AS 'level'` instead of silently dropping the renamed
+  // label. Value-transform replacements (a Func value, e.g. the `replace` command)
+  // and nested references substitute plainly — there is no output column to relabel,
+  // and WHERE/ORDER BY operate on the real attribute.
+  const aliasOutput = (el) => {
+    if (
+      el.type === 'Identifier' &&
+      map[el.name] &&
+      map[el.name].type === 'Identifier'
+    ) {
+      substituted.add(el.name);
+      return Alias(map[el.name], el.name);
+    }
+    return transformTree(el, sub);
+  };
+
+  // Plain-substitute everywhere except select/facet (emptied here so transformTree
+  // skips them), then alias-substitute select/facet below. where/orderBy/bindings/
+  // dataSource keep the pre-existing plain substitution.
+  const walked = transformTree({ ...ir, select: [], facet: [] }, sub);
+  walked.select = ir.select.map(aliasOutput);
+  walked.facet = ir.facet.map(aliasOutput);
 
   const unreferenced = Object.entries(map).filter(([f]) => !substituted.has(f));
   if (unreferenced.length > 0) {
