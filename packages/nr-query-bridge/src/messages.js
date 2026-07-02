@@ -470,9 +470,9 @@ export const messages = {
   // operator or a token-vs-token comparison can't flip → this loud clause-level
   // unsupported (never a dead {{tok}} in field position).
   token_lhs_unsupported: (token) =>
-    `$${token}$ appears in comparison field position; New Relic substitutes a ` +
-    'dashboard variable only in value position, so only an equality comparison ' +
-    'with a non-token operand can be rewritten — this one cannot be translated.',
+    `$${token}$ is a dashboard variable on the field (left) side of a comparison, ` +
+    'but New Relic substitutes a variable only on the value (right) side, and this ' +
+    'comparison cannot be rearranged to put it there — so it cannot be translated.',
 
   // SPL: `app="$env:app$"` — Splunk's $env:…$ runtime-context namespace (current
   // app/page/user/locale + user-profile fields injected at render time). NR dashboards

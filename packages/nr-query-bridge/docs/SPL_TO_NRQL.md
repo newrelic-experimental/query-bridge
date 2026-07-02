@@ -3596,19 +3596,19 @@ NRQL: FROM Log SELECT * WHERE index = 'web'
 ```
 ❓ Not confirmed
 SPL:  * $cat$="*" | stats count
-🔴 $cat$ appears in comparison field position; New Relic substitutes a dashboard variable only in value position, so only an equality comparison with a non-token operand can be rewritten — this one cannot be translated.
+🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | where ($cat$="*" OR category="$cat$")
-🔴 $cat$ appears in comparison field position; New Relic substitutes a dashboard variable only in value position, so only an equality comparison with a non-token operand can be rewritten — this one cannot be translated.
+🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | where $cat$ = $other$
-🔴 $cat$ appears in comparison field position; New Relic substitutes a dashboard variable only in value position, so only an equality comparison with a non-token operand can be rewritten — this one cannot be translated.
+🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
 ```
 
 ```
