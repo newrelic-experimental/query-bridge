@@ -14,6 +14,7 @@ import {
   Wildcard,
   Binding,
 } from '../../ir/nodes.js';
+import { NRQL_AGGREGATE_FUNCS } from '../../ir/nrqlAggregates.js';
 import { mapFieldName, formatSpan, looksLikeNumber } from './splExprUtils.js';
 import { messages } from '../../messages.js';
 
@@ -31,32 +32,17 @@ export function handleFields(cmd, ir) {
   }
 }
 
-// NRQL aggregate function names a faceted SELECT can expose (after the SPL→NRQL
-// function mapping in handleStats — e.g. avg→average, dc→uniqueCount).
-const AGGREGATE_FUNCS = new Set([
-  'count',
-  'average',
-  'sum',
-  'min',
-  'max',
-  'latest',
-  'earliest',
-  'uniqueCount',
-  'median',
-  'percentile',
-  'stddev',
-  'uniques',
-  'rate',
-  'histogram',
-]);
-
 function isAggregateItem(item) {
   const fn = item?.type === 'Alias' ? item.expr : item;
-  return fn?.type === 'Function' && AGGREGATE_FUNCS.has(fn.name);
+  return fn?.type === 'Function' && NRQL_AGGREGATE_FUNCS.has(fn.name);
 }
 
+// Both node shapes expose their `.name`: an Alias exposes its alias, and a bare
+// aggregate Function exposes its function name (`count`, `average`, …) — which is
+// exactly the column NRQL surfaces for it. Callers only pass select items that
+// already passed isAggregateItem, so `item` is always an Alias or a Function.
 function exposedName(item) {
-  return item?.type === 'Alias' ? item.name : item.name;
+  return item.name;
 }
 
 export function handleSort(cmd, ir) {
@@ -92,7 +78,10 @@ export function handleSort(cmd, ir) {
         return;
       }
       ir.unsupported.push(
-        messages.order_on_aggregation_unsupported(first.field),
+        messages.order_on_aggregation_unsupported(
+          first.field,
+          exposedName(aggregates[0]),
+        ),
       );
       return;
     }

@@ -2671,28 +2671,28 @@ NRQL: FROM Log SELECT * ORDER BY host ASC
 ❓ Not confirmed
 SPL:  * | stats count by host | sort +count
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-🔴 `sort` by 'count' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate — direction and key are both ignored), so this order would silently return the wrong rows
+🔴 `sort` by 'count' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate (in this case, `count`) — direction and key are both ignored), so this order would silently return the wrong rows
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | stats count, avg(duration) as a by host | sort -a
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-🔴 `sort` by 'a' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate — direction and key are both ignored), so this order would silently return the wrong rows
+🔴 `sort` by 'a' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate (in this case, `count`) — direction and key are both ignored), so this order would silently return the wrong rows
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | stats count by host | sort -host
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-🔴 `sort` by 'host' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate — direction and key are both ignored), so this order would silently return the wrong rows
+🔴 `sort` by 'host' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate (in this case, `count`) — direction and key are both ignored), so this order would silently return the wrong rows
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | stats count by host | sort -count, +name
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-🔴 `sort` by 'count' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate — direction and key are both ignored), so this order would silently return the wrong rows
+🔴 `sort` by 'count' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate (in this case, `count`) — direction and key are both ignored), so this order would silently return the wrong rows
 ```
 <!-- /spl-cases -->
 
