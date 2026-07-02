@@ -3478,21 +3478,21 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 ❓ Not confirmed
 SPL:  * $cat$="*" | stats count
 NRQL: FROM Log SELECT count(*) WHERE '*' = {{cat}}
-🟡 The means-all sentinel $cat$ = "*" was rewritten as '*' = {{cat}}; "all" is realized by the New Relic variable cat's values, not a literal asterisk match (NRQL `= '*'` matches a literal asterisk, i.e. nothing).
+🟡 $cat$ = "*" is a wildcard variable (Splunk's "match all"); it was rewritten as '*' = {{cat}}. "all" comes from the values configured for the New Relic cat variable, not a literal asterisk — NRQL `= '*'` matches a literal asterisk, i.e. nothing.
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * ($cat$="*" OR category="$cat$") | stats count
 NRQL: FROM Log SELECT count(*) WHERE '*' = {{cat}} OR category = {{cat}}
-🟡 The means-all sentinel $cat$ = "*" was rewritten as '*' = {{cat}}; "all" is realized by the New Relic variable cat's values, not a literal asterisk match (NRQL `= '*'` matches a literal asterisk, i.e. nothing).
+🟡 $cat$ = "*" is a wildcard variable (Splunk's "match all"); it was rewritten as '*' = {{cat}}. "all" comes from the values configured for the New Relic cat variable, not a literal asterisk — NRQL `= '*'` matches a literal asterisk, i.e. nothing.
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | where ($cat$="*" OR category="$cat$")
 NRQL: FROM Log SELECT * WHERE '*' = {{cat}} OR category = {{cat}}
-🟡 The means-all sentinel $cat$ = "*" was rewritten as '*' = {{cat}}; "all" is realized by the New Relic variable cat's values, not a literal asterisk match (NRQL `= '*'` matches a literal asterisk, i.e. nothing).
+🟡 $cat$ = "*" is a wildcard variable (Splunk's "match all"); it was rewritten as '*' = {{cat}}. "all" comes from the values configured for the New Relic cat variable, not a literal asterisk — NRQL `= '*'` matches a literal asterisk, i.e. nothing.
 ```
 
 ```
@@ -3617,7 +3617,13 @@ NRQL: FROM Log SELECT * WHERE index = 'web'
 ```
 ❓ Not confirmed
 SPL:  * | where $cat$ = $other$
-🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
+🔴 $cat$ and $other$ are both dashboard variables on opposite sides of a comparison; New Relic substitutes a variable only on the value side, so a comparison of two variables cannot be expressed — this one cannot be translated.
+```
+
+```
+❓ Not confirmed
+SPL:  * $a$=$b$ | stats count
+🔴 $a$ and $b$ are both dashboard variables on opposite sides of a comparison; New Relic substitutes a variable only on the value side, so a comparison of two variables cannot be expressed — this one cannot be translated.
 ```
 
 ```
