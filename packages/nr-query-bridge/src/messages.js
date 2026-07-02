@@ -94,6 +94,22 @@ export const messages = {
   rename_keeps_original: () =>
     'NRQL rename keeps original field names alongside aliases',
 
+  // SPL: `* | where level=x | rename log.* as * | ... level ...` — `level` exists both
+  // before and after the rename, so we can't tell the real field from the stripped form.
+  wildcard_rename_ambiguous: (name) =>
+    `Wildcard rename is ambiguous for "${name}": it is referenced both before and after the ` +
+    'rename, so it cannot be safely attributed to the prefix. Rename the specific field instead.',
+
+  // SPL: two `rename <prefix>.* as *` in one pipeline — competing prefixes.
+  wildcard_rename_multiple: () =>
+    'More than one wildcard rename in the pipeline; a bare field cannot be attributed to a ' +
+    'single prefix. Rename the specific fields instead.',
+
+  // SPL: `* | rename log.* as *` with no downstream reference — the rename is a no-op in NRQL.
+  wildcard_rename_dropped: (affix) =>
+    `Wildcard rename (${affix}* as *) dropped: no downstream field references it, so fields ` +
+    'keep their original names.',
+
   // SPL: `* | dedup host`
   dedup_facet_warning: () =>
     'dedup translated to FACET; add latest(field) for each field you want to keep',

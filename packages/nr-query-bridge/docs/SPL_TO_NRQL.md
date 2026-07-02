@@ -1117,6 +1117,40 @@ NRQL: FROM Log SELECT timestamp AS 'Time', *
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | rename properties.* as *
+NRQL: FROM Log SELECT *
+🟡 Wildcard rename (properties.* as *) dropped: no downstream field references it, so fields keep their original names.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as * | stats count by level
+NRQL: FROM Log SELECT count(*) FACET `log.level` AS 'level'
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as * | where level="error" | stats count
+NRQL: FROM Log SELECT count(*) WHERE `log.level` = 'error'
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as * | eval flag = "high" | table flag
+NRQL: FROM Log WITH 'high' AS flag SELECT flag
+🟡 Wildcard rename (log.* as *) dropped: no downstream field references it, so fields keep their original names.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as *
+NRQL: FROM Log SELECT *
+🟡 Wildcard rename (log.* as *) dropped: no downstream field references it, so fields keep their original names.
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rename src_ip as src user_name as user
 NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *
@@ -1124,15 +1158,24 @@ NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *
 ```
 
 ```
-✅ Confirmed by human
-SPL:  * | rename properties.* as *
-🔴 Wildcard rename (properties.* as *) not supported in NRQL; rename specific fields
+❓ Not confirmed
+SPL:  * | where level="x" | rename log.* as * | stats count by level
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 Wildcard rename is ambiguous for "level": it is referenced both before and after the rename, so it cannot be safely attributed to the prefix. Rename the specific field instead.
 ```
 
 ```
 ❓ Not confirmed
-SPL:  * | rename log.* as *
-🔴 Wildcard rename (log.* as *) not supported in NRQL; rename specific fields
+SPL:  * | rename log.* as * | rename app.* as * | stats count by level
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 More than one wildcard rename in the pipeline; a bare field cannot be attributed to a single prefix. Rename the specific fields instead.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename a.*.b as * | stats count by level
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 Wildcard rename (a.*.b as *) not supported in NRQL; rename specific fields
 ```
 
 ```

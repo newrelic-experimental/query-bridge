@@ -28,6 +28,7 @@ import {
 import * as parser from './splParser.js';
 import { messages } from '../../messages.js';
 import { collectAutoExtractFields } from './spathAutoExtract.js';
+import { applyWildcardRenames } from './wildcardRename.js';
 import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
 import {
   handleTable,
@@ -190,6 +191,11 @@ export function translateAstToIR(ast) {
     }
     applyCommand(cmd, ir);
   }
+
+  // Wildcard rename (`rename <prefix>.* as *`): register the prefix rewrite for
+  // eligible downstream references, or emit a loud guard / drop-warning. Runs
+  // before optimize()'s applyFieldReplacements substitutes the registered map.
+  applyWildcardRenames(ir);
 
   // Gap #3: cascading mvexpand detection
   if (mvexpandCount > 1) {

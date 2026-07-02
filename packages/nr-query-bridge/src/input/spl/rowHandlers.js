@@ -71,9 +71,8 @@ export function handleRename(cmd, ir) {
       if (mark) {
         ir._wildcardRenames = ir._wildcardRenames || [];
         ir._wildcardRenames.push({ ...mark, beforeNames: collectRefs(ir) });
+        continue; // consumed post-loop by applyWildcardRenames
       }
-      // PR 1: still emit the existing unsupported (inert) — PR 2 removes this for
-      // the recognized shape and lets applyWildcardRenames consume the marker.
       ir.unsupported.push(messages.rename_wildcard(rename.from, rename.to));
       continue;
     }
