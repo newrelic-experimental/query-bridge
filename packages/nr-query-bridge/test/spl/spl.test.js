@@ -735,10 +735,19 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: false,
   },
-  // Token-vs-token can never flip → Option A (unsupported).
+  // Token-vs-token can never flip (both operands are variables) → its own message.
+  // `where` position: the RHS token arrives as a RAW STRING via `where_value`.
   {
     spl: '* | where $cat$ = $other$',
-    unsupportedFunc: ['token_lhs_unsupported'],
+    unsupportedFunc: ['token_vs_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Same, base-search position: here the RHS token is a TemplateVariable NODE
+  // (search_value rule), exercising the other half of the rhsIsToken check.
+  {
+    spl: '* $a$=$b$ | stats count',
+    unsupportedFunc: ['token_vs_token_unsupported'],
     doc: 'dashboard-time-tokens',
     verified: false,
   },
