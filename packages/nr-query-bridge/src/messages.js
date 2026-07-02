@@ -27,6 +27,30 @@ export const messages = {
   rex_lookaround: () =>
     'rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround',
 
+  // SPL: `* | rex field=x "(?<a>\\w+)=\\1"` (backreference — \1..\9, \k<name>, (?P=name))
+  rex_backreference: () =>
+    'rex pattern uses a backreference (\\1, \\k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences',
+
+  // SPL: any rex pattern RE2 rejects without a more specific message
+  rex_re2_incompatible: (reason) =>
+    `rex pattern is not compatible with NRQL capture() (RE2): ${reason}; rewrite the regex without the unsupported construct`,
+
+  // SPL: `* | rex field=x "(?>(?<a>\\w+))"`
+  rex_atomic_group: () =>
+    'rex pattern uses an atomic group (?>...), which NRQL capture() (RE2) does not support; rewrite the regex without atomic groups',
+
+  // SPL: `* | rex field=x "(?<a>\\w++)"`
+  rex_possessive_quantifier: () =>
+    'rex pattern uses a possessive quantifier (*+, ++, ?+, {n,m}+), which NRQL capture() (RE2) does not support; use a greedy quantifier instead',
+
+  // SPL: `* | rex field=x "(?<a>\\w+)(?1)"`
+  rex_recursion: () =>
+    'rex pattern uses recursion or a subroutine reference ((?R), (?1), \\g<name>), which NRQL capture() (RE2) does not support',
+
+  // SPL: `* | rex field=x "(?(1)yes|no)(?<a>\\w+)"`
+  rex_conditional: () =>
+    'rex pattern uses a conditional ((?(1)...)), which NRQL capture() (RE2) does not support',
+
   // SPL: `* | rex "(?<a>\\w+)" | rex "(?<b>\\w+)" | ... (6+ rex commands)`
   rex_capture_limit: (count) =>
     `query uses ${count} rex extractions but NRQL capture() is limited to 5 per query; consider using aparse() for anchor-based patterns`,
@@ -38,6 +62,11 @@ export const messages = {
   // SPL: `* | spath input=message path=data.id output=data_id`
   spath_json_only: () =>
     'jparse() only works on JSON data; if the input is XML, use capture() with a regex pattern instead',
+
+  // SPL: `* | spath | stats count by status` — no path= auto-extract, rewritten to
+  // per-field jparse for the enumerable downstream references.
+  spath_auto_extract: (fields) =>
+    `spath without path= auto-extracts all fields; rewrote downstream reference(s) ${fields} as jparse(<source>, '<field>') — confirm each is a JSON property of the source`,
 
   // SPL: `* | regex foo=$bar$` (unquoted RHS or template variable, no quoted pattern)
   regex_command_unparsed: (rawText) =>
@@ -68,6 +97,22 @@ export const messages = {
   // SPL: `* | rename host as hostname`
   rename_keeps_original: () =>
     'NRQL rename keeps original field names alongside aliases',
+
+  // SPL: `* | where level=x | rename log.* as * | ... level ...` — `level` exists both
+  // before and after the rename, so we can't tell the real field from the stripped form.
+  wildcard_rename_ambiguous: (name) =>
+    `Wildcard rename is ambiguous for "${name}": it is referenced both before and after the ` +
+    'rename, so it cannot be safely attributed to the prefix. Rename the specific field instead.',
+
+  // SPL: two `rename <prefix>.* as *` in one pipeline — competing prefixes.
+  wildcard_rename_multiple: () =>
+    'More than one wildcard rename in the pipeline; a bare field cannot be attributed to a ' +
+    'single prefix. Rename the specific fields instead.',
+
+  // SPL: `* | rename log.* as *` with no downstream reference — the rename is a no-op in NRQL.
+  wildcard_rename_dropped: (affix) =>
+    `Wildcard rename (${affix}* as *) dropped: no downstream field references it, so fields ` +
+    'keep their original names.',
 
   // SPL: `* | dedup host`
   dedup_facet_warning: () =>
@@ -113,7 +158,7 @@ export const messages = {
   // After folding, a residual row-wise SubquerySource inner means the chain cannot
   // be collapsed into legal NRQL. Loud unsupported over non-compiling NRQL.
   compound_collapse_unsupported: () =>
-    'this compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported',
+    'Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported',
 
   // SPL: `* | stats count by host | stats sum(count) by region`
   // A trailing aggregating layer over an aggregating inner subquery is legal NRQL
@@ -216,6 +261,19 @@ export const messages = {
   eval_func_unsupported: (name) =>
     `eval function ${name}() has no NRQL equivalent`,
 
+  // SPL: `* | eval x = strftime(_time, "%s")` — a %-code with no Java pattern letter.
+  strftime_unmappable_code: (code) =>
+    `strftime/strptime format code '${code}' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way`,
+  // SPL: `* | eval d = strftime(_time, fmtField)` — format isn't a quoted literal.
+  strftime_nonliteral_format: (name) =>
+    `${name}() needs a quoted string format literal; a field or expression format can't be precompiled to a Java DateTimeFormatter pattern`,
+  // SPL: `* | eval t = strptime(ds, "%Y-%m-%d")` — toTimestamp returns ms, strptime seconds.
+  strptime_units_warning: () =>
+    'strptime() result divided by 1000: NRQL toTimestamp() returns milliseconds, Splunk strptime() returns seconds',
+  // SPL: `* | eval d = strftime(epoch_field, "%Y-%m-%d")` — a non-_time epoch field.
+  strftime_epoch_units_warning: () =>
+    'strftime() on a non-_time epoch field assumes milliseconds (NRQL timestamp unit); a seconds-epoch field yields a 1970 date — multiply by 1000 to match',
+
   // ── enrichmentHandlers ────────────────────────────────────────────
 
   // SPL: `* | join type=outer host [search *]`
@@ -277,6 +335,11 @@ export const messages = {
   // SPL: `index=web | stats count | append [search index=api | stats count]`
   append_filter_warning: (label) =>
     `${label} translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log`,
+
+  // SPL: `index=web | stats count | append [search index=payments | stats count]`
+  append_cross_source: (label) =>
+    `${label} subsearch reads a different index/sourcetype/source than the main search; ` +
+    'NR Log has no UNION or multi-source FROM, so one FROM Log query cannot read both datasets',
 
   // SPL: `* | inputlookup geo_data.csv` / `* | lookup users_lookup user`
   lookup_upload_reminder: (table) =>
@@ -404,6 +467,28 @@ export const messages = {
     `dashboard variable ${token}'s values must include % wildcards (e.g. %value%); New Relic ` +
     'substitutes the value as-is and does not add wildcards.',
 
+  // SPL: `app="$env:app$"` — Splunk's $env:…$ runtime-context namespace (current
+  // app/page/user/locale + user-profile fields injected at render time). NR dashboards
+  // expose no widget-level runtime-context token, and ':' cannot appear inside an NRQL
+  // {{…}} variable (a hard NRDB parse error) — so an env: token can never become a
+  // faithful {{…}}. Flag unsupported, never emit a dead {{env:…}}.
+  splunk_env_token: (token) =>
+    `$${token}$ is a Splunk runtime-context token (the $env:…$ namespace — current ` +
+    'app/page/user/locale). New Relic dashboards have no equivalent runtime-context ' +
+    'variable, and the colon cannot appear in an NRQL {{…}} template variable, so this ' +
+    'filter cannot be translated. Remove the env-scoped filter or re-scope the widget ' +
+    'with a New Relic template variable.',
+
+  // SPL: `host="$my-var$"` / `$a:b$` — a (non-env) dashboard token whose NAME contains
+  // ':' or '-'. Those chars do not tokenize inside an NRQL {{…}} variable, so emitting
+  // {{my-var}} is a hard NRDB parse error (verified acct 1). The variable itself is
+  // legitimate (unlike env:); only the NAME is untranslatable. Loud failure over a
+  // parse-erroring {{…}}.
+  token_name_unsupported: (name) =>
+    `$${name}$ is a dashboard token whose name contains ':' or '-', which New Relic's ` +
+    '{{…}} template-variable syntax does not allow (a hard NRQL parse error). Rename the ' +
+    "dashboard variable to use only letters, digits, '_', and '.', or remove the filter.",
+
   // SPL: `_raw=*error*`
   raw_mapped_to_message: () =>
     '_raw is not a valid NRQL field; mapped to message',
@@ -462,6 +547,12 @@ export const messages = {
   // SPL: `* | kvparse` or `* | extract`
   kvparse_unsupported: () =>
     'key=value extraction from unstructured text has no NRQL equivalent; use Grok parsing rules to extract fields at ingest time, or restructure logs as JSON',
+
+  // SPL: `* | transaction user_id maxspan=30s` — no NRQL sessionization primitive (Option A).
+  transaction_unsupported: (windowArg) =>
+    windowArg
+      ? `SPL 'transaction' groups loglines into per-key sessions and the '${windowArg}' arg splits them on a time gap/boundary; NRQL has no sessionization primitive (FACET groups globally, TIMESERIES buckets by wall-clock), so it has no equivalent`
+      : `SPL 'transaction' groups loglines into per-key sessions; NRQL has no sessionization primitive, and even bare 'transaction' is not a plain FACET (Splunk's maxevents=1000 splits high-cardinality keys and connected=true groups by stream connectivity), so it has no equivalent`,
 
   // SPL: `* | stats list(eventType) by orderId`
   list_order_warning: () =>

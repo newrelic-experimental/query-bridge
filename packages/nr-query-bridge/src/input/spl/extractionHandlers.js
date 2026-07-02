@@ -15,6 +15,10 @@ import {
   Binding,
 } from '../../ir/nodes.js';
 import { messages } from '../../messages.js';
+import {
+  getRe2Compatibility,
+  resolveConstructMessageKey,
+} from './re2Compat.js';
 // Circular import — safe because translateSearchExpr is only called at runtime
 import { translateSearchExpr } from './splToIR.js';
 
@@ -64,6 +68,23 @@ export function handleRex(cmd, ir) {
   const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '.*';
   const fullPattern = `${prefix}${normalizedPattern}${suffix}`;
 
+  // RE2-compatibility gate: capture() is backed by RE2/J, which rejects
+  // backreferences, atomic groups, possessive quantifiers, recursion, and
+  // conditionals. re2js is a faithful RE2 oracle — if it can't compile the
+  // emitted pattern, capture() will reject it at runtime. Emit unsupported
+  // (loud) rather than a capture() that breaks live. (Lookaround is caught
+  // above with its own message.)
+  const { compatible, reason } = getRe2Compatibility(fullPattern);
+  if (!compatible) {
+    const key = resolveConstructMessageKey(cmd.pattern);
+    if (key) {
+      ir.unsupported.push(messages[key]());
+    } else {
+      ir.unsupported.push(messages.rex_re2_incompatible(reason));
+    }
+    return;
+  }
+
   // Single capture() call with tuple destructuring for multiple groups:
   // WITH capture(field, r'...(?P<a>...)...(?P<b>...)...') AS (a, b)
   const captureExpr = Func('capture', [Identifier(field), Regex(fullPattern)]);
@@ -73,7 +94,26 @@ export function handleRex(cmd, ir) {
 
 export function handleSpath(cmd, ir) {
   if (!cmd.path) {
-    ir.unsupported.push(messages.spath_no_path());
+    // No path= → Splunk auto-extracts all JSON fields. There's no NRQL "extract
+    // everything", but if the downstream references a small enumerable set of
+    // fields (computed in splToIR), bind each as jparse(<source>, '<field>').
+    // Non-enumerable / auto-extract-all → loud spath_no_path.
+    const fields = cmd._autoExtractFields;
+    if (!fields || fields.length === 0) {
+      ir.unsupported.push(messages.spath_no_path());
+      return;
+    }
+    const autoInput = cmd.input || 'message';
+    const autoSource = autoInput === '_raw' ? 'message' : autoInput;
+    for (const f of fields) {
+      ir.bindings.push(
+        Binding(
+          f,
+          Func('jparse', [Identifier(autoSource), Literal(f, 'string')]),
+        ),
+      );
+    }
+    ir.warnings.push(messages.spath_auto_extract(fields.join(', ')));
     return;
   }
   const rawInput = cmd.input || 'message';

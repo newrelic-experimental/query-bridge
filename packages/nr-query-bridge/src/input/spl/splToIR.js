@@ -27,6 +27,8 @@ import {
 } from './splExprUtils.js';
 import * as parser from './splParser.js';
 import { messages } from '../../messages.js';
+import { collectAutoExtractFields } from './spathAutoExtract.js';
+import { applyWildcardRenames } from './wildcardRename.js';
 import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
 import {
   handleTable,
@@ -113,6 +115,20 @@ function findUnimplementedRhsFuncInAst(node) {
 /**
  * Main entry: translate a parsed SPL AST into an IR query plan.
  */
+// A Splunk `$env:…$` runtime-context token (current app/page/user/locale + user-profile
+// fields). Detected by the literal `env:` prefix — the colon is required, so a plain
+// `$env$` user variable (no colon) is never reclassified. NR has no widget-level
+// runtime-context token, so an env: token can never become a faithful {{…}} variable.
+function isEnvToken(name) {
+  return name.startsWith('env:');
+}
+
+// A token NAME containing ':' or '-' cannot tokenize inside an NRQL {{…}} variable
+// (a hard NRDB parse error — verified acct 1). Emitted as {{name}} it would not run.
+function hasUntranslatableTokenChar(name) {
+  return name.includes(':') || name.includes('-');
+}
+
 export function translateAstToIR(ast) {
   const ir = SelectQuery();
 
@@ -149,7 +165,8 @@ export function translateAstToIR(ast) {
   // Pipeline: each command transforms the IR
   let sawDedup = false;
   let mvexpandCount = 0;
-  for (const cmd of ast.commands) {
+  for (let i = 0; i < ast.commands.length; i++) {
+    const cmd = ast.commands[i];
     if (cmd.type === 'DedupCommand') sawDedup = true;
     if (cmd.type === 'MvexpandCommand') mvexpandCount++;
     // Gap #2, #9: warn when dedup precedes aggregation
@@ -164,8 +181,21 @@ export function translateAstToIR(ast) {
         ir.warnings.push(messages.dedup_timeseries_warning());
       }
     }
+    // spath auto-extract (no path=): enumerate the fields referenced downstream so
+    // handleSpath can bind each as jparse(<source>, '<field>'). null when not safely
+    // enumerable → handleSpath emits the loud spath_no_path.
+    if (cmd.type === 'SpathCommand' && !cmd.path) {
+      cmd._autoExtractFields = collectAutoExtractFields(
+        ast.commands.slice(i + 1),
+      );
+    }
     applyCommand(cmd, ir);
   }
+
+  // Wildcard rename (`rename <prefix>.* as *`): register the prefix rewrite for
+  // eligible downstream references, or emit a loud guard / drop-warning. Runs
+  // before optimize()'s applyFieldReplacements substitutes the registered map.
+  applyWildcardRenames(ir);
 
   // Gap #3: cascading mvexpand detection
   if (mvexpandCount > 1) {
@@ -375,6 +405,14 @@ export function translateSearchExpr(node, ir) {
           typeof value === 'object' &&
           value.type === 'TemplateVariable'
         ) {
+          if (isEnvToken(value.name)) {
+            unsupported.push(messages.splunk_env_token(value.name));
+            return null;
+          }
+          if (hasUntranslatableTokenChar(value.name)) {
+            unsupported.push(messages.token_name_unsupported(value.name));
+            return null;
+          }
           return BinOp(op, Identifier(field), Identifier(`{{${value.name}}}`));
         }
 
@@ -387,6 +425,14 @@ export function translateSearchExpr(node, ir) {
         if (typeof value === 'string') {
           const tokenOnly = /^\$([A-Za-z0-9_.:-]+)\$$/.exec(value);
           if (tokenOnly) {
+            if (isEnvToken(tokenOnly[1])) {
+              unsupported.push(messages.splunk_env_token(tokenOnly[1]));
+              return null;
+            }
+            if (hasUntranslatableTokenChar(tokenOnly[1])) {
+              unsupported.push(messages.token_name_unsupported(tokenOnly[1]));
+              return null;
+            }
             return BinOp(
               op,
               Identifier(field),
@@ -405,6 +451,16 @@ export function translateSearchExpr(node, ir) {
         if (typeof value === 'string' && /\$[A-Za-z0-9_.:-]+\$/.test(value)) {
           const wildcardToken = /^\*?\$([A-Za-z0-9_.:-]+)\$\*?$/.exec(value);
           if (wildcardToken && value.includes('*')) {
+            if (isEnvToken(wildcardToken[1])) {
+              unsupported.push(messages.splunk_env_token(wildcardToken[1]));
+              return null;
+            }
+            if (hasUntranslatableTokenChar(wildcardToken[1])) {
+              unsupported.push(
+                messages.token_name_unsupported(wildcardToken[1]),
+              );
+              return null;
+            }
             warnings.push(
               messages.wildcard_token_like(field, wildcardToken[1]),
             );
@@ -593,6 +649,14 @@ export function translateSearchExpr(node, ir) {
           );
           return null; // drop: do NOT set since/until to {{…}}
         }
+        if (isEnvToken(node.name)) {
+          unsupported.push(messages.splunk_env_token(node.name));
+          return null;
+        }
+        if (hasUntranslatableTokenChar(node.name)) {
+          unsupported.push(messages.token_name_unsupported(node.name));
+          return null;
+        }
         return Identifier(`{{${node.name}}}`); // non-time variable: unchanged
       }
 
@@ -757,6 +821,15 @@ function applyCommand(cmd, ir) {
         ir.unsupported.push(messages.streamstats_unsupported());
       } else if (name === 'kvparse' || name === 'extract' || name === 'kv') {
         ir.unsupported.push(messages.kvparse_unsupported());
+      } else if (name === 'transaction') {
+        // No faithful NRQL equivalent: NRQL has no sessionization primitive, and
+        // even bare transaction != FACET (maxevents=1000 + connected=true). Name
+        // the first blocking window/boundary arg when one is present.
+        const windowMatch = /\b(maxspan|maxpause|startswith|endswith)\b/i.exec(
+          cmd.rawText || '',
+        );
+        const windowArg = windowMatch ? windowMatch[1].toLowerCase() : null;
+        ir.unsupported.push(messages.transaction_unsupported(windowArg));
       } else {
         ir.unsupported.push(messages.unsupported_command(name));
       }

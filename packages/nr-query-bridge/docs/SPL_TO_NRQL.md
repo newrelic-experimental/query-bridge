@@ -89,8 +89,15 @@ NRQL: FROM Log SELECT filter(average(duration), WHERE message LIKE '%error%'), f
 
 ```
 ❓ Not confirmed
-SPL:  index=web | stats count as web_count | append [search index=api | stats count as api_count]
-NRQL: FROM Log SELECT filter(count(*), WHERE index = 'web') AS 'web_count', filter(count(*), WHERE index = 'api') AS 'api_count'
+SPL:  status=200 | stats count | append [search status=500 | stats count]
+NRQL: FROM Log SELECT filter(count(*), WHERE status = '200' OR numeric(status) = 200), filter(count(*), WHERE status = '500' OR numeric(status) = 500)
+🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
+```
+
+```
+❓ Not confirmed
+SPL:  index=web error | stats count | append [search index=web success | stats count]
+NRQL: FROM Log SELECT filter(count(*), WHERE index = 'web' AND message LIKE '%error%'), filter(count(*), WHERE index = 'web' AND message LIKE '%success%')
 🟡 `append` translated to filter(); if the subsearch targets a different index or sourcetype, the filter() WHERE clause may need adjustment since both sides now query FROM Log
 ```
 
@@ -112,6 +119,12 @@ SPL:  index=web | append [search index=api]
 SPL:  * | stats count as total | append [search * | stats avg(duration) by host]
 🟡 `append` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `append` with subsearch has mismatched FACET: main groups by (none), subsearch groups by host
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as web_count | append [search index=api | stats count as api_count]
+🔴 `append` subsearch reads a different index/sourcetype/source than the main search; NR Log has no UNION or multi-source FROM, so one FROM Log query cannot read both datasets
 ```
 
 ```
@@ -319,7 +332,7 @@ SPL:  (routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.
 🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
 🟡 `dedup` with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.
 🟡 SPL function eval() has no known NRQL equivalent
-🔴 `this` compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported
+🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
 ```
 <!-- /spl-cases -->
 
@@ -1104,6 +1117,40 @@ NRQL: FROM Log SELECT timestamp AS 'Time', *
 ```
 
 ```
+❓ Not confirmed
+SPL:  * | rename properties.* as *
+NRQL: FROM Log SELECT *
+🟡 Wildcard rename (properties.* as *) dropped: no downstream field references it, so fields keep their original names.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as * | stats count by level
+NRQL: FROM Log SELECT count(*) FACET `log.level` AS 'level'
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as * | where level="error" | stats count
+NRQL: FROM Log SELECT count(*) WHERE `log.level` = 'error'
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as * | eval flag = "high" | table flag
+NRQL: FROM Log WITH 'high' AS flag SELECT flag
+🟡 Wildcard rename (log.* as *) dropped: no downstream field references it, so fields keep their original names.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as *
+NRQL: FROM Log SELECT *
+🟡 Wildcard rename (log.* as *) dropped: no downstream field references it, so fields keep their original names.
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rename src_ip as src user_name as user
 NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *
@@ -1111,9 +1158,24 @@ NRQL: FROM Log SELECT src_ip AS 'src', user_name AS 'user', *
 ```
 
 ```
-✅ Confirmed by human
-SPL:  * | rename properties.* as *
-🔴 Wildcard rename (properties.* as *) not supported in NRQL; rename specific fields
+❓ Not confirmed
+SPL:  * | where level="x" | rename log.* as * | stats count by level
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 Wildcard rename is ambiguous for "level": it is referenced both before and after the rename, so it cannot be safely attributed to the prefix. Rename the specific field instead.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename log.* as * | rename app.* as * | stats count by level
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 More than one wildcard rename in the pipeline; a bare field cannot be attributed to a single prefix. Rename the specific fields instead.
+```
+
+```
+❓ Not confirmed
+SPL:  * | rename a.*.b as * | stats count by level
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 Wildcard rename (a.*.b as *) not supported in NRQL; rename specific fields
 ```
 
 ```
@@ -1260,9 +1322,69 @@ PCRE features like lookaheads/lookbehinds and backreferences. NRQL's RE2 regex e
 
 <!-- spl-cases: fields-rex-pcre -->
 ```
+❓ Not confirmed
+SPL:  * | rex field=x "user=(?<user_id>\w+)"
+NRQL: FROM Log WITH capture(x, r'.*user=(?P<user_id>\w+).*') AS (user_id) SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>\w+) (?<b>\w+)"
+NRQL: FROM Log WITH capture(x, r'.*(?P<a>\w+) (?P<b>\w+).*') AS (a, b) SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?i:foo)(?<a>\w+)"
+NRQL: FROM Log WITH capture(x, r'.*(?i:foo)(?P<a>\w+).*') AS (a) SELECT *
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rex field=message "(?<=prefix)(?<val>\w+)"
 🔴 `rex` pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>\w+)=\1"
+🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "x[\1]y(?<a>\w+)"
+🔴 `rex` pattern uses a backreference (\1, \k<name>, or (?P=name)), which NRQL capture() does not support; rewrite the regex without backreferences
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?>(?<a>\w+))"
+🔴 `rex` pattern uses an atomic group (?>...), which NRQL capture() (RE2) does not support; rewrite the regex without atomic groups
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>\w++)"
+🔴 `rex` pattern uses a possessive quantifier (*+, ++, ?+, {n,m}+), which NRQL capture() (RE2) does not support; use a greedy quantifier instead
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>\w+)(?1)"
+🔴 `rex` pattern uses recursion or a subroutine reference ((?R), (?1), \g<name>), which NRQL capture() (RE2) does not support
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?(1)yes|no)(?<a>\w+)"
+🔴 `rex` pattern uses a conditional ((?(1)...)), which NRQL capture() (RE2) does not support
+```
+
+```
+❓ Not confirmed
+SPL:  * | rex field=x "(?<a>a{3,1})"
+🔴 `rex` pattern is not compatible with NRQL capture() (RE2): error parsing regexp: invalid repeat count: `{3,1}`; rewrite the regex without the unsupported construct
 ```
 <!-- /spl-cases -->
 
@@ -1321,6 +1443,21 @@ NRQL: FROM Log WITH jparse(message, 'response.status') AS status SELECT *
 SPL:  * | spath input=_raw path=data.id output=id
 NRQL: FROM Log WITH jparse(message, 'data.id') AS id SELECT *
 🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
+
+```
+❓ Not confirmed
+SPL:  * | spath | stats count by status
+NRQL: FROM Log WITH jparse(message, 'status') AS status SELECT count(*) FACET status
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) status as jparse(<source>, '<field>') — confirm each is a JSON property of the source
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | spath input=payload | where code="500" | stats count
+NRQL: FROM Log WITH jparse(payload, 'code') AS code SELECT count(*) WHERE code = '500' OR numeric(code) = 500
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) code as jparse(<source>, '<field>') — confirm each is a JSON property of the source
 ```
 
 ```
@@ -1389,6 +1526,12 @@ NRQL: FROM Log WITH jparse(payload, 'user.id') AS user_id SELECT *
 ```
 ✅ Confirmed by human
 SPL:  * | spath
+🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
+```
+
+```
+❓ Not confirmed
+SPL:  * | spath | table *
 🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
 ```
 
@@ -1834,9 +1977,27 @@ Splunk's `transaction` groups a sequence of events that share a field value (lik
 
 <!-- spl-cases: correlation-transaction -->
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | transaction clientip maxspan=10m
-🔴 SPL command 'transaction' has no known NRQL equivalent
+🔴 SPL 'transaction' groups loglines into per-key sessions and the 'maxspan' arg splits them on a time gap/boundary; NRQL has no sessionization primitive (FACET groups globally, TIMESERIES buckets by wall-clock), so it has no equivalent
+```
+
+```
+❓ Not confirmed
+SPL:  * | transaction user_id
+🔴 SPL 'transaction' groups loglines into per-key sessions; NRQL has no sessionization primitive, and even bare 'transaction' is not a plain FACET (Splunk's maxevents=1000 splits high-cardinality keys and connected=true groups by stream connectivity), so it has no equivalent
+```
+
+```
+❓ Not confirmed
+SPL:  * | transaction
+🔴 SPL 'transaction' groups loglines into per-key sessions; NRQL has no sessionization primitive, and even bare 'transaction' is not a plain FACET (Splunk's maxevents=1000 splits high-cardinality keys and connected=true groups by stream connectivity), so it has no equivalent
+```
+
+```
+❓ Not confirmed
+SPL:  * | transaction user_id startswith="login" endswith="logout"
+🔴 SPL 'transaction' groups loglines into per-key sessions and the 'startswith' arg splits them on a time gap/boundary; NRQL has no sessionization primitive (FACET groups globally, TIMESERIES buckets by wall-clock), so it has no equivalent
 ```
 <!-- /spl-cases -->
 
@@ -2166,7 +2327,7 @@ NRQL: FROM Log WITH if(status = '500' OR numeric(status) = 500, 1, 0) AS r SELEC
 ```
 ❓ Not confirmed
 SPL:  * | stats count | eval x = round(total/count, 2)
-🔴 `this` compound post-aggregation chain cannot be collapsed into legal NRQL (a non-aggregating step would become a nested-query inner); not yet supported
+🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
 ```
 <!-- /spl-cases -->
 
@@ -2259,6 +2420,26 @@ NRQL: FROM Log WITH replace(uri, 'https://old.com/api?key=val', 'https://new.com
 ✅ Confirmed by human
 SPL:  * | eval x=replace(uri, "/path/to+file", "/path/to_file")
 NRQL: FROM Log WITH replace(uri, '/path/to+file', '/path/to_file') AS x SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval d = strftime(_time, "%Y-%m-%d")
+NRQL: FROM Log WITH toDatetime(timestamp, 'yyyy-MM-dd') AS d SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval t = strptime(ds, "%Y-%m-%d %H:%M:%S")
+NRQL: FROM Log WITH toTimestamp(ds, 'yyyy-MM-dd HH:mm:ss') / 1000 AS t SELECT *
+🟡 `strptime()` result divided by 1000: NRQL toTimestamp() returns milliseconds, Splunk strptime() returns seconds
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval d = strftime(epoch_field, "%Y-%m-%d")
+NRQL: FROM Log WITH toDatetime(epoch_field, 'yyyy-MM-dd') AS d SELECT *
+🟡 `strftime()` on a non-_time epoch field assumes milliseconds (NRQL timestamp unit); a seconds-epoch field yields a 1970 date — multiply by 1000 to match
 ```
 
 ```
@@ -2355,6 +2536,32 @@ SPL:  * | eval x=replace(name, "\s+", " ")
 ✅ Confirmed by human
 SPL:  * | eval x=replace(uri, "https://example.com/.*", "")
 🔴 `replace()` with regex pattern 'https://example.com/.*' not supported — NRQL replace() is literal-only
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval x = strftime(_time, "%s")
+🔴 Strftime/strptime format code '%s' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval x = strftime(_time, "%Q %c %s")
+🔴 Strftime/strptime format code '%Q' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%c' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+🔴 Strftime/strptime format code '%s' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way
+```
+
+```
+❓ Not confirmed
+SPL:  * | eval d = strftime(_time, myfmt)
+🔴 `strftime()` needs a quoted string format literal; a field or expression format can't be precompiled to a Java DateTimeFormatter pattern
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count by host | eval d = strftime(_time, "%Y-%m-%d")
+🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
 ```
 
 ```
@@ -3411,6 +3618,55 @@ SPL:  index=web earliest=$tok.earliest$ latest=-2h | stats count
 SPL:  index=web $tok.latest$ earliest=-24h | stats count
 🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
 🔴 This search mixes a literal time bound with a dashboard time variable. Dropping only the variable would widen or invert the window, so the whole time range is unsupported. Make both bounds literal datetimes (e.g. earliest=-24h latest=now).
+```
+
+```
+❓ Not confirmed
+SPL:  app="$env:app$" | stats count
+🔴 $env:app$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  app=$env:user$ | stats count
+🔴 $env:user$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web $env:page$ | stats count
+🔴 $env:page$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  app="$env:app$" page="$env:page$" | stats count
+🔴 $env:app$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+🔴 $env:page$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  app="*$env:app$*" | stats count
+🔴 $env:app$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
+```
+
+```
+❓ Not confirmed
+SPL:  host="$my-var$" | stats count
+🔴 $my-var$ is a dashboard token whose name contains ':' or '-', which New Relic's {{…}} template-variable syntax does not allow (a hard NRQL parse error). Rename the dashboard variable to use only letters, digits, '_', and '.', or remove the filter.
+```
+
+```
+❓ Not confirmed
+SPL:  host="$a:b$" | stats count
+🔴 $a:b$ is a dashboard token whose name contains ':' or '-', which New Relic's {{…}} template-variable syntax does not allow (a hard NRQL parse error). Rename the dashboard variable to use only letters, digits, '_', and '.', or remove the filter.
+```
+
+```
+❓ Not confirmed
+SPL:  host=$my-var$ | stats count
+🔴 $my-var$ is a dashboard token whose name contains ':' or '-', which New Relic's {{…}} template-variable syntax does not allow (a hard NRQL parse error). Rename the dashboard variable to use only letters, digits, '_', and '.', or remove the filter.
 ```
 
 ```

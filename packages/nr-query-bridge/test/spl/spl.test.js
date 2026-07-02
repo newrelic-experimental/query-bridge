@@ -807,6 +807,64 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: false,
   },
+  // Splunk $env:…$ runtime-context token in WHERE/value position → unsupported,
+  // not {{env:app}} (a hard NRDB parse error — ':' doesn't tokenize). Quoted standalone.
+  {
+    spl: 'app="$env:app$" | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Unquoted form: hits the TemplateVariable-node comparison site.
+  {
+    spl: 'app=$env:user$ | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Bare standalone env token (search-term position) → also unsupported, no {{}} leak.
+  {
+    spl: 'index=web $env:page$ | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Multiple env tokens → splunk_env_token fires (listed once, exhaustive); no {{env:…}}.
+  {
+    spl: 'app="$env:app$" page="$env:page$" | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Wildcard-only wrap of an env token → unsupported too (not LIKE {{env:app}}).
+  {
+    spl: 'app="*$env:app$*" | stats count',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // A (non-env) dashboard token whose NAME contains '-' → unsupported. Emitting
+  // {{my-var}} is a hard NRDB parse error ('-' doesn't tokenize — verified acct 1).
+  {
+    spl: 'host="$my-var$" | stats count',
+    unsupportedFunc: ['token_name_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // A non-env colon token (NOT the env: namespace) → unsupported (':' doesn't tokenize).
+  {
+    spl: 'host="$a:b$" | stats count',
+    unsupportedFunc: ['token_name_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Unquoted hyphen token (TemplateVariable-node site) → unsupported too.
+  {
+    spl: 'host=$my-var$ | stats count',
+    unsupportedFunc: ['token_name_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
   // Wildcard-ONLY token (`*$tok$*`, `$tok$*`, `*$tok$`) → `field LIKE {{tok}}`. New Relic
   // substitutes the variable in value position, so the % wildcards must live in the
   // variable's VALUE; the warning says so. Verified accepted by dashboardCreate + NRQL
@@ -1982,6 +2040,79 @@ const cases = [
     doc: 'fields-rex-pcre',
     verified: 'human',
   },
+  // backreference — capture() (RE2) rejects \1 at runtime; must be loud, not a
+  // silently-broken capture() (the confirmed-live bug).
+  {
+    spl: '* | rex field=x "(?<a>\\w+)=\\1"',
+    unsupportedFunc: ['rex_backreference'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // backreference inside a character class — NOT a preserved literal in RE2;
+  // capture() rejects `\1` everywhere (re2js-confirmed).
+  {
+    spl: '* | rex field=x "x[\\1]y(?<a>\\w+)"',
+    unsupportedFunc: ['rex_backreference'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // no-regression: a plain named group still translates unchanged.
+  {
+    spl: '* | rex field=x "user=(?<user_id>\\w+)"',
+    nrql: "FROM Log WITH capture(x, r'.*user=(?P<user_id>\\w+).*') AS (user_id) SELECT *",
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // no-regression: multi-capture destructuring still translates.
+  {
+    spl: '* | rex field=x "(?<a>\\w+) (?<b>\\w+)"',
+    nrql: "FROM Log WITH capture(x, r'.*(?P<a>\\w+) (?P<b>\\w+).*') AS (a, b) SELECT *",
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // atomic group → unsupported (re2js-confirmed rejected).
+  {
+    spl: '* | rex field=x "(?>(?<a>\\w+))"',
+    unsupportedFunc: ['rex_atomic_group'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // possessive quantifier → unsupported.
+  {
+    spl: '* | rex field=x "(?<a>\\w++)"',
+    unsupportedFunc: ['rex_possessive_quantifier'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // recursion / subroutine reference → unsupported.
+  {
+    spl: '* | rex field=x "(?<a>\\w+)(?1)"',
+    unsupportedFunc: ['rex_recursion'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // conditional → unsupported.
+  {
+    spl: '* | rex field=x "(?(1)yes|no)(?<a>\\w+)"',
+    unsupportedFunc: ['rex_conditional'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // RE2-incompatible with no known construct → generic message surfacing
+  // re2js's own reason (here: invalid repeat count {3,1}).
+  {
+    spl: '* | rex field=x "(?<a>a{3,1})"',
+    unsupportedFunc: ['rex_re2_incompatible'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // scoped inline flag MUST NOT be rejected (capture() accepts it — staging-verified).
+  {
+    spl: '* | rex field=x "(?i:foo)(?<a>\\w+)"',
+    nrql: "FROM Log WITH capture(x, r'.*(?i:foo)(?P<a>\\w+).*') AS (a) SELECT *",
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
   //
   // ── spath command ───────────────────────────────────────────────
   //
@@ -2017,6 +2148,29 @@ const cases = [
     unsupportedFunc: ['spath_no_path'],
     doc: 'fields-spath',
     verified: 'human',
+  },
+  // Auto-extract (no path) with an enumerable downstream → per-field jparse bindings.
+  {
+    spl: '* | spath | stats count by status',
+    nrql: "FROM Log WITH jparse(message, 'status') AS status SELECT count(*) FACET status",
+    warningFunc: ['spath_auto_extract', 'facet_default_limit'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  // Auto-extract with input= + a downstream where (DualCheck RHS comes from the where).
+  {
+    spl: '* | spath input=payload | where code="500" | stats count',
+    nrql: "FROM Log WITH jparse(payload, 'code') AS code SELECT count(*) WHERE code = '500' OR numeric(code) = 500",
+    warningFunc: ['spath_auto_extract'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  // Auto-extract-all for display (table *) → stays unsupported (no enumerable ref).
+  {
+    spl: '* | spath | table *',
+    unsupportedFunc: ['spath_no_path'],
+    doc: 'fields-spath',
+    verified: false,
   },
   // Spath piped to stats
   {
@@ -2174,11 +2328,74 @@ const cases = [
     doc: 'fields-rename',
     verified: 'human',
   },
+  // bare prefix-strip with no downstream reference → drop with a warning.
+  // (Was `verified:'human'` as `rename_wildcard`; this shape now translates — the
+  // strip path makes `properties.* as *` a no-op drop, not a blanket unsupported.)
   {
     spl: '* | rename properties.* as *',
-    unsupportedFunc: ['rename_wildcard'],
+    nrql: 'FROM Log SELECT *',
+    warningFunc: ['wildcard_rename_dropped'],
     doc: 'fields-rename',
-    verified: 'human',
+    verified: false,
+  },
+  // prefix-strip: a downstream FACET key is rewritten through the prefix.
+  // `facet_default_limit` fires because FACET has no LIMIT (existing pipeline warning).
+  {
+    spl: '* | rename log.* as * | stats count by level',
+    nrql: "FROM Log SELECT count(*) FACET `log.level` AS 'level'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // prefix-strip in WHERE.
+  {
+    spl: '* | rename log.* as * | where level="error" | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE `log.level` = 'error'",
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // eval-bound name is NOT rewritten (and, being the only downstream ref, the rename
+  // drops). `flag` is a binding name, so it stays `flag`, not `log.flag`.
+  {
+    spl: '* | rename log.* as * | eval flag = "high" | table flag',
+    nrql: "FROM Log WITH 'high' AS flag SELECT flag",
+    warningFunc: ['wildcard_rename_dropped'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // ambiguity guard: `level` exists BEFORE the rename (pre-rename WHERE) AND after it
+  // (FACET) → cannot attribute it to the rename → loud unsupported.
+  {
+    spl: '* | where level="x" | rename log.* as * | stats count by level',
+    unsupportedFunc: ['wildcard_rename_ambiguous'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // multiple wildcard renames → cannot attribute a bare name to one prefix → unsupported.
+  {
+    spl: '* | rename log.* as * | rename app.* as * | stats count by level',
+    unsupportedFunc: ['wildcard_rename_multiple'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // non-single-affix shape stays the existing unsupported (unchanged).
+  {
+    spl: '* | rename a.*.b as * | stats count by level',
+    unsupportedFunc: ['rename_wildcard'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  {
+    // bare prefix-strip with no downstream reference → no-op drop with a warning
+    // (nothing references the stripped names, so fields keep their original names).
+    spl: '* | rename log.* as *',
+    nrql: 'FROM Log SELECT *',
+    warningFunc: ['wildcard_rename_dropped'],
+    doc: 'fields-rename',
+    verified: false,
   },
   {
     spl: '* | rename src_ip as src user_name as user',
@@ -3333,10 +3550,93 @@ const cases = [
   //
   // ── Unsupported commands (distributed by Splunk category) ─────
   {
+    // windowed: maxspan splits a key's session on a time gap — no NRQL equivalent
     spl: '* | transaction clientip maxspan=10m',
-    unsupportedFunc: ['unsupported_command'],
+    unsupportedFunc: ['transaction_unsupported'],
     doc: 'correlation-transaction',
-    verified: 'human',
+    verified: false,
+  },
+  {
+    // bare (no window): still not a plain FACET — maxevents=1000 + connected=true
+    spl: '* | transaction user_id',
+    unsupportedFunc: ['transaction_unsupported'],
+    doc: 'correlation-transaction',
+    verified: false,
+  },
+  {
+    // no fields at all
+    spl: '* | transaction',
+    unsupportedFunc: ['transaction_unsupported'],
+    doc: 'correlation-transaction',
+    verified: false,
+  },
+  {
+    // boundary args (startswith/endswith) — exercises the window-arg scan
+    spl: '* | transaction user_id startswith="login" endswith="logout"',
+    unsupportedFunc: ['transaction_unsupported'],
+    doc: 'correlation-transaction',
+    verified: false,
+  },
+  // strftime(epoch, fmt) → toDatetime(epoch, javaFmt); _time → timestamp (NR ms).
+  {
+    spl: '* | eval d = strftime(_time, "%Y-%m-%d")',
+    nrql: "FROM Log WITH toDatetime(timestamp, 'yyyy-MM-dd') AS d SELECT *",
+    doc: 'eval-string',
+    verified: false,
+  },
+  // strptime(str, fmt) → toTimestamp(str, javaFmt) / 1000 (ms → Splunk seconds).
+  {
+    spl: '* | eval t = strptime(ds, "%Y-%m-%d %H:%M:%S")',
+    nrql: "FROM Log WITH toTimestamp(ds, 'yyyy-MM-dd HH:mm:ss') / 1000 AS t SELECT *",
+    warningFunc: ['strptime_units_warning'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // An unmappable %-code (%s = epoch seconds) → whole-function unsupported.
+  {
+    spl: '* | eval x = strftime(_time, "%s")',
+    unsupportedFunc: ['strftime_unmappable_code'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // Multiple unmappable codes → ONE unsupported per code, so the user sees them
+  // all at once instead of fixing one, re-running, and hitting the next.
+  {
+    spl: '* | eval x = strftime(_time, "%Q %c %s")',
+    unsupportedFunc: [
+      'strftime_unmappable_code',
+      'strftime_unmappable_code',
+      'strftime_unmappable_code',
+    ],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // A non-literal format (bare field) can't be precompiled to a Java pattern →
+  // unsupported (loud), not silently baked in as the literal string "myfmt".
+  {
+    spl: '* | eval d = strftime(_time, myfmt)',
+    unsupportedFunc: ['strftime_nonliteral_format'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // A non-_time epoch field → translated, but warns (seconds-vs-ms ambiguity).
+  {
+    spl: '* | eval d = strftime(epoch_field, "%Y-%m-%d")',
+    nrql: "FROM Log WITH toDatetime(epoch_field, 'yyyy-MM-dd') AS d SELECT *",
+    warningFunc: ['strftime_epoch_units_warning'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // strftime on raw _time AFTER a transforming stats: timestamp isn't exposed
+  // post-aggregation, so it must fail LOUDLY — never flat-fold into an NRDB-invalid
+  // `SELECT count(*), toDatetime(timestamp,…) FACET host`. toDatetime is deliberately
+  // NOT in FOLD_SAFE_FUNCS; the eval-after-aggregation guard catches it. (Regression
+  // guard against a future fold-safe mistake.)
+  {
+    spl: '* | stats count by host | eval d = strftime(_time, "%Y-%m-%d")',
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    doc: 'eval-string',
+    verified: false,
   },
   // eventstats with BY → subquery JOIN
   {
@@ -3841,11 +4141,26 @@ const cases = [
   //
   // ── Append edge cases (TODO: verify these produce correct results) ──
   //
-  // Different indexes on each side — filter() WHERE clauses must reflect different sources
+  // Defect 1: cross-source — different index per side has no single-FROM NRQL form.
+  // Was a skipped filter() case that silently returned 0 (NR Log carries no `index`).
   {
-    skip: true,
     spl: 'index=web | stats count as web_count | append [search index=api | stats count as api_count]',
-    nrql: "FROM Log SELECT filter(count(*), WHERE index = 'web') AS 'web_count', filter(count(*), WHERE index = 'api') AS 'api_count'",
+    unsupportedFunc: ['append_cross_source'],
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Regression: same-source, different-WHERE stays the faithful filter() merge.
+  {
+    spl: 'status=200 | stats count | append [search status=500 | stats count]',
+    nrql: "FROM Log SELECT filter(count(*), WHERE status = '200' OR numeric(status) = 200), filter(count(*), WHERE status = '500' OR numeric(status) = 500)",
+    warningFunc: ['append_filter_warning'],
+    doc: 'correlation-append',
+    verified: false,
+  },
+  // Regression: SAME index on both sides is not cross-source — stays faithful.
+  {
+    spl: 'index=web error | stats count | append [search index=web success | stats count]',
+    nrql: "FROM Log SELECT filter(count(*), WHERE index = 'web' AND message LIKE '%error%'), filter(count(*), WHERE index = 'web' AND message LIKE '%success%')",
     warningFunc: ['append_filter_warning'],
     doc: 'correlation-append',
     verified: false,

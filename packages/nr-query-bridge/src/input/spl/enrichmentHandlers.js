@@ -123,6 +123,40 @@ export function handleAppendpipe(cmd, ir) {
   ir.warnings.push(messages.appendpipe_row_append());
 }
 
+const SOURCE_DISCRIMINATOR_FIELDS = new Set(['index', 'sourcetype', 'source']);
+
+// Walk a WHERE condition list and return a normalized signature of any
+// index=/sourcetype=/source= equality discriminators. Descends AND/OR trees so a
+// nested discriminator is found (`index=web error` -> index='web' AND message LIKE …).
+// A non-string-literal RHS (a $token$-driven index -> {{tok}}) is recorded as
+// `<field>=<dynamic>` so it never compares equal across the two sides.
+function collectSourceDiscriminators(whereList) {
+  const found = new Set();
+  const visit = (node) => {
+    if (!node || node.type !== 'BinOp') return;
+    if (node.op === 'AND' || node.op === 'OR') {
+      visit(node.left);
+      visit(node.right);
+      return;
+    }
+    if (
+      node.op === '=' &&
+      node.left &&
+      node.left.type === 'Identifier' &&
+      SOURCE_DISCRIMINATOR_FIELDS.has(node.left.name)
+    ) {
+      const rhs = node.right;
+      const value =
+        rhs && rhs.type === 'Literal' && typeof rhs.value === 'string'
+          ? rhs.value
+          : '<dynamic>';
+      found.add(`${node.left.name}=${value}`);
+    }
+  };
+  for (const cond of whereList) visit(cond);
+  return [...found].sort().join('|');
+}
+
 export function handleAppend(cmd, ir, label) {
   // Parse and translate the subsearch
   let subIR;
@@ -156,6 +190,18 @@ export function handleAppend(cmd, ir, label) {
     ir.unsupported.push(
       messages.append_facet_mismatch(label, mainDesc, subDesc),
     );
+    return;
+  }
+
+  // Defect 1 — cross-source discriminator. If the two sides carry different leading
+  // index=/sourcetype=/source= filters, FROM Log cannot read both datasets; a filter()
+  // merge silently returns 0 for at least one side. No faithful single-query NRQL form
+  // exists (no UNION, no multi-source FROM).
+  if (
+    collectSourceDiscriminators(ir.where) !==
+    collectSourceDiscriminators(subIR.where)
+  ) {
+    ir.unsupported.push(messages.append_cross_source(label));
     return;
   }
 

@@ -16,6 +16,7 @@ import {
 } from '../../ir/nodes.js';
 import { NRQL_AGGREGATE_FUNCS } from '../../ir/nrqlAggregates.js';
 import { mapFieldName, formatSpan, looksLikeNumber } from './splExprUtils.js';
+import { recognizeWildcardRename, collectRefs } from './wildcardRename.js';
 import { messages } from '../../messages.js';
 
 export function handleTable(cmd, ir) {
@@ -118,6 +119,12 @@ export function handleRename(cmd, ir) {
   let added = 0;
   for (const rename of cmd.renames) {
     if (rename.from.includes('*') || rename.to.includes('*')) {
+      const mark = recognizeWildcardRename(rename.from, rename.to);
+      if (mark) {
+        ir._wildcardRenames = ir._wildcardRenames || [];
+        ir._wildcardRenames.push({ ...mark, beforeNames: collectRefs(ir) });
+        continue; // consumed post-loop by applyWildcardRenames
+      }
       ir.unsupported.push(messages.rename_wildcard(rename.from, rename.to));
       continue;
     }

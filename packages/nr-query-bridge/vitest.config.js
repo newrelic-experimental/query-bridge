@@ -23,16 +23,23 @@ export default defineConfig({
       // Per-file gate (perFile:true checks EVERY file individually, not the
       // package aggregate). No file may regress below these floors. The numbers
       // sit just under today's weakest file so the gate passes now but catches a
-      // file collapsing toward zero. Weakest files 2026-06-26:
-      //   nrqlEncoding.js 50% branch; messages.js ~79.6% stmt/func/line.
+      // file collapsing toward zero. Ratcheted up over time. Weakest files
+      // 2026-06-28 (after nrqlEncoding.js got dedicated unit tests, retiring the
+      // old 50%-branch outlier that had pinned the branch floor at 45):
+      //   branch:     evalHandlers.js 77.95%, enrichmentHandlers.js 78.4%
+      //   stmt/line:  messages.js 83.19%
+      //   func:       enrichmentHandlers.js 77.77% — but v8 function coverage is
+      //     NONDETERMINISTIC here (observed flapping 77.77%↔83.33% across runs of
+      //     identical source), so the functions floor stays conservative at 75
+      //     until enrichmentHandlers.js gets dedicated function tests (ratchet #2).
       // vitest's perFile is a single global switch, so a stricter package-wide
       // aggregate floor can't coexist with this in one run.
       thresholds: {
         perFile: true,
-        statements: 75,
-        branches: 45,
+        statements: 80,
+        branches: 72,
         functions: 75,
-        lines: 75,
+        lines: 80,
       },
     },
   },

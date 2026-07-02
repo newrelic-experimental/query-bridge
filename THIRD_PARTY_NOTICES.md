@@ -1,9 +1,10 @@
 # Third Party Notices
 
-The `@newrelic/query-bridge` (translator) package has **zero runtime dependencies**.
-All third-party runtime components in this repository are bundled by the
-`@newrelic/dashboard-importer` package through its XML parser, `fast-xml-parser`,
-and that package's dependency tree.
+The `@newrelic/query-bridge` (translator) package has a single runtime dependency,
+[`re2js`](https://www.npmjs.com/package/re2js) — an RE2-compatible regex engine used to
+gate `rex` patterns against RE2 semantics. All other third-party runtime components in
+this repository are bundled by the `@newrelic/dashboard-importer` package through its XML
+parser, `fast-xml-parser`, and that package's dependency tree.
 
 Every component listed below is distributed under the **MIT License**, confirmed
 from each package's published metadata and bundled `LICENSE` file.
@@ -12,6 +13,7 @@ from each package's published metadata and bundled `LICENSE` file.
 
 | Package | Version | License | Copyright |
 |---|---|---|---|
+| [re2js](https://www.npmjs.com/package/re2js) | 2.8.5 | MIT | © 2023 Oleksii Vasyliev |
 | [fast-xml-parser](https://www.npmjs.com/package/fast-xml-parser) | 5.8.0 | MIT | © 2017 Amit Kumar Gupta |
 | [@nodable/entities](https://www.npmjs.com/package/@nodable/entities) | 2.2.0 | MIT | © Amit Gupta (solothought.com) |
 | [fast-xml-builder](https://www.npmjs.com/package/fast-xml-builder) | 1.2.0 | MIT | © 2026 Natural Intelligence |
