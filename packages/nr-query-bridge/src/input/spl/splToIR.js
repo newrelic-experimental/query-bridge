@@ -274,17 +274,30 @@ export function translateSearchExpr(node, ir) {
           const tok = node.lhsToken.name;
           const op = node.operator;
           const value = node.value;
-          // RHS is itself a token? (a TemplateVariable node in base position, or
-          // a `$other$` string in where position) → can't flip → Option A.
+          // Is the RHS itself a token? Two grammar shapes reach here: base-search
+          // position parses an RHS token into a TemplateVariable NODE (search_value
+          // rule), while `where` position runs the RHS through `where_value`, which
+          // returns a RAW STRING (`$other$`) and never a node — so BOTH the object
+          // check and the `$…$` string regex are live, one per position.
           const rhsIsToken =
             (value &&
               typeof value === 'object' &&
               value.type === 'TemplateVariable') ||
             (typeof value === 'string' && /^\$[A-Za-z0-9_.:-]+\$$/.test(value));
+          // Token-vs-token: both operands are variables → no rearrangement can put
+          // both in value position → its own, more specific unsupported message.
+          if (rhsIsToken) {
+            const rhs =
+              typeof value === 'object'
+                ? value.name
+                : value.replace(/^\$|\$$/g, '');
+            unsupported.push(messages.token_vs_token_unsupported(tok, rhs));
+            return null;
+          }
           // Only equality is commutative; an ordering op would need operator
           // inversion (out of scope) → Option A.
           const flippable = op === '=' || op === '!=';
-          if (!flippable || rhsIsToken) {
+          if (!flippable) {
             unsupported.push(messages.token_lhs_unsupported(tok));
             return null;
           }

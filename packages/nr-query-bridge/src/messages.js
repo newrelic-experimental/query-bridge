@@ -463,25 +463,34 @@ export const messages = {
     `dashboard variable ${token}'s values must include % wildcards (e.g. %value%); New Relic ` +
     'substitutes the value as-is and does not add wildcards.',
 
-  // SPL: `$tok$="*"` / `$tok$ = $other$` — a dashboard token in comparison FIELD
-  // position. New Relic substitutes a dashboard variable only in VALUE position,
-  // so a token can never stay in field position. An equality comparison with a
-  // non-token operand is flipped (B′, see means_all_token); a non-equality
-  // operator or a token-vs-token comparison can't flip → this loud clause-level
-  // unsupported (never a dead {{tok}} in field position).
+  // SPL: `$tok$ > 5` — a dashboard token on the comparison FIELD (left) side with a
+  // non-commutable operator. New Relic substitutes a variable only in VALUE position,
+  // and a non-equality operator can't be swapped to put it there → loud unsupported
+  // (never a dead {{tok}} in field position). (An equality with a non-token operand is
+  // flipped instead — B′, see means_all_token; a token-vs-token comparison gets the
+  // more specific token_vs_token_unsupported below.)
   token_lhs_unsupported: (token) =>
     `$${token}$ is a dashboard variable on the field (left) side of a comparison, ` +
     'but New Relic substitutes a variable only on the value (right) side, and this ' +
     'comparison cannot be rearranged to put it there — so it cannot be translated.',
+
+  // SPL: `$a$ = $b$` — BOTH sides of the comparison are dashboard variables. NR
+  // substitutes a variable only in value position, so no rearrangement can put both
+  // operands there → loud unsupported (more specific than token_lhs_unsupported).
+  token_vs_token_unsupported: (lhs, rhs) =>
+    `$${lhs}$ and $${rhs}$ are both dashboard variables on opposite sides of a ` +
+    'comparison; New Relic substitutes a variable only on the value side, so a ' +
+    'comparison of two variables cannot be expressed — this one cannot be translated.',
 
   // SPL: `$tok$="*"` (the multiselect "means-all" sentinel). Flipped to
   // `'*' = {{tok}}` (B′): when the variable is "*" the literal self-match is true
   // (match all); otherwise a surrounding `OR field = {{tok}}` filters. "All" is
   // realized by the New Relic variable's values, not a literal asterisk match.
   means_all_token: (token) =>
-    `The means-all sentinel $${token}$ = "*" was rewritten as '*' = {{${token}}}; ` +
-    `"all" is realized by the New Relic variable ${token}'s values, not a literal ` +
-    "asterisk match (NRQL `= '*'` matches a literal asterisk, i.e. nothing).",
+    `$${token}$ = "*" is a wildcard variable (Splunk's "match all"); it was ` +
+    `rewritten as '*' = {{${token}}}. "all" comes from the values configured for ` +
+    `the New Relic ${token} variable, not a literal asterisk — NRQL \`= '*'\` ` +
+    'matches a literal asterisk, i.e. nothing.',
 
   // SPL: `app="$env:app$"` — Splunk's $env:…$ runtime-context namespace (current
   // app/page/user/locale + user-profile fields injected at render time). NR dashboards
