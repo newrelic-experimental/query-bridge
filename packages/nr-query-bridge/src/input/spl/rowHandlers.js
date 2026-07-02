@@ -78,12 +78,22 @@ export function handleSort(cmd, ir) {
         if (cmd.limit != null && cmd.limit > 0) ir.limit = cmd.limit;
         return;
       }
-      ir.unsupported.push(
-        messages.order_on_aggregation_unsupported(
-          first.field,
-          exposedName(aggregates[0]),
-        ),
-      );
+      const firstAgg = exposedName(aggregates[0]);
+      if (cmd.fields.length > 1) {
+        // A multi-key sort: the primary key may match the implicit order, but the
+        // secondary key(s) can never be applied — blame the multi-key shape, not
+        // the (possibly honorable) primary field.
+        ir.unsupported.push(
+          messages.order_multi_field_on_aggregation_unsupported(
+            cmd.fields.map((f) => f.field).join(', '),
+            firstAgg,
+          ),
+        );
+      } else {
+        ir.unsupported.push(
+          messages.order_on_aggregation_unsupported(first.field, firstAgg),
+        );
+      }
       return;
     }
   }

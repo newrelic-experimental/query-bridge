@@ -2444,41 +2444,45 @@ const cases = [
   //
   //
   //
+  // rare is ALWAYS a faceted aggregation asking for the LEAST-common values. NRQL
+  // FACET returns only top-N desc by count and ignores ORDER BY on a faceted agg, so
+  // the old `ORDER BY count ASC` was silently dropped → NRDB returned the MOST common
+  // (opposite of rare). There is no faithful bottom-N, so every rare is unsupported.
   {
     spl: '* | rare status',
-    nrql: 'FROM Log SELECT count(*) FACET status ORDER BY count ASC LIMIT 10',
+    unsupportedFunc: ['rare_unsupported'],
     doc: 'reports-rare',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | rare 5 uri_path',
-    nrql: 'FROM Log SELECT count(*) FACET uri_path ORDER BY count ASC LIMIT 5',
+    unsupportedFunc: ['rare_unsupported'],
     doc: 'reports-rare',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | rare status by host',
-    nrql: 'FROM Log SELECT count(*) FACET status, host ORDER BY count ASC LIMIT 10',
+    unsupportedFunc: ['rare_unsupported'],
     doc: 'reports-rare',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: 'status>=400 | rare 20 uri_path',
-    nrql: 'FROM Log SELECT count(*) WHERE numeric(status) >= 400 FACET uri_path ORDER BY count ASC LIMIT 20',
+    unsupportedFunc: ['rare_unsupported'],
     doc: 'reports-rare',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | rare app limit=20',
-    nrql: 'FROM Log SELECT count(*) FACET app ORDER BY count ASC LIMIT 20',
+    unsupportedFunc: ['rare_unsupported'],
     doc: 'reports-rare',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | rare limit=20 "details.error"',
-    nrql: 'FROM Log SELECT count(*) FACET `details.error` ORDER BY count ASC LIMIT 20',
+    unsupportedFunc: ['rare_unsupported'],
     doc: 'reports-rare',
-    verified: 'human',
+    verified: false,
   },
   //
   // ── stats command ───────────────────────────────────────────────
@@ -3004,11 +3008,12 @@ const cases = [
     doc: 'results-sort',
     verified: false,
   },
-  // multi-field sort on a faceted aggregation: the secondary tiebreak can't be honored
-  // (NRDB orders only by the first aggregate) → unsupported, not a silent drop
+  // multi-field sort on a faceted aggregation: the primary `-count` is in fact the
+  // honorable order, but the secondary `+name` tiebreak can't be applied → its own
+  // multi-key message (must NOT blame `count`, which is not the problem here).
   {
     spl: '* | stats count by host | sort -count, +name',
-    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    unsupportedFunc: ['order_multi_field_on_aggregation_unsupported'],
     warningFunc: ['facet_default_limit'],
     doc: 'results-sort',
     verified: false,

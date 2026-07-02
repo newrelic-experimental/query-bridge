@@ -2899,7 +2899,7 @@ SPL:  * | stats count by host | sort -host
 ❓ Not confirmed
 SPL:  * | stats count by host | sort -count, +name
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-🔴 `sort` by 'count' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate (in this case, `count`) — direction and key are both ignored), so this order would silently return the wrong rows
+🔴 `sort` by multiple keys (count, name) on a faceted aggregation cannot be translated: NRQL supports only one ORDER BY key, and on a faceted aggregation even that is ignored — NRDB always returns top-N descending by the first aggregate (in this case, `count`). The additional sort key(s) cannot be applied, so this order would silently return the wrong rows
 ```
 <!-- /spl-cases -->
 
@@ -2981,39 +2981,39 @@ Shows the least common values of a field. Translates to NRQL `SELECT count(*) ..
 
 <!-- spl-cases: reports-rare -->
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare status
-NRQL: FROM Log SELECT count(*) FACET status ORDER BY count ASC LIMIT 10
+🔴 `rare` cannot be translated: it returns the least-common values (the bottom-N of a faceted aggregation), but NRQL FACET returns only the top-N descending by count and ignores ORDER BY on a faceted aggregation — so there is no faithful bottom-N, and translating it would silently return the most-common values instead (the opposite of rare)
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare 5 uri_path
-NRQL: FROM Log SELECT count(*) FACET uri_path ORDER BY count ASC LIMIT 5
+🔴 `rare` cannot be translated: it returns the least-common values (the bottom-N of a faceted aggregation), but NRQL FACET returns only the top-N descending by count and ignores ORDER BY on a faceted aggregation — so there is no faithful bottom-N, and translating it would silently return the most-common values instead (the opposite of rare)
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare status by host
-NRQL: FROM Log SELECT count(*) FACET status, host ORDER BY count ASC LIMIT 10
+🔴 `rare` cannot be translated: it returns the least-common values (the bottom-N of a faceted aggregation), but NRQL FACET returns only the top-N descending by count and ignores ORDER BY on a faceted aggregation — so there is no faithful bottom-N, and translating it would silently return the most-common values instead (the opposite of rare)
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  status>=400 | rare 20 uri_path
-NRQL: FROM Log SELECT count(*) WHERE numeric(status) >= 400 FACET uri_path ORDER BY count ASC LIMIT 20
+🔴 `rare` cannot be translated: it returns the least-common values (the bottom-N of a faceted aggregation), but NRQL FACET returns only the top-N descending by count and ignores ORDER BY on a faceted aggregation — so there is no faithful bottom-N, and translating it would silently return the most-common values instead (the opposite of rare)
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare app limit=20
-NRQL: FROM Log SELECT count(*) FACET app ORDER BY count ASC LIMIT 20
+🔴 `rare` cannot be translated: it returns the least-common values (the bottom-N of a faceted aggregation), but NRQL FACET returns only the top-N descending by count and ignores ORDER BY on a faceted aggregation — so there is no faithful bottom-N, and translating it would silently return the most-common values instead (the opposite of rare)
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | rare limit=20 "details.error"
-NRQL: FROM Log SELECT count(*) FACET `details.error` ORDER BY count ASC LIMIT 20
+🔴 `rare` cannot be translated: it returns the least-common values (the bottom-N of a faceted aggregation), but NRQL FACET returns only the top-N descending by count and ignores ORDER BY on a faceted aggregation — so there is no faithful bottom-N, and translating it would silently return the most-common values instead (the opposite of rare)
 ```
 <!-- /spl-cases -->
 
