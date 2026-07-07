@@ -216,6 +216,13 @@
           'This page must be served, not opened directly. From the repo root run `npx serve` (or `python3 -m http.server`) and open /docs/playground/.';
       }
     </script>
+    <!-- Import map: the translator imports the bare specifier `re2js` (the RE2
+         oracle). Node/Vitest resolve it via node_modules; browsers can't resolve
+         bare specifiers without this map. Path is absolute from the served repo
+         root (`npx serve .`). -->
+    <script type="importmap">
+      { "imports": { "re2js": "/node_modules/re2js/build/index.js" } }
+    </script>
     <script type="module" src="./playground.js"></script>
   </body>
 </html>
