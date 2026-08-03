@@ -1,4 +1,4 @@
-# AI Agent Standards for nr-query-bridge
+# AI Agent Standards for query-bridge
 
 ## AI-DEV Inline Markers
 
