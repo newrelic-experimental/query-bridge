@@ -31,7 +31,7 @@ const FOLD_SAFE_FUNCS = new Set([
   'getField',
   'extractfield',
 ]);
-const NRQL_AGG_FUNCS = new Set([
+export const NRQL_AGG_FUNCS = new Set([
   'count',
   'sum',
   'average',

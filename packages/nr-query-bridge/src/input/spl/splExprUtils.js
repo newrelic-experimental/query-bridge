@@ -117,6 +117,25 @@ export function mapFunctionArg(a) {
   return Identifier(a); // wildcard (`tcp.*`) or plain field — emitter backticks it
 }
 
+// True iff `name` is an SPL aggregate that mapFunction translates to a real NRQL
+// aggregate (count/sum/avg/perc/rate/…). Side-effect-free: unlike calling
+// mapFunction, this never fires an unknown_stats_func / no_equiv_func warning, so
+// the stats-eval walk can reject a non-aggregate function WITHOUT leaking a noise
+// warning when the whole bare-eval() metric is already heading to unsupported.
+export function isAggregateFuncName(name) {
+  const lowerName = name.toLowerCase();
+  if (SPL_TO_NRQL_FUNCS[lowerName]) return true;
+  if (NO_EQUIV_FUNCS[lowerName]) return false; // recognized, but yields no aggregate
+  return (
+    PERC_REGEX.test(lowerName) ||
+    P_REGEX.test(lowerName) ||
+    EXACTPERC_REGEX.test(lowerName) ||
+    UPPERPERC_REGEX.test(lowerName) ||
+    /^per_(second|minute|hour|day)$/.test(lowerName) ||
+    lowerName === 'rate'
+  );
+}
+
 export function mapFunction(name, args) {
   const lowerName = name.toLowerCase();
   const entry = SPL_TO_NRQL_FUNCS[lowerName];

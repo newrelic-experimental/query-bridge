@@ -2349,6 +2349,64 @@ const cases = [
     warningFunc: [],
     unsupportedFunc: [],
     doc: 'stats-eval-grammar',
+    verified: 'llm',
+  },
+  {
+    spl: '* | timechart span=5m eval(avg(CPU) * avg(MEM)) by host',
+    nrql: 'FROM Log SELECT average(CPU) * average(MEM) FACET host TIMESERIES 5 minutes',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: [],
+    doc: 'stats-eval-grammar',
+    verified: 'llm',
+  },
+  {
+    spl: '* | timechart eval(round(avg(cpu_seconds), 2)) by processor',
+    nrql: 'FROM Log SELECT round(average(cpu_seconds), 2) FACET processor TIMESERIES AUTO',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: [],
+    doc: 'stats-eval-grammar',
+    verified: 'llm',
+  },
+  {
+    spl: '* | stats eval(sum(errors)*100/sum(reqs)) as rate',
+    nrql: "FROM Log SELECT sum(errors) * 100 / sum(reqs) AS 'rate'",
+    warningFunc: [],
+    unsupportedFunc: [],
+    doc: 'stats-eval-grammar',
+    verified: 'llm',
+  },
+  {
+    // no alias, no by, constant operand — still translatable (has an aggregate)
+    spl: '* | stats eval(avg(cpu) + 1)',
+    nrql: 'FROM Log SELECT average(cpu) + 1',
+    warningFunc: [],
+    unsupportedFunc: [],
+    doc: 'stats-eval-grammar',
+    verified: 'llm',
+  },
+  {
+    // fold-safe function with StringLiteral args over an aggregate — translatable.
+    spl: '* | stats eval(if(sum(x), "yes", "no")) as label',
+    nrql: "FROM Log SELECT if(sum(x), 'yes', 'no') AS 'label'",
+    warningFunc: [],
+    unsupportedFunc: [],
+    doc: 'stats-eval-grammar',
+    verified: 'llm',
+  },
+  {
+    // aggregate mixed with a bare event field has no valid NRQL form — NRDB
+    // rejects it ("Value must be constant in its context", verified staging) →
+    // loud unsupported, not compiling-but-invalid NRQL.
+    spl: '* | stats eval(sum(x) + offset) as t',
+    unsupportedFunc: ['stats_eval_unsupported'],
+    doc: 'stats-eval-grammar',
+    verified: false,
+  },
+  {
+    // comparison node is not a numeric stats metric → unsupported, not wrong NRQL.
+    spl: '* | stats eval(avg(x) > 5) as flag',
+    unsupportedFunc: ['stats_eval_unsupported'],
+    doc: 'stats-eval-grammar',
     verified: false,
   },
   //
