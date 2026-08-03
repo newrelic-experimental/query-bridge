@@ -1,10 +1,9 @@
 name: CI
-# Manual-dispatch only until the github.com OSS migration. On GHE there are no
-# Actions runners, so the pull_request/push triggers only pile up perpetually-
-# queued `build` runs — and Grand Central's "Lint, Types & Tests" suite already
-# runs the identical `npm ci && lint && types:check && test`. Re-add
-# pull_request + push once the repo is public and hosted runners are available.
-on: [workflow_dispatch]
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
