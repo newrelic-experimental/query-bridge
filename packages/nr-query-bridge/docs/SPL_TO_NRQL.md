@@ -3272,6 +3272,20 @@ NRQL: FROM Log SELECT count(*) WHERE index = {{idx}}
 
 ```
 ❓ Not confirmed
+SPL:  host="$host$" | stats count by host | where count > 5
+NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeric(count) > 5 AND host = {{host}}
+🟡 `hoisted` the 'host' = {{var}} filter out of the subquery to the outer query so the dashboard variable resolves; 'host' is a grouping key so the filter is faithful, but the inner aggregation is bounded by the 5000-group subquery cap — above that, the filtered group may be dropped
+```
+
+```
+❓ Not confirmed
+SPL:  host="$host$" | stats count by host
+NRQL: FROM Log SELECT count(*) WHERE host = {{host}} FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
 SPL:  index=$env$ | stats count by host
 NRQL: FROM Log SELECT count(*) WHERE index = {{env}} FACET host
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
@@ -3381,6 +3395,12 @@ SPL:  index=$env$ | stats count by host | where count > 5
 ```
 ❓ Not confirmed
 SPL:  status=$sev$ | stats count by host | stats avg(count)
+🔴 `dashboard` template variable ({{var}}) lands inside a FROM (subquery …); New Relic substitutes variables only at the outer query level, so it reaches the database unbound and the widget fails to render. Filter on the variable before the aggregation that forces the subquery.
+```
+
+```
+❓ Not confirmed
+SPL:  region="$region$" | stats count by host | where count > 5
 🔴 `dashboard` template variable ({{var}}) lands inside a FROM (subquery …); New Relic substitutes variables only at the outer query level, so it reaches the database unbound and the widget fails to render. Filter on the variable before the aggregation that forces the subquery.
 ```
 

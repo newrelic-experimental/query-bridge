@@ -814,6 +814,30 @@ const cases = [
     doc: 'dashboard-time-tokens',
     verified: false,
   },
+  // {{var}} filters on a FACET KEY → hoist it to the outer WHERE (where NR substitutes
+  // it); filtering by the grouping key commutes with the aggregation, so it is faithful.
+  {
+    spl: 'host="$host$" | stats count by host | where count > 5',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeric(count) > 5 AND host = {{host}}',
+    warningFunc: ['template_var_hoisted'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // {{var}} filters on a NON-facet field → cannot hoist → stays unsupported.
+  {
+    spl: 'region="$region$" | stats count by host | where count > 5',
+    unsupportedFunc: ['template_var_in_subquery'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Regression: no subquery (flat) → {{var}} is already in the only WHERE, untouched.
+  {
+    spl: 'host="$host$" | stats count by host',
+    nrql: 'FROM Log SELECT count(*) WHERE host = {{host}} FACET host',
+    warningFunc: ['facet_default_limit'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
   // Regression: a {{var}} that stays at the OUTER level (no post-aggregation wrap)
   // is fine — NR substitutes it there. The faceted form fires facet_default_limit.
   {
