@@ -1,4 +1,4 @@
-# nr-query-bridge
+# query-bridge
 
 ## Project Overview
 

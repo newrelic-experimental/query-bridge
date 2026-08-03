@@ -21,5 +21,5 @@ spl-dashboard dashboard.xml --account 12345 --out ./terraform
 Reads a Splunk Simple XML file (or stdin) and writes `<slug>.tf`, `versions.tf`, `variables.tf`, and a `<slug>.report.md` coverage summary to the output directory (default `.`). Omit `--account` to emit `account_id = var.account_id` instead of a baked literal.
 
 See the
-[monorepo README](https://github.com/newrelic-experimental/nr-query-bridge#readme)
+[monorepo README](https://github.com/newrelic-experimental/query-bridge#readme)
 for the full pipeline, supported syntax, and the translator it builds on.
