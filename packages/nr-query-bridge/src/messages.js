@@ -99,6 +99,10 @@ export const messages = {
   eval_after_agg_drops_source: (columns) =>
     `eval after stats: the source aggregate column(s) ${columns.join(', ')} are not in the output — only facet keys and eval results are projected, though Splunk's eval would keep the originals too.`,
 
+  // SPL: `* | stats eval(sum(errors)*100/sum(reqs))`
+  stats_eval_unsupported: (expr) =>
+    `'${expr}' has no faithful NRQL form as a stats/timechart metric — a bare eval() metric must reduce to arithmetic over aggregates with fold-safe functions; an expression with no aggregate, or a non-fold-safe function over an aggregate, is unsupported`,
+
   // SPL: `* | stats count by host | head 10 | stats avg(count)`
   // head N = the first N rows in stats output order; a nested-subquery LIMIT N is
   // the top N by aggregate value. Different selections, so no faithful translation.
