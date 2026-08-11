@@ -4,6 +4,14 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+
+# Both jobs only read the repository. Declared at the top level because they
+# need identical permissions; publish.yml declares per job because its two jobs
+# differ. Without this, GITHUB_TOKEN gets the repository default, which CodeQL
+# flags as actions/missing-workflow-permissions.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
