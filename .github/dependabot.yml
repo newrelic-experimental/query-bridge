@@ -1,6 +1,23 @@
 # yaml-language-server: $schema=https://json.schemastore.org/dependabot-2.0.json
 version: 2
 updates:
+  # This is an npm workspaces monorepo: the ONLY lockfile is the root
+  # package-lock.json, and the resolved (transitive) tree lives there. The
+  # per-package entries below cover each package.json manifest, but they cannot
+  # see transitive dependencies, so this root entry is what actually resolves
+  # vulnerability alerts.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    # Collapse security fixes into a single pull request. Without this,
+    # Dependabot opens one PR per dependency, and each needs its own approving
+    # review under the branch-protection ruleset.
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
   - package-ecosystem: 'npm'
     directory: '/packages/nr-query-bridge'
     schedule:

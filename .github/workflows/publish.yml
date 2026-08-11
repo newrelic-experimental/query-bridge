@@ -9,7 +9,7 @@ name: Publish
 # Trusted-publisher config (set once, by the Node.js Agent team, on the package's
 # npmjs.com Settings page — see handoff notes in the PR):
 #   Organization:      newrelic-experimental
-#   Repository:        nr-query-bridge
+#   Repository:        query-bridge
 #   Workflow filename: publish.yml   (this file; case-sensitive)
 #
 # Monorepo note: this is a workspaces repo. Only @newrelic/query-bridge is
