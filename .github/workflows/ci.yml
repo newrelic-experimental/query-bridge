@@ -17,3 +17,28 @@ jobs:
       - run: npm run lint
       - run: npm run types:check
       - run: npm test
+
+  # Workflow files are the one thing a broken change can silence rather than
+  # fail: an invalid trigger or `if:` does not error, the job just never runs.
+  # Local pre-commit hooks cannot gate this (bypassable with --no-verify, and
+  # absent for fork contributors), so it runs here. Not paths-scoped: a check
+  # that only reports on some PRs cannot be made a required check.
+  #
+  # actionlint is pinned and downloaded rather than pulled from the marketplace,
+  # matching how secret-scan.yml installs gitleaks. It also shellchecks `run:`
+  # blocks, since shellcheck is preinstalled on the runner. It cannot inspect
+  # JavaScript inside actions/github-script.
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          curl -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz actionlint
+          ./actionlint --version
+      - name: Lint workflows
+        run: ./actionlint
