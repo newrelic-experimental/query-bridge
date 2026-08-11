@@ -16,17 +16,64 @@ name: Publish
 # published here; @newrelic/dashboard-importer is private. If that ever changes,
 # give each package its own publish workflow + tag scheme.
 
-# Manual trigger only. Bump packages/nr-query-bridge/package.json `version`,
+# Publishing is manual only. Bump packages/nr-query-bridge/package.json `version`,
 # merge to master, then run this workflow from the Actions tab.
-on: [workflow_dispatch]
+#
+# The pull_request trigger is scoped to this file. Editing the publish path runs
+# the `validate` job below, which exercises the same setup and build chain and
+# then packs instead of publishing. Nothing can publish from a pull request: the
+# two jobs are gated on mutually exclusive events.
+on:
+  pull_request:
+    paths: ['.github/workflows/publish.yml']
+  workflow_dispatch:
 
-permissions:
-  contents: write # create the git tag + GitHub release
-  id-token: write # REQUIRED for the Trusted Publishing OIDC exchange
+# Permissions are declared per job, NOT at the top level. A pull_request run must
+# never be able to mint an OIDC token or write to the repository.
 
 jobs:
-  publish:
+  # Pre-flight for changes to this file. Mirrors the publish job's setup and
+  # build chain, asserts setup-node actually configured the registry, and packs
+  # instead of publishing. `npm publish --dry-run` never authenticates and never
+  # contacts the registry, so it validates packaging only. The Trusted Publishing
+  # OIDC exchange cannot be rehearsed; the first real publish is its own test.
+  validate:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      # setup-node's registry-url works by writing an .npmrc. Assert the effect
+      # directly, so a change in that behavior fails here rather than during a
+      # release. Trailing slash is normalized before comparing.
+      - name: Assert setup-node configured the npm registry
+        run: |
+          actual="$(npm config get registry)"
+          echo "npm registry: $actual"
+          test "${actual%/}" = "https://registry.npmjs.org"
+
+      - run: npm ci
+      - run: npm run build:parsers
+      - run: npm test
+      - run: npm run build:types
+
+      - name: Pack the published workspace (no registry contact)
+        run: npm publish --dry-run --workspace @newrelic/query-bridge --access public
+
+  publish:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the git tag + GitHub release
+      id-token: write # REQUIRED for the Trusted Publishing OIDC exchange
     steps:
       - uses: actions/checkout@v5
 

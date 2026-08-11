@@ -6,9 +6,17 @@ name: Repolinter Action
 # Currently there is no elegant way to specify the default
 # branch in the event filtering, so branches are instead
 # filtered in the "Test Default Branch" step.
+#
+# The pull_request trigger is scoped to this file. On a pull request `github.ref`
+# is refs/pull/N/merge, so the default-branch check below is false and the lint
+# steps skip. That is intentional: the value is exercising the github-script call
+# itself, which has broken across major versions (v8 moved the Octokit API under
+# `github.rest`). A break surfaces in review instead of on master.
 on:
   push:
     branches: [master]
+  pull_request:
+    paths: ['.github/workflows/repolinter.yml']
   workflow_dispatch:
 
 jobs:
