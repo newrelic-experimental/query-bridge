@@ -18,6 +18,41 @@ Before submitting an Issue, please search for similar ones in the
 2. Increase the version numbers in any examples files and the README.md to the new version that this Pull Request would represent. The versioning scheme we use is [SemVer](http://semver.org/).
 3. You may merge the Pull Request in once you have the sign-off of two other developers, or if you do not have permission to do that, you may request the second reviewer to merge it for you.
 
+## Running checks locally
+
+CI runs `npm ci`, `npm run lint`, `npm run types:check`, and `npm test`. All of those
+run locally with Node 24.
+
+A few checks depend on external binaries rather than npm packages:
+
+- **gitleaks** (secret scanning). `npm run scan:secrets` scans the full history and
+  `npm run scan:secrets:dir` the working tree. Install with `brew install gitleaks`.
+  The script uses whichever `gitleaks` is on your `PATH`, while CI pins a version in
+  `.github/workflows/secret-scan.yml`. If the two differ, a local pass does not
+  guarantee CI agrees.
+- **actionlint** (workflow syntax). `actionlint .github/workflows/*.yml`, installed
+  with `brew install actionlint`. Worth running after editing any workflow: it catches
+  invalid expressions and `if:` conditions that would otherwise surface only on a real
+  run.
+- **act** (running a workflow job locally, optional). For example:
+
+  ```
+  act push -W .github/workflows/ci.yml -j build \
+    -P ubuntu-latest=catthehacker/ubuntu:act-latest
+  ```
+
+  It needs Docker. `act` reads only `DOCKER_HOST` and ignores Docker CLI contexts, so
+  on Rancher Desktop, or any setup without `/var/run/docker.sock`, point it at the real
+  socket first or it fails with "failed to connect to the docker API":
+
+  ```
+  export DOCKER_HOST="unix://$HOME/.rd/docker.sock"
+  ```
+
+  `act` cannot reproduce everything. There is no GitHub cache service, so `cache` steps
+  warn and miss, and there is no OIDC token endpoint, so `publish.yml`'s Trusted
+  Publishing step cannot be exercised locally.
+
 ## Sensitive data
 
 This project translates real customers' queries and dashboards, so take care not
