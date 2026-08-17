@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 New Relic Corporation. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * IR pass: collapse over-nested post-aggregation chains.
  * Walks the SubquerySource chain (NOT via transformTree, which skips SubquerySource)

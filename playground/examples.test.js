@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 New Relic Corporation. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // playground/examples.test.js — repo-level guard that the playground demo's
 // color-coding stays honest as the translator evolves (the playground is repo
 // docs, not part of the shipped translator package).

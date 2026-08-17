@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 New Relic Corporation. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * The neutral dashboard model — the seam between Splunk parsers and NR emitters.
  * Both parsers target this shape; all emitters consume it. Nothing downstream of
