@@ -22,9 +22,7 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
-      - run: npm run lint
-      - run: npm run types:check
-      - run: npm test
+      - run: npm run verify
 
   # Workflow files are the one thing a broken change can silence rather than
   # fail: an invalid trigger or `if:` does not error, the job just never runs.

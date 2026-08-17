@@ -2,7 +2,7 @@
 
 # query-bridge
 
-Translate Splunk **SPL** queries into New Relic **NRQL**. Pure ESM JavaScript, zero runtime dependencies, Node 20+.
+Translate Splunk **SPL** queries into New Relic **NRQL**. Pure ESM JavaScript, Node 20+.
 
 > **Status — experimental.** Today the bridge translates **SPL → NRQL**. Its internals are built on a language-neutral intermediate representation, so more input languages (Lucene, PromQL, PPL) and output targets (Trino SQL) are on the roadmap — they are **not implemented yet**.
 
