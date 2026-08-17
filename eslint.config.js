@@ -5,6 +5,24 @@
 
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import headers from 'eslint-plugin-headers';
+
+// NR's Open Source Attribution Policy requires every source file in an
+// open-sourced repo to carry a copyright line and SPDX identifier. `(year)` is a
+// pattern, not a literal: any four-digit year validates, so a file keeps the year
+// it was published and only new files get the default. node-newrelic enforces the
+// same header through `@newrelic/eslint-config`, which pins eslint ^9.39.4 — move
+// to that config once it supports the major we run.
+const LICENSE_HEADER = {
+  source: 'string',
+  style: 'jsdoc',
+  blockPrefix: '\n',
+  content: [
+    'Copyright (year) New Relic Corporation. All rights reserved.',
+    'SPDX-License-Identifier: Apache-2.0',
+  ].join('\n'),
+  patterns: { year: { pattern: '\\d{4}', defaultValue: '2026' } },
+};
 
 // Single ESLint config for the whole monorepo. Flat config is glob-scoped, so
 // one root config lints every package plus the repo-level playground — no
@@ -33,7 +51,9 @@ export default [
         setTimeout: 'readonly',
       },
     },
+    plugins: { headers },
     rules: {
+      'headers/header-format': ['error', LICENSE_HEADER],
       'no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

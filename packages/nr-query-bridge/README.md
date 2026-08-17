@@ -2,7 +2,7 @@
 
 # @newrelic/query-bridge
 
-Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino. Pure ESM JavaScript, zero runtime dependencies, Node 20+.
+Multi-language query translator — SPL/Lucene/PromQL/PPL to NRQL/Trino. Pure ESM JavaScript, Node 20+.
 
 ## Install
 
