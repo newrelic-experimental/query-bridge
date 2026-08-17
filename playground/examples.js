@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 New Relic Corporation. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // docs/playground/examples.js
 // The 10 curated SPL→NRQL demo queries. Single source of truth for the
 // playground examples rail AND test/playground/examples.test.js.

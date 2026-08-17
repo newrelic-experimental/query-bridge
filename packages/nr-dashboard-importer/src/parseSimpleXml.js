@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 New Relic Corporation. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { XMLParser } from 'fast-xml-parser';
 import { createDashboardModel, createWidget, createVariable } from './model.js';
 import { htmlToMarkdown } from './htmlToMarkdown.js';

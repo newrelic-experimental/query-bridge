@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 New Relic Corporation. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * Decide which fields a `spath` (no `path=`) auto-extract must bind, by scanning
  * the commands that FOLLOW it in the pipeline.

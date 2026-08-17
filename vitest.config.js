@@ -1,3 +1,8 @@
+/*
+ * Copyright 2026 New Relic Corporation. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { defineConfig } from 'vitest/config';
 
 // Repo-level test runner. Covers tests that belong to the whole project rather
