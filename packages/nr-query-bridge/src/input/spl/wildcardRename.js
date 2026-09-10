@@ -16,6 +16,10 @@ import { Identifier } from '../../ir/nodes.js';
 import { messages } from '../../messages.js';
 
 /**
+ * @typedef {import('../../ir/nodes.js').IRNode} IRNode
+ */
+
+/**
  * Recognize a clean single-affix wildcard rename.
  * @param {string} from
  * @param {string} to
@@ -37,7 +41,7 @@ export function recognizeWildcardRename(from, to) {
  * Every Identifier name referenced in the consumer surfaces, not crossing into
  * subqueries. Used both to snapshot pre-rename names (ambiguity guard) and to find
  * downstream candidates. Mirrors transform.js's enumerate-every-property walk.
- * @param {object} ir
+ * @param {IRNode} ir
  * @returns {Set<string>}
  */
 export function collectRefs(ir) {
@@ -71,7 +75,7 @@ export function collectRefs(ir) {
  * bare reference that is eligible (appears nowhere except downstream, and is not a
  * binding/alias). Loud `unsupported` for >1 marker or an ambiguous (also-pre-rename)
  * reference; drop-with-warning when nothing eligible references the rename.
- * @param {object} ir
+ * @param {IRNode} ir
  */
 export function applyWildcardRenames(ir) {
   const marks = ir._wildcardRenames;
