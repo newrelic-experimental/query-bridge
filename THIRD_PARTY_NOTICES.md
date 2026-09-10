@@ -234,7 +234,7 @@ SOFTWARE.
 
 ### re2js
 
-This product includes source derived from [re2js](https://github.com/le0pard/re2js) ([v2.8.5](https://github.com/le0pard/re2js/tree/v2.8.5)), distributed under the [MIT License](https://github.com/le0pard/re2js/blob/v2.8.5/LICENSE):
+This product includes source derived from [re2js](https://github.com/le0pard/re2js) ([v2.8.6](https://github.com/le0pard/re2js/tree/v2.8.6)), distributed under the [MIT License](https://github.com/le0pard/re2js/blob/v2.8.6/LICENSE):
 
 ```
 MIT License
