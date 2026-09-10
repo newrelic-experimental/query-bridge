@@ -269,6 +269,17 @@ export function translateSearchExpr(node, ir) {
       }
 
       case 'Comparison': {
+        // Dashboard token in comparison LHS/field position ($tok$ = …). The
+        // grammar emits `lhsToken` (a TemplateVariable node). New Relic
+        // substitutes {{var}} in VALUE position only, so a token can never stay
+        // in field position. PR1: loud clause-level unsupported for ALL token-LHS
+        // (kills the parse error / whole-command poisoning). PR2 replaces this
+        // block with the B′ operand flip for the flippable shapes.
+        if (node.lhsToken) {
+          unsupported.push(messages.token_lhs_unsupported(node.lhsToken.name));
+          return null;
+        }
+
         // New typed-node RHS (grammar `field op u_add`). Branch before the
         // legacy flat-`value` path, which assumes `value` is a string.
         if (node.rhsExpr) {

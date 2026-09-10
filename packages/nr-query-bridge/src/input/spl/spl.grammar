@@ -285,7 +285,14 @@ where_func_comparison
     }
 
 where_comparison
-  = field:field_name _+ 'like'i _+ value:where_value
+  = lhs:template_variable _* op:comparison_op _* value:where_value
+    {
+      // Dashboard token in `where` LHS/field position. value is a where_value
+      // (a string: "*", a field name, or "$other$"); splToIR flips (B′) or
+      // marks unsupported (A). field_name never matches `$`, so this is safe first.
+      return { type: 'Comparison', lhsToken: lhs, operator: op, value: value };
+    }
+  / field:field_name _+ 'like'i _+ value:where_value
     {
       return { type: 'Comparison', field: field, operator: 'like', value: value };
     }
@@ -1359,6 +1366,18 @@ comparison
       return {
         type: 'Comparison',
         field: field,
+        operator: op,
+        value: value
+      };
+    }
+  / lhs:template_variable _* op:comparison_op _* value:search_value
+    {
+      // Dashboard token in LHS/field position ($tok$ = …). `lhsToken` is the
+      // TemplateVariable node; splToIR decides flip (B′) vs unsupported (A).
+      // search_field never matches `$`, so this only catches token-LHS input.
+      return {
+        type: 'Comparison',
+        lhsToken: lhs,
         operator: op,
         value: value
       };
