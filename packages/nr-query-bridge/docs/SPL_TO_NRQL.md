@@ -3475,6 +3475,27 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web'
 ```
 
 ```
+❓ Not confirmed
+SPL:  * $cat$="*" | stats count
+NRQL: FROM Log SELECT count(*) WHERE '*' = {{cat}}
+🟡 $cat$ = "*" is a wildcard variable (Splunk's "match all"); it was rewritten as '*' = {{cat}}. "all" comes from the values configured for the New Relic cat variable, not a literal asterisk — NRQL `= '*'` matches a literal asterisk, i.e. nothing.
+```
+
+```
+❓ Not confirmed
+SPL:  * ($cat$="*" OR category="$cat$") | stats count
+NRQL: FROM Log SELECT count(*) WHERE '*' = {{cat}} OR category = {{cat}}
+🟡 $cat$ = "*" is a wildcard variable (Splunk's "match all"); it was rewritten as '*' = {{cat}}. "all" comes from the values configured for the New Relic cat variable, not a literal asterisk — NRQL `= '*'` matches a literal asterisk, i.e. nothing.
+```
+
+```
+❓ Not confirmed
+SPL:  * | where ($cat$="*" OR category="$cat$")
+NRQL: FROM Log SELECT * WHERE '*' = {{cat}} OR category = {{cat}}
+🟡 $cat$ = "*" is a wildcard variable (Splunk's "match all"); it was rewritten as '*' = {{cat}}. "all" comes from the values configured for the New Relic cat variable, not a literal asterisk — NRQL `= '*'` matches a literal asterisk, i.e. nothing.
+```
+
+```
 🤖 Confirmed by LLM
 SPL:  index=web $tok.earliest$ | stats count
 NRQL: FROM Log SELECT count(*) WHERE index = 'web'
@@ -3595,19 +3616,19 @@ NRQL: FROM Log SELECT * WHERE index = 'web'
 
 ```
 ❓ Not confirmed
-SPL:  * $cat$="*" | stats count
-🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
-```
-
-```
-❓ Not confirmed
-SPL:  * | where ($cat$="*" OR category="$cat$")
-🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
-```
-
-```
-❓ Not confirmed
 SPL:  * | where $cat$ = $other$
+🔴 $cat$ and $other$ are both dashboard variables on opposite sides of a comparison; New Relic substitutes a variable only on the value side, so a comparison of two variables cannot be expressed — this one cannot be translated.
+```
+
+```
+❓ Not confirmed
+SPL:  * $a$=$b$ | stats count
+🔴 $a$ and $b$ are both dashboard variables on opposite sides of a comparison; New Relic substitutes a variable only on the value side, so a comparison of two variables cannot be expressed — this one cannot be translated.
+```
+
+```
+❓ Not confirmed
+SPL:  * | where $cat$ > 5
 🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
 ```
 

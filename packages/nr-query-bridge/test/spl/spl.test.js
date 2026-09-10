@@ -712,25 +712,53 @@ const cases = [
     verified: 'llm',
   },
   // ── Token in comparison LHS/field position (parser robustness) ──────────
-  // Base-search position: `$tok$="*"` used to be a HARD PARSE ERROR. PR1: it
-  // parses and produces a LOCAL clause-level unsupported — no whole-command poison.
+  // Standalone means-all sentinel: `$tok$="*"` flips to `'*' = {{tok}}` (B′) + warning.
+  // (Used to be a HARD PARSE ERROR in base-search position.)
   {
     spl: '* $cat$="*" | stats count',
-    unsupportedFunc: ['token_lhs_unsupported'],
+    nrql: "FROM Log SELECT count(*) WHERE '*' = {{cat}}",
+    warningFunc: ['means_all_token'],
     doc: 'dashboard-time-tokens',
     verified: false,
   },
-  // Pipeline (where) position: used to degrade to unsupported_command('where').
-  // PR1: parses to a Comparison and emits the SPECIFIC token-LHS unsupported.
+  // The full multiselect means-all idiom (base-search position). The sentinel
+  // disjunct flips (B′ + warning); the value-position disjunct translates as usual.
+  // NRQL needs no parens — the whole WHERE is the OR group.
+  {
+    spl: '* ($cat$="*" OR category="$cat$") | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE '*' = {{cat}} OR category = {{cat}}",
+    warningFunc: ['means_all_token'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Same idiom in `where` pipeline position (no aggregation → SELECT *). Used to
+  // degrade to unsupported_command('where').
   {
     spl: '* | where ($cat$="*" OR category="$cat$")',
-    unsupportedFunc: ['token_lhs_unsupported'],
+    nrql: "FROM Log SELECT * WHERE '*' = {{cat}} OR category = {{cat}}",
+    warningFunc: ['means_all_token'],
     doc: 'dashboard-time-tokens',
     verified: false,
   },
-  // Token-vs-token can never flip → stays unsupported in PR1 AND PR2 (Option A).
+  // Token-vs-token can never flip (both operands are variables) → its own message.
+  // `where` position: the RHS token arrives as a RAW STRING via `where_value`.
   {
     spl: '* | where $cat$ = $other$',
+    unsupportedFunc: ['token_vs_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Same, base-search position: here the RHS token is a TemplateVariable NODE
+  // (search_value rule), exercising the other half of the rhsIsToken check.
+  {
+    spl: '* $a$=$b$ | stats count',
+    unsupportedFunc: ['token_vs_token_unsupported'],
+    doc: 'dashboard-time-tokens',
+    verified: false,
+  },
+  // Non-equality operator can't flip (would need operator inversion) → Option A.
+  {
+    spl: '* | where $cat$ > 5',
     unsupportedFunc: ['token_lhs_unsupported'],
     doc: 'dashboard-time-tokens',
     verified: false,
