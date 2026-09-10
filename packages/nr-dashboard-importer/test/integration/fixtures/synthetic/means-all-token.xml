@@ -1,0 +1,15 @@
+<dashboard>
+  <label>Corpus Shape: means-all multiselect token</label>
+  <description>Synthetic; exercises a multiselect "means-all" idiom ($tok$="*" OR field="$tok$") in the base search — flipped to '*' = {{tok}} (B′), not placeholdered.</description>
+  <row>
+    <panel>
+      <title>Requests by category</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=web ($cat$="*" OR category="$cat$") | stats count by category]]></query>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>
