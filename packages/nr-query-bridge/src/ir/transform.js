@@ -15,9 +15,13 @@
  */
 
 /**
- * @param {object|null|undefined} node
- * @param {(node: object) => object} fn
- * @returns {object|null|undefined}
+ * @typedef {import('./nodes.js').IRNode} IRNode
+ */
+
+/**
+ * @param {IRNode|null|undefined} node
+ * @param {(node: IRNode) => IRNode} fn
+ * @returns {IRNode|null|undefined}
  */
 export function transformTree(node, fn) {
   if (!node || typeof node !== 'object') return node;

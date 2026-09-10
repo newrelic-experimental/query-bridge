@@ -21,7 +21,7 @@
  *     (recurse left/right).
  * Any other command type, a `*` reference, or an un-walkable where node → null.
  *
- * @param {Array<object>} downstream  commands after the no-path spath
+ * @param {Array<{type: string, [key: string]: any}>} downstream  commands after the no-path spath
  * @returns {string[] | null}
  */
 export function collectAutoExtractFields(downstream) {
