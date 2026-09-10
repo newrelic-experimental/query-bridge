@@ -147,7 +147,7 @@ SOFTWARE.
 
 ### fast-xml-parser
 
-This product includes source derived from [fast-xml-parser](https://github.com/NaturalIntelligence/fast-xml-parser) ([v5.10.1](https://github.com/NaturalIntelligence/fast-xml-parser/tree/v5.10.1)), distributed under the [MIT License](https://github.com/NaturalIntelligence/fast-xml-parser/blob/v5.10.1/LICENSE):
+This product includes source derived from [fast-xml-parser](https://github.com/NaturalIntelligence/fast-xml-parser) ([v5.11.1](https://github.com/NaturalIntelligence/fast-xml-parser/tree/v5.11.1)), distributed under the [MIT License](https://github.com/NaturalIntelligence/fast-xml-parser/blob/v5.11.1/LICENSE):
 
 ```
 MIT License
@@ -263,7 +263,7 @@ SOFTWARE.
 
 ### strnum
 
-This product includes source derived from [strnum](https://github.com/NaturalIntelligence/strnum) ([v2.4.1](https://github.com/NaturalIntelligence/strnum/tree/v2.4.1)), distributed under the [MIT License](https://github.com/NaturalIntelligence/strnum/blob/v2.4.1/LICENSE):
+This product includes source derived from [strnum](https://github.com/NaturalIntelligence/strnum) ([v2.4.2](https://github.com/NaturalIntelligence/strnum/tree/v2.4.2)), distributed under the [MIT License](https://github.com/NaturalIntelligence/strnum/blob/v2.4.2/LICENSE):
 
 ```
 MIT License
