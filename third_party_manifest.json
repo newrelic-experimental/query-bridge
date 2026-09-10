@@ -57,15 +57,15 @@
       "publisher": "Amit Gupta",
       "url": "https://solothought.com"
     },
-    "fast-xml-parser@5.10.1": {
+    "fast-xml-parser@5.11.1": {
       "name": "fast-xml-parser",
-      "version": "5.10.1",
-      "range": "5.10.1",
+      "version": "5.11.1",
+      "range": "5.11.1",
       "licenses": "MIT",
       "repoUrl": "https://github.com/NaturalIntelligence/fast-xml-parser",
-      "versionedRepoUrl": "https://github.com/NaturalIntelligence/fast-xml-parser/tree/v5.10.1",
+      "versionedRepoUrl": "https://github.com/NaturalIntelligence/fast-xml-parser/tree/v5.11.1",
       "licenseFile": "node_modules/fast-xml-parser/LICENSE",
-      "licenseUrl": "https://github.com/NaturalIntelligence/fast-xml-parser/blob/v5.10.1/LICENSE",
+      "licenseUrl": "https://github.com/NaturalIntelligence/fast-xml-parser/blob/v5.11.1/LICENSE",
       "licenseTextSource": "file",
       "publisher": "Amit Gupta",
       "url": "https://solothought.com"
@@ -108,15 +108,15 @@
       "licenseTextSource": "file",
       "publisher": "Oleksii Vasyliev"
     },
-    "strnum@2.4.1": {
+    "strnum@2.4.2": {
       "name": "strnum",
-      "version": "2.4.1",
-      "range": "2.4.1",
+      "version": "2.4.2",
+      "range": "2.4.2",
       "licenses": "MIT",
       "repoUrl": "https://github.com/NaturalIntelligence/strnum",
-      "versionedRepoUrl": "https://github.com/NaturalIntelligence/strnum/tree/v2.4.1",
+      "versionedRepoUrl": "https://github.com/NaturalIntelligence/strnum/tree/v2.4.2",
       "licenseFile": "node_modules/strnum/LICENSE",
-      "licenseUrl": "https://github.com/NaturalIntelligence/strnum/blob/v2.4.1/LICENSE",
+      "licenseUrl": "https://github.com/NaturalIntelligence/strnum/blob/v2.4.2/LICENSE",
       "licenseTextSource": "file",
       "publisher": "Amit Gupta",
       "url": "https://solothought.work/"
