@@ -19,7 +19,7 @@ import { messages } from '../../messages.js';
  * Recognize a clean single-affix wildcard rename.
  * @param {string} from
  * @param {string} to
- * @returns {{ direction: 'strip', affix: string } | null}
+ * @returns {{ direction: 'strip'|'reprefix', affix: string } | null}
  */
 export function recognizeWildcardRename(from, to) {
   const fromStars = (from.match(/\*/g) || []).length;
@@ -29,7 +29,13 @@ export function recognizeWildcardRename(from, to) {
     if (affix.length === 0) return null; // bare `* as *` — nothing to strip
     return { direction: 'strip', affix };
   }
-  // (Task 3 adds the re-prefix shape `* as <affix>*` here.)
+  // Re-prefix: `* as <affix>*` — `from` is exactly `*`, `to` has one trailing `*`.
+  const toStars = (to.match(/\*/g) || []).length;
+  if (from === '*' && toStars === 1 && to.endsWith('*')) {
+    const affix = to.slice(0, -1); // 'fld_' from 'fld_*'
+    if (affix.length === 0) return null; // bare `* as *`
+    return { direction: 'reprefix', affix };
+  }
   return null;
 }
 
@@ -115,13 +121,14 @@ export function applyWildcardRenames(ir) {
   Object.assign(ir._fieldReplacements, replacements);
 }
 
-/** strip: every downstream bare name is a candidate for reprefixing. */
+/** strip: every bare name maps. reprefix: only affixed names map back. */
 function isAffixCandidate(name, mark) {
   if (mark.direction === 'strip') return true;
-  return false;
+  return name.startsWith(mark.affix); // reprefix
 }
 
-/** strip: reprefix a stripped name back to its original — e.g. `level` → `log.level`. */
+/** strip: `level` → `log.level`. reprefix: `fld_level` → `level`. */
 function affixTarget(name, mark) {
-  return mark.affix + name; // 'log.' + 'level'
+  if (mark.direction === 'strip') return mark.affix + name;
+  return name.slice(mark.affix.length); // reprefix
 }
