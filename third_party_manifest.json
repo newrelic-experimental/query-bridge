@@ -96,15 +96,15 @@
       "publisher": "Amit Gupta",
       "url": "https://solothought.com"
     },
-    "re2js@2.8.5": {
+    "re2js@2.8.6": {
       "name": "re2js",
-      "version": "2.8.5",
-      "range": "2.8.5",
+      "version": "2.8.6",
+      "range": "2.8.6",
       "licenses": "MIT",
       "repoUrl": "https://github.com/le0pard/re2js",
-      "versionedRepoUrl": "https://github.com/le0pard/re2js/tree/v2.8.5",
+      "versionedRepoUrl": "https://github.com/le0pard/re2js/tree/v2.8.6",
       "licenseFile": "node_modules/re2js/LICENSE",
-      "licenseUrl": "https://github.com/le0pard/re2js/blob/v2.8.5/LICENSE",
+      "licenseUrl": "https://github.com/le0pard/re2js/blob/v2.8.6/LICENSE",
       "licenseTextSource": "file",
       "publisher": "Oleksii Vasyliev"
     },
