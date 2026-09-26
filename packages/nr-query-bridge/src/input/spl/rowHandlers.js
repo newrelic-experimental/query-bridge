@@ -155,7 +155,20 @@ function projectAggregatedColumns(fields, ir, command) {
 export function handleSort(cmd, ir) {
   if (cmd.fields.length > 0) {
     const first = cmd.fields[0];
-    ir.orderBy = OrderBy(Identifier(first.field), first.direction === 'desc');
+    let field = first.field;
+    // `sort -dc(requestId)`: the column an unaliased `stats dc(requestId)`
+    // produced. Resolve it to that aggregate's output name.
+    if (/\(.*\)$/.test(field)) {
+      const col = ir.select.find(
+        (e) => e.type !== 'Alias' && e._splName === field,
+      );
+      if (!col) {
+        ir.unsupported.push(messages.sort_unknown_stats_column(field));
+        return;
+      }
+      field = col.name;
+    }
+    ir.orderBy = OrderBy(Identifier(field), first.direction === 'desc');
   }
   // Additional sort fields become ORDER BY field1 DESC, field2 ASC
   // NRQL only supports single ORDER BY — warn if multiple

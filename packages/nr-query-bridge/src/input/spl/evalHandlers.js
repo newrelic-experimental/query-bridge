@@ -38,6 +38,11 @@ import { splFormatToJava } from './splFormatCodes.js';
 // ── Command handlers ────────────────────────────────────────
 
 export function handleWhere(cmd, ir) {
+  // `where A B` is invalid SPL (implicit AND is search syntax) — a source defect.
+  if (cmd.implicitAnd) {
+    ir.unsupported.push(messages.where_implicit_and());
+    return;
+  }
   // If after aggregation, wrap as subquery and filter the outer query.
   const afterAgg = ir._hasAggregation;
   const unwrap = afterAgg ? wrapAsSubquery(ir) : null;

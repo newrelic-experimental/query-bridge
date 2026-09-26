@@ -27,7 +27,9 @@ import { messages } from '../../messages.js';
 import { normalizeSubsearch } from './splExprUtils.js';
 
 export function handleJoin(cmd, ir) {
-  if (cmd.joinType === 'outer') {
+  const opts = resolveJoinOptions(cmd, ir);
+  if (!opts) return;
+  if (opts.joinType === 'outer') {
     ir.unsupported.push(messages.join_outer_unsupported());
     return;
   }
@@ -35,6 +37,11 @@ export function handleJoin(cmd, ir) {
     ir.unsupported.push(messages.join_multi_key(cmd.fields.join(', ')));
     return;
   }
+  if (!opts.field) {
+    ir.unsupported.push(messages.join_no_key());
+    return;
+  }
+  cmd = { ...cmd, field: opts.field, joinType: opts.joinType };
 
   let subIR;
   try {
@@ -95,6 +102,65 @@ export function handleJoin(cmd, ir) {
     joinType,
   );
   ir.warnings.push(messages.join_cardinality_limit());
+  // Splunk's default max=1 joins each row to ONE subsearch match; NRQL JOIN
+  // returns every match. Only an un-aggregated subsearch (Pattern A) can have
+  // duplicate keys, and max=0 (unlimited) is already what NRQL does.
+  if (subFacet.length === 0 && opts.maxMatches !== 0) {
+    ir.warnings.push(messages.join_max_matches_differ(opts.maxMatches));
+  }
+}
+
+/**
+ * Interpret join's key=value options and key forms. Returns
+ * `{ joinType, field, maxMatches }`, or null after pushing an unsupported.
+ *
+ * - `type=inner|left|outer` (legacy grammar also set `cmd.joinType`).
+ * - `max=N`: 0 = every match (what NRQL JOIN does), 1 = Splunk's default.
+ * - `left=L right=R where L.k=R.k`: the alias form; only a single-key equality
+ *   on the SAME field name maps to NRQL's `ON k = k`.
+ */
+function resolveJoinOptions(cmd, ir) {
+  let joinType = cmd.joinType || 'inner';
+  let maxMatches = 1;
+  let leftAlias = null;
+  let rightAlias = null;
+  for (const o of cmd.options || []) {
+    const value = String(o.value);
+    if (o.key === 'type' && /^(inner|left|outer)$/i.test(value)) {
+      joinType = value.toLowerCase();
+    } else if (o.key === 'max' && /^\d+$/.test(value)) {
+      maxMatches = Number(value);
+    } else if (o.key === 'left') {
+      leftAlias = value;
+    } else if (o.key === 'right') {
+      rightAlias = value;
+    } else {
+      ir.unsupported.push(
+        messages.agg_option_unsupported('join', `${o.key}=${value}`),
+      );
+      return null;
+    }
+  }
+  let field = cmd.field;
+  if (cmd.whereKeys) {
+    const strip = (name, alias) =>
+      alias && name.startsWith(`${alias}.`)
+        ? name.slice(alias.length + 1)
+        : name;
+    const l = strip(cmd.whereKeys.left, leftAlias);
+    const r = strip(cmd.whereKeys.right, rightAlias);
+    if (l !== r) {
+      ir.unsupported.push(
+        messages.join_where_keys_differ(
+          cmd.whereKeys.left,
+          cmd.whereKeys.right,
+        ),
+      );
+      return null;
+    }
+    field = l;
+  }
+  return { joinType, field, maxMatches };
 }
 
 export function handleAppendpipe(cmd, ir) {

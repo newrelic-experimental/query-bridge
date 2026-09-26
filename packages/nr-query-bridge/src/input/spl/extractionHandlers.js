@@ -28,6 +28,24 @@ import {
 import { translateSearchExpr } from './splToIR.js';
 import { wrapAsSubquery } from './splExprUtils.js';
 
+// Options before the regex (`field=x max_match=1 `), a complete quoted regex.
+const REX_LEAD = String.raw`^(?:[a-z_]+=\S+\s+)*"(?:[^"\\]|\\.)*"`;
+const REX_TRAILING_TOKEN = new RegExp(
+  `${REX_LEAD}\\s+\\$([A-Za-z0-9_.:-]+)\\$\\s*$`,
+  'i',
+);
+const REX_STRAY_AFTER_QUOTE = new RegExp(`${REX_LEAD}\\S`, 'i');
+
+// Tell a source defect from a grammar gap so the two route differently.
+function describeRexFailure(rawText) {
+  const token = REX_TRAILING_TOKEN.exec(rawText);
+  if (token) return messages.rex_trailing_token(token[1]);
+  if (REX_STRAY_AFTER_QUOTE.test(rawText)) {
+    return messages.rex_malformed_regex(rawText);
+  }
+  return messages.rex_parse_failed(rawText);
+}
+
 export function handleRex(cmd, ir) {
   if (cmd.mode === 'sed') {
     // No NRQL equivalent (replace() is literal-only). Name the field and script so
@@ -37,7 +55,7 @@ export function handleRex(cmd, ir) {
     return;
   }
   if (cmd.mode !== 'extract' || !cmd.pattern) {
-    ir.unsupported.push(messages.rex_parse_failed(cmd.rawText || ''));
+    ir.unsupported.push(describeRexFailure(cmd.rawText || ''));
     return;
   }
 

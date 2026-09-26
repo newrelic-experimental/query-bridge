@@ -20,7 +20,13 @@ import {
   OrderBy,
   JoinClause,
 } from '../../ir/nodes.js';
-import { mapFunction, formatSpan, wrapAsSubquery } from './splExprUtils.js';
+import {
+  mapFunction,
+  mapAggregateExpression,
+  isAggregateExpression,
+  formatSpan,
+  wrapAsSubquery,
+} from './splExprUtils.js';
 import { walkEvalExpr } from './evalHandlers.js';
 import { messages } from '../../messages.js';
 
@@ -65,9 +71,17 @@ export function handleStats(cmd, ir) {
       ir.unsupported.push(messages.first_last_after_reorder(fn.name));
       continue;
     }
-    const mapped = mapFunction(fn.name, fn.args);
-    if (mapped.warning) ir.warnings.push(mapped.warning);
-    if (mapped.unsupported) ir.unsupported.push(mapped.unsupported);
+    // `round(avg(x), 2)` / `eval(<expr over aggregates>)` → one NRQL expression.
+    /** @type {{ expr: any, warning?: string|null, warnings?: string[], unsupported?: string|string[] }} */
+    const mapped = isAggregateExpression(fn)
+      ? mapAggregateExpression(fn)
+      : mapFunction(fn.name, fn.args);
+    for (const w of [mapped.warnings || [], mapped.warning || []].flat()) {
+      ir.warnings.push(w);
+    }
+    for (const u of [mapped.unsupported || []].flat()) {
+      ir.unsupported.push(u);
+    }
     if (mapped.expr) {
       const expr = fn.alias ? Alias(mapped.expr, fn.alias) : mapped.expr;
       // The column name Splunk gives an unaliased aggregate (`count`, `max(b)`),
@@ -137,7 +151,28 @@ export function handleTimechart(cmd, ir) {
 
 export function handleChart(cmd, ir) {
   handleStats(cmd, ir);
-  applyAggOptions(cmd.options || [], ir, 'chart');
+  const options = cmd.options || [];
+  const span = options.find((o) => o.type === 'span');
+  if (span) {
+    // chart's span= bins the `over` field. Only `over _time` is a time bucket
+    // (→ TIMESERIES); over any other field it is a numeric bin width.
+    const overTime = (cmd.groupBy || []).includes('_time');
+    const normalized = overTime ? normalizeSpan(span.value) : null;
+    if (normalized) {
+      ir.timeseries = formatSpan(normalized);
+    } else {
+      ir.unsupported.push(
+        overTime
+          ? messages.span_unrecognized(span.value)
+          : messages.chart_span_non_time(span.value),
+      );
+    }
+  }
+  applyAggOptions(
+    options.filter((o) => o.type !== 'span'),
+    ir,
+    'chart',
+  );
 }
 
 // Options that change only how Splunk renders the result, never the numbers.

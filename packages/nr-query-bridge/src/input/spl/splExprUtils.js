@@ -206,6 +206,102 @@ export function mapFunction(name, args) {
   };
 }
 
+// ── Scalar functions over aggregates ────────────────────────
+
+// Scalar functions NRQL can apply to an aggregate in a flat SELECT (the
+// "distributed" set in nrql-reference.md: round(average(x), 0.01) is valid).
+const AGG_SCALAR_FUNCS = new Set([
+  'round',
+  'abs',
+  'ceil',
+  'ceiling',
+  'floor',
+  'sqrt',
+  'exp',
+  'ln',
+  'log',
+  'log10',
+  'log2',
+  'pow',
+]);
+
+/**
+ * True for a stats/timechart function that is really an expression over
+ * aggregates: `eval(<expr>)` or a scalar wrapper like `round(avg(x), 2)`.
+ */
+export function isAggregateExpression(fn) {
+  if (fn.evalFilter) return false;
+  if (fn.name === 'eval') return (fn.args || []).length === 1;
+  // A scalar function in stats position is never itself an aggregate.
+  return AGG_SCALAR_FUNCS.has(fn.name);
+}
+
+/**
+ * Translate an expression over aggregates to one NRQL SELECT expression, e.g.
+ * `round(avg(dur), 2)` → `round(average(dur), 0.01)`. SPL round(x, N) keeps N
+ * decimal places; NRQL round(x, N) rounds to the nearest multiple of N, so the
+ * precision is converted exactly as eval's round() is.
+ *
+ * @returns {{ expr: object|null, warnings: string[], unsupported: string[] }}
+ */
+export function mapAggregateExpression(fn) {
+  const warnings = [];
+  const unsupported = [];
+  const walk = (node) => {
+    if (typeof node === 'string') {
+      if (looksLikeNumber(node)) return Literal(Number(node), 'number');
+      // A bare field has no single value per group — it isn't an aggregate.
+      unsupported.push(messages.agg_expr_bare_field(node));
+      return null;
+    }
+    if (!node || typeof node !== 'object') return null;
+    switch (node.type) {
+      case 'EvalParens':
+        return walk(node.inner);
+      case 'EvalArith': {
+        if (node.op === '.') break;
+        const l = walk(node.left);
+        const r = walk(node.right);
+        return l && r ? BinOp(node.op, l, r) : null;
+      }
+      case 'EvalFunc': {
+        const name = node.name.toLowerCase();
+        if (AGG_SCALAR_FUNCS.has(name)) {
+          const args = node.args.map(walk);
+          if (args.some((a) => !a)) return null;
+          if (name === 'round' && args.length === 2) {
+            const places = args[1];
+            if (places.type !== 'Literal' || typeof places.value !== 'number') {
+              break;
+            }
+            return Func('round', [
+              args[0],
+              Literal(Math.pow(10, -places.value), 'number'),
+            ]);
+          }
+          if (name === 'log' && args.length === 1) return Func('log10', args);
+          if (name === 'ceiling') return Func('ceil', args);
+          return Func(name, args);
+        }
+        const mapped = mapFunction(name, node.args);
+        if (mapped.warning) warnings.push(mapped.warning);
+        if (mapped.unsupported) unsupported.push(mapped.unsupported);
+        return mapped.expr;
+      }
+      default:
+        break;
+    }
+    unsupported.push(messages.agg_expr_unsupported(fn.name));
+    return null;
+  };
+  const root =
+    fn.name === 'eval'
+      ? fn.args[0]
+      : { type: 'EvalFunc', name: fn.name, args: fn.args };
+  const expr = walk(root);
+  return { expr: unsupported.length ? null : expr, warnings, unsupported };
+}
+
 // ── Comparison builders ─────────────────────────────────────
 
 export function buildComparison(field, op, value) {

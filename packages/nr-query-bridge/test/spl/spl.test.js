@@ -3188,7 +3188,7 @@ const cases = [
   {
     spl: '* | join host [search status=500 | table host, message]',
     nrql: "FROM Log JOIN (FROM Log SELECT host, message WHERE status = '500' OR numeric(status) = 500 LIMIT MAX) ON host = host SELECT *",
-    warningFunc: ['join_cardinality_limit'],
+    warningFunc: ['join_cardinality_limit', 'join_max_matches_differ'],
     doc: 'correlation-join',
     verified: 'human',
   },
@@ -3241,7 +3241,7 @@ const cases = [
   {
     spl: '* | join user [search * | table user, role]',
     nrql: 'FROM Log JOIN (FROM Log SELECT user, role LIMIT MAX) ON user = user SELECT *',
-    warningFunc: ['join_cardinality_limit'],
+    warningFunc: ['join_cardinality_limit', 'join_max_matches_differ'],
     doc: 'correlation-join',
     verified: 'human',
   },
@@ -5292,7 +5292,7 @@ const cases = [
   {
     spl: 'index=web | rex "\\"cur\\":\\"(?<cur>[^\\"]+)"\\"',
     nrql: '',
-    unsupportedFunc: ['rex_parse_failed'],
+    unsupportedFunc: ['rex_malformed_regex'],
     doc: 'fields-rex',
     verified: false,
   },
@@ -5418,6 +5418,140 @@ const cases = [
     nrql: '',
     unsupportedFunc: ['eval_relative_time_unsupported'],
     doc: 'eval-math',
+    verified: false,
+  },
+  //
+  // ── Gaps report round 2 (nr-query-bridge-gaps-round2.md) ────────
+  //
+  // 4a spath: positional path with options in any position.
+  {
+    spl: 'index=web | spath "meta.responseTime" output=responseTime',
+    nrql: "FROM Log WITH jparse(message, 'meta.responseTime') AS responseTime SELECT * WHERE index = 'web'",
+    warningFunc: ['spath_json_only'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  {
+    spl: 'index=web | spath input=json orderRef output=orderRef',
+    nrql: "FROM Log WITH jparse(json, 'orderRef') AS orderRef SELECT * WHERE index = 'web'",
+    warningFunc: ['spath_json_only'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  // 4b inputlookup where takes search syntax (implicit AND); bare where A B is invalid SPL.
+  {
+    spl: '| inputlookup shops.csv where Grp!="A" Grp!="B"',
+    nrql: "FROM lookup(shops.csv) SELECT * WHERE Grp != 'A' AND Grp != 'B'",
+    warningFunc: ['lookup_upload_reminder', 'inputlookup_where_warning'],
+    doc: 'results-inputlookup',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where Grp!="A" Grp!="B"',
+    nrql: '',
+    unsupportedFunc: ['where_implicit_and'],
+    doc: 'results-where',
+    verified: false,
+  },
+  // 4c scalar function over an aggregate: SPL round(x, N decimals) → NRQL round(x, 10^-N).
+  {
+    spl: 'index=web | stats round(avg(dur), 2) as avgDur by endpoint',
+    nrql: "FROM Log SELECT round(average(dur), 0.01) AS 'avgDur' WHERE index = 'web' FACET endpoint",
+    warningFunc: ['facet_default_limit'],
+    doc: 'stats-functions',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart eval(round(avg(dur), 2)) as avgDur by endpoint',
+    nrql: "FROM Log SELECT round(average(dur), 0.01) AS 'avgDur' WHERE index = 'web' FACET endpoint TIMESERIES AUTO",
+    warningFunc: ['facet_default_limit'],
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats round(dur, 2) as x',
+    nrql: '',
+    unsupportedFunc: ['agg_expr_bare_field'],
+    doc: 'stats-functions',
+    verified: false,
+  },
+  // 4d join options and the alias form; default max=1 vs NRQL's every-match.
+  {
+    spl: 'index=web | join type=left max=0 id [ search index=other | fields id owner ]',
+    nrql: "FROM Log LEFT JOIN (FROM Log SELECT id, owner WHERE index = 'other' LIMIT MAX) ON id = id SELECT * WHERE index = 'web'",
+    warningFunc: ['join_cardinality_limit'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | join left=L right=R where L.id=R.id [ search index=other | fields id owner ]',
+    nrql: "FROM Log JOIN (FROM Log SELECT id, owner WHERE index = 'other' LIMIT MAX) ON id = id SELECT * WHERE index = 'web'",
+    warningFunc: ['join_cardinality_limit', 'join_max_matches_differ'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | join left=L right=R where L.id=R.uid [ search index=other | fields uid ]',
+    nrql: '',
+    unsupportedFunc: ['join_where_keys_differ'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | join [search index=other | fields id owner]',
+    nrql: '',
+    unsupportedFunc: ['join_no_key'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | join id [search index=other | stats latest(owner) as owner by id]',
+    nrql: "FROM Log JOIN (FROM Log SELECT latest(owner) AS 'owner' WHERE index = 'other' FACET id LIMIT MAX) ON id = id SELECT * WHERE index = 'web'",
+    warningFunc: [
+      'join_cardinality_limit',
+      'join_subsearch_warning',
+      'facet_default_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // 4e sort on a stats column written as its call.
+  {
+    spl: 'index=web | stats dc(requestId) by host | sort -dc(requestId)',
+    nrql: "FROM Log SELECT uniqueCount(requestId) WHERE index = 'web' FACET host ORDER BY uniqueCount DESC",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-sort',
+    verified: false,
+  },
+  {
+    spl: 'index=web | sort -dc(requestId)',
+    nrql: '',
+    unsupportedFunc: ['sort_unknown_stats_column'],
+    doc: 'results-sort',
+    verified: false,
+  },
+  // 4f chart span= bins the over field; only over _time is a time bucket.
+  {
+    spl: 'index=web | chart count over _time span=1h by host',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET host TIMESERIES 1 hour",
+    warningFunc: ['facet_default_limit'],
+    doc: 'reports-chart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | chart count over host span=1',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['chart_span_non_time'],
+    doc: 'reports-chart',
+    verified: false,
+  },
+  // 4g rex: source defect vs trailing dashboard token vs grammar gap.
+  {
+    spl: 'index=web | rex field=_raw "a=(?<a>\\w+)" $extraFilter$',
+    nrql: '',
+    unsupportedFunc: ['rex_trailing_token'],
+    doc: 'fields-rex',
     verified: false,
   },
 ];

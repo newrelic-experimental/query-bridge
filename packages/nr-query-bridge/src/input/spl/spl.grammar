@@ -325,10 +325,21 @@ where_command
   // `where(expr)` with no space before the paren is valid SPL — require the next
   // char to be whitespace or '(' so `wherefoo` doesn't parse as `where foo`.
   = 'where'i &(_ / '(') _* expr:where_expression
+    &(_* '|' / _* !.)
     {
       return {
         type: 'WhereCommand',
         expression: expr
+      };
+    }
+  // `where A B` — implicit AND is search syntax, not valid in where. Recognized so
+  // the panel owner gets a clear message instead of a raw parser expectation list.
+  / 'where'i &(_ / '(') _* where_expression (_+ !('AND'i _ / 'OR'i _) where_expression)+ &(_* '|' / _* !.)
+    {
+      return {
+        type: 'WhereCommand',
+        expression: null,
+        implicitAnd: true
       };
     }
 
@@ -511,8 +522,11 @@ sort_field
 // A sort field may be wrapped in a type-hint: num(f) / str(f) / ip(f).
 // The hint only tells Splunk how to compare; NRQL ignores it, so we keep the
 // bare field name. A bare field must not be `limit=...` (a trailing option).
+// A stats output column written as its call (`dc(requestId)`) is tried after the
+// num()/str()/ip() type hints; the handler resolves it to the aggregate column.
 sort_field_name
   = ('num'i / 'str'i / 'ip'i) '(' _* name:quotable_field_name _* ')' { return name; }
+  / call:$([a-zA-Z_][a-zA-Z0-9_]* '(' [^()|,]* ')') { return call; }
   / !('limit'i '=') name:quotable_field_name { return name; }
 
 sort_order
@@ -933,12 +947,14 @@ lookup_output
 /* ============================================================
    Inputlookup command: | inputlookup [append=true] tablename
    ============================================================ */
+// `where` here takes SEARCH syntax (implicit AND between terms is valid), not the
+// eval-style where-command expression.
 inputlookup_command
-  = 'inputlookup'i _+ 'append='i [a-zA-Z]+ _+ table:field_name _+ 'where'i _+ condition:where_expression
+  = 'inputlookup'i _+ 'append='i [a-zA-Z]+ _+ table:field_name _+ 'where'i _+ condition:or_expr
     {
       return { type: 'InputlookupCommand', table: table, append: true, where: condition };
     }
-  / 'inputlookup'i _+ table:field_name _+ 'where'i _+ condition:where_expression
+  / 'inputlookup'i _+ table:field_name _+ 'where'i _+ condition:or_expr
     {
       return { type: 'InputlookupCommand', table: table, append: false, where: condition };
     }
@@ -954,20 +970,41 @@ inputlookup_command
 /* ============================================================
    Join command: | join [type=inner|left|outer] field [subsearch]
    ============================================================ */
+// Options (type=, max=, left=, right=, overwrite=, …) may appear in any order before
+// the join keys. The alias form `left=L right=R where L.a=R.b` replaces the key list.
 join_command
-  = 'join'i jtype:join_type_option? _+ first:field_name rest:((_* ',' _* / _+) f:field_name { return f; })* _* '[' subsearch:subsearch_content ']'
+  = 'join'i opts:cmd_option* _+ 'where'i _+ l:field_name _* '=' _* r:field_name _* '[' subsearch:subsearch_content ']'
     {
       return {
         type: 'JoinCommand',
-        joinType: jtype || 'inner',
+        options: opts,
+        whereKeys: { left: l, right: r },
+        field: null,
+        fields: [],
+        subsearch: subsearch
+      };
+    }
+  / 'join'i opts:cmd_option* _+ first:field_name rest:((_* ',' _* / _+) f:field_name { return f; })* _* '[' subsearch:subsearch_content ']'
+    {
+      return {
+        type: 'JoinCommand',
+        options: opts,
         field: first,
         fields: [first].concat(rest),
         subsearch: subsearch
       };
     }
-
-join_type_option
-  = _+ 'type=' type:('inner'i / 'left'i / 'outer'i) { return type.toLowerCase(); }
+  / 'join'i opts:cmd_option* _* '[' subsearch:subsearch_content ']'
+    {
+      // No key list: Splunk joins on every field the two sides share.
+      return {
+        type: 'JoinCommand',
+        options: opts,
+        field: null,
+        fields: [],
+        subsearch: subsearch
+      };
+    }
 
 subsearch_content
   = chars:subsearch_char+ { return chars.join(''); }
@@ -979,14 +1016,17 @@ subsearch_char
 /* ============================================================
    Spath command: | spath [input=field] [path=json.path] [output=alias]
    ============================================================ */
+// Options and the positional path may appear in any order:
+// `spath "a.b" output=x`, `spath input=j a.b output=x`, `spath output=x path=a.b`.
 spath_command
-  = 'spath'i opts:spath_option* pos:spath_positional?
+  = 'spath'i items:(o:spath_option { return o; } / p:spath_positional { return { key: 'positional', value: p }; })*
     {
-      var input = null, path = null, output = null;
-      for (var i = 0; i < opts.length; i++) {
-        if (opts[i].key === 'input') input = opts[i].value;
-        if (opts[i].key === 'path') path = opts[i].value;
-        if (opts[i].key === 'output') output = opts[i].value;
+      var input = null, path = null, output = null, pos = null;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].key === 'input') input = items[i].value;
+        if (items[i].key === 'path') path = items[i].value;
+        if (items[i].key === 'output') output = items[i].value;
+        if (items[i].key === 'positional' && pos === null) pos = items[i].value;
       }
       if (pos && !path) path = pos;
       return {

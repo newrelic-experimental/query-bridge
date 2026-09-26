@@ -26,6 +26,15 @@ export const messages = {
       ? `rex command could not be parsed: ${rawText}`
       : 'rex command could not be parsed',
 
+  // SPL: `* | rex "\"cur\":\"(?<cur>[^\"]+)"\"` — the quote closes early, leaving stray
+  // characters. Splunk tolerates this; it is a defect in the source query.
+  rex_malformed_regex: (rawText) =>
+    `rex regex is malformed in the source query (its quoted string ends early and is followed by stray characters): ${rawText}`,
+
+  // SPL: `* | rex field=_raw "(?<a>\\w+)" $extraFilter$` — a token with no pipe before it.
+  rex_trailing_token: (token) =>
+    `rex is followed by the dashboard token $${token}$ with no pipe; the token carries a search clause resolved only at run time, so the query cannot be translated until it is expanded`,
+
   // SPL: `* | rex "no-groups-here"`
   rex_no_groups: () =>
     'rex pattern has no named capture groups; nothing to extract',
@@ -120,6 +129,10 @@ export const messages = {
   wildcard_rename_dropped: (affix) =>
     `Wildcard rename (${affix}* as *) dropped: no downstream field references it, so fields ` +
     'keep their original names.',
+
+  // SPL: `* | sort -dc(requestId)` with no matching `stats dc(requestId)` before it
+  sort_unknown_stats_column: (field) =>
+    `sort field '${field}' names a stats output column that no preceding aggregation produces`,
 
   // SPL: `* | table a Totals*` (no preceding aggregation)
   list_wildcard_field: (command, field) =>
@@ -349,6 +362,18 @@ export const messages = {
   join_multi_key: (fields) =>
     `join on multiple keys (${fields}) has no NRQL equivalent; NRQL JOIN … ON supports a single key`,
 
+  // SPL: `* | join id [search index=other | fields id owner]` — raw subsearch, default max=1
+  join_max_matches_differ: (max) =>
+    `join max=${max} joins each row to at most ${max} subsearch match(es), but NRQL JOIN returns every match (up to 100); if the subsearch can repeat a key, rows will multiply — aggregate the subsearch by the key (e.g. stats latest(x) by key) or use max=0 if every match is intended`,
+
+  // SPL: `* | join [search index=other | fields id owner]` — no key list
+  join_no_key: () =>
+    'join without a key list joins on every shared field; NRQL JOIN needs a single explicit key — name the key field',
+
+  // SPL: `* | join left=L right=R where L.id=R.user_id [search …]`
+  join_where_keys_differ: (left, right) =>
+    `join where ${left}=${right} compares differently-named fields; NRQL JOIN … ON only supports the same field name on both sides here`,
+
   // SPL: `* | join host [search * | badcommand]`
   join_parse_failed: (msg) => `join subsearch could not be parsed: ${msg}`,
 
@@ -446,6 +471,10 @@ export const messages = {
   where_time_constraints_collapsed: () =>
     'multiple time constraints collapsed into one SINCE/UNTIL (last-writer-wins)',
 
+  // SPL: `* | where a="x" b="y"` — implicit AND (search syntax) inside where.
+  where_implicit_and: () =>
+    'where: implicit AND is not valid in where (it is search syntax); join the conditions with AND — this is a defect in the source query',
+
   // SPL: `* | where "a"="b"` — the whole condition constant-folds to false.
   where_always_false: () =>
     'where condition is always false (a comparison between two different literals), so the query would return no rows; remove or fix the condition',
@@ -484,6 +513,14 @@ export const messages = {
   // SPL: `* | stats xyzfunc(field) by host`
   unknown_stats_func: (name) =>
     `SPL function ${name}() has no known NRQL equivalent`,
+
+  // SPL: `* | stats round(dur + avg(x), 2)` — a bare field inside an aggregate expression.
+  agg_expr_bare_field: (field) =>
+    `field '${field}' is used outside an aggregate in a stats expression; each group needs one value, so wrap it in an aggregate (e.g. avg(${field}))`,
+
+  // SPL: `* | stats eval(a . avg(x))` — a construct the aggregate-expression walker can't express.
+  agg_expr_unsupported: (name) =>
+    `${name}(…) in stats position contains an operation that cannot be applied to an aggregate in NRQL`,
 
   // ── aggregationHandlers ───────────────────────────────────────────
 
@@ -630,6 +667,10 @@ export const messages = {
   // SPL: `* | timechart span=90ms count` — a span unit NRQL TIMESERIES cannot express.
   span_unrecognized: (span) =>
     `span=${span} is not a time span NRQL TIMESERIES can express (use s, m, h, d, w, mon, q, or y units)`,
+
+  // SPL: `* | chart count over host span=1` — span bins the over field, not time.
+  chart_span_non_time: (span) =>
+    `chart span=${span} bins the 'over' field into numeric ranges; only 'over _time' maps to NRQL TIMESERIES — use bin/histogram() for a numeric field`,
 
   // SPL: `* | timechart bins=90 count` / `minspan=1h` — Splunk's auto-bucket hints.
   timechart_bucket_hint_auto: (option) =>
