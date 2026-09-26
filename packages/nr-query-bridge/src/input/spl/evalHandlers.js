@@ -31,6 +31,7 @@ import {
 } from './splExprUtils.js';
 // Circular import — safe because translateSearchExpr is only called at runtime, not at module load time
 import { translateSearchExpr } from './splToIR.js';
+import * as parser from './splParser.js';
 import { messages } from '../../messages.js';
 import { splFormatToJava } from './splFormatCodes.js';
 
@@ -39,13 +40,17 @@ import { splFormatToJava } from './splFormatCodes.js';
 export function handleWhere(cmd, ir) {
   // If after aggregation, wrap as subquery and filter the outer query.
   const afterAgg = ir._hasAggregation;
-  if (afterAgg) wrapAsSubquery(ir);
+  const unwrap = afterAgg ? wrapAsSubquery(ir) : null;
 
   // The PEG grammar uses `expression` not `expr`
   const whereNode = cmd.expression || cmd.expr;
   const expr = translateWhereExpr(whereNode, ir);
   if (expr) {
     ir.where.push(expr);
+  } else if (unwrap) {
+    // Nothing to filter (e.g. a constant-folded `where "a"="a"`): don't leave
+    // a pointless `FROM (…) SELECT *` wrapper behind.
+    unwrap();
   }
 }
 
@@ -76,16 +81,69 @@ export function handleEval(cmd, ir) {
       }
       seen.add(col.name);
     }
+    // mvcount(<values/uniques column>) is the number of distinct values — an
+    // aggregate (uniqueCount) computed inside the stats step, not a row-wise
+    // length() over the list (which is null across the subquery boundary).
+    const evalCmd = rewriteMvcountOfUniques(cmd, ir.dataSource.query);
     // Non-scalar: an eval referencing a median/percentile/uniques column (a
     // keyed object/list across the subquery boundary) cannot be used in
     // row-wise arithmetic — numeric() of it is null.
     const nonScalarNames = cols.filter((c) => c.nonScalar).map((c) => c.name);
     ir.select.push(...facetKeys);
-    translateEvalExpr(cmd, ir, { projectToSelect: true, nonScalarNames });
+    translateEvalExpr(evalCmd, ir, { projectToSelect: true, nonScalarNames });
     return;
   }
   // eval creates bindings: WITH expr AS name
   translateEvalExpr(cmd, ir);
+}
+
+// Rewrite `mvcount(v)` — where `v` is an inner `values()`/`uniques()` column — to
+// reference a new inner column `uniqueCount(<same args>)`. Returns a new eval
+// command (the parsed AST is not mutated); `inner.select` gains the column.
+function rewriteMvcountOfUniques(cmd, inner) {
+  if (!cmd.assignments) return cmd;
+  const uniquesArgs = new Map();
+  for (const e of inner.select) {
+    const fn = e.type === 'Alias' ? e.expr : e;
+    if (fn.type === 'Function' && fn.name === 'uniques' && fn.args.length) {
+      uniquesArgs.set(e.type === 'Alias' ? e.name : 'uniques', fn.args);
+    }
+  }
+  if (uniquesArgs.size === 0) return cmd;
+  const taken = new Set(inner.select.map((e) => e.name).filter(Boolean));
+  const added = new Map();
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return node;
+    if (
+      node.type === 'EvalFunc' &&
+      node.name.toLowerCase() === 'mvcount' &&
+      node.args.length === 1 &&
+      typeof node.args[0] === 'string' &&
+      uniquesArgs.has(node.args[0])
+    ) {
+      const col = node.args[0];
+      if (!added.has(col)) {
+        let name = `${col}_count`;
+        while (taken.has(name)) name = `_${name}`;
+        taken.add(name);
+        const helper = Alias(Func('uniqueCount', uniquesArgs.get(col)), name);
+        Object.defineProperty(helper, '_synthetic', {
+          value: true,
+          enumerable: false,
+        });
+        inner.select.push(helper);
+        added.set(col, name);
+      }
+      return added.get(col);
+    }
+    const copy = Array.isArray(node) ? [] : {};
+    for (const [k, v] of Object.entries(node)) copy[k] = visit(v);
+    return copy;
+  };
+  return {
+    ...cmd,
+    assignments: cmd.assignments.map((a) => ({ ...a, expr: visit(a.expr) })),
+  };
 }
 
 // ── Expression translators ──────────────────────────────────
@@ -103,6 +161,7 @@ export function translateWhereExpr(expr, ir) {
     since,
     until,
     consumedTime,
+    folded,
   } = translateSearchExpr(expr, ir);
   ir.warnings.push(...warnings);
   ir.unsupported.push(...unsupported);
@@ -118,6 +177,9 @@ export function translateWhereExpr(expr, ir) {
   // would emit a spurious unsupported). consumedTime covers the drop case where
   // neither since nor until is set.
   if (consumedTime || since || until) return null;
+  // A constant-folded condition (`where "a"="a"`) that simplified away is
+  // "always true", not an untranslated expression — no eval fallback.
+  if (folded) return null;
   // If translateSearchExpr already emitted unsupported messages for this
   // expression (e.g. Path 2a: non-_time vs now()), don't re-walk through
   // the eval fallback — that would fire a second, spurious unsupported.
@@ -681,6 +743,58 @@ function walkEvalFunc(node, ir) {
     case 'isbool':
     case 'isstr': {
       ir.unsupported.push(messages.eval_func_unsupported(name));
+      return null;
+    }
+
+    case 'searchmatch': {
+      // searchmatch("<search terms>") evaluates search syntax against the event.
+      // Translate the string with the search-clause translator (bare terms →
+      // message LIKE, field=value → comparison). Splunk matches bare terms
+      // against the whole raw event; NR Log keeps that text in `message`.
+      const arg = args[0];
+      const text =
+        typeof arg === 'object' && arg?.type === 'StringLiteral'
+          ? arg.value
+          : null;
+      if (text === null || args.length !== 1) {
+        ir.unsupported.push(messages.searchmatch_nonliteral());
+        return null;
+      }
+      let ast;
+      try {
+        ast = parser.parse(text);
+      } catch {
+        ast = null;
+      }
+      if (!ast || ast.commands.length > 0 || !ast.search) {
+        ir.unsupported.push(messages.searchmatch_unparsed(text));
+        return null;
+      }
+      const { expr, warnings, unsupported } = translateSearchExpr(
+        ast.search,
+        ir,
+      );
+      ir.warnings.push(...warnings);
+      ir.unsupported.push(...unsupported);
+      if (!expr) return null;
+      ir.warnings.push(messages.searchmatch_raw_event());
+      return expr;
+    }
+
+    case 'sum': {
+      // Row-wise sum(a, b, …) = a + b + … . (One argument is a multivalue sum
+      // over a single field, which NRQL has no row-wise form for.)
+      if (args.length < 2) {
+        ir.unsupported.push(messages.eval_func_unsupported(name));
+        return null;
+      }
+      const terms = args.map((a) => walkEvalExpr(a, ir));
+      if (terms.some((t) => !t)) return null;
+      return terms.map(numericize).reduce((acc, t) => BinOp('+', acc, t));
+    }
+
+    case 'relative_time': {
+      ir.unsupported.push(messages.eval_relative_time_unsupported());
       return null;
     }
 

@@ -15,18 +15,24 @@ export const messages = {
   // ── extractionHandlers ────────────────────────────────────────────
 
   // SPL: `* | rex mode=sed field=msg "s/foo/bar/g"`
-  rex_sed_unsupported: () => 'rex mode=sed has no NRQL equivalent',
+  // Structured: names the field and sed script so tooling can route it to an
+  // ingest-time parsing rule (NRQL replace() is literal-only).
+  rex_sed_unsupported: (field, script) =>
+    `rex mode=sed has no NRQL equivalent (field=${field}, sed script '${script}'); NRQL replace() is literal-only — apply this rewrite at ingest time with a parsing rule`,
 
-  // SPL: `* | rex`
-  rex_parse_failed: () => 'rex command could not be parsed',
+  // SPL: `* | rex` / `* | rex "(?<a>x)"\"` (stray characters after the regex)
+  rex_parse_failed: (rawText) =>
+    rawText
+      ? `rex command could not be parsed: ${rawText}`
+      : 'rex command could not be parsed',
 
   // SPL: `* | rex "no-groups-here"`
   rex_no_groups: () =>
     'rex pattern has no named capture groups; nothing to extract',
 
-  // SPL: `* | rex max_match=0 "(?<a>\\w+)"`
-  rex_max_match: () =>
-    'rex max_match not supported; NRQL capture() returns first match only',
+  // SPL: `* | rex max_match=0 "(?<a>\\w+)"` (max_match=1 is the default and translates)
+  rex_max_match: (n) =>
+    `rex max_match=${n} not supported; NRQL capture() returns only the first match per event`,
 
   // SPL: `* | rex "(?<=prefix)(?<a>\\w+)"`
   rex_lookaround: () =>
@@ -115,6 +121,30 @@ export const messages = {
     `Wildcard rename (${affix}* as *) dropped: no downstream field references it, so fields ` +
     'keep their original names.',
 
+  // SPL: `* | table a Totals*` (no preceding aggregation)
+  list_wildcard_field: (command, field) =>
+    `${command} wildcard field '${field}' has no NRQL equivalent; NRQL SELECT cannot match attributes by name pattern — list the fields explicitly`,
+
+  // SPL: `* | table a, max(b)` with no stats before it
+  list_stats_column_without_stats: (command, field) =>
+    `${command} field '${field}' names a stats output column, but no stats/chart/timechart precedes it`,
+
+  // SPL: `* | stats count by a | table a, b` — b is not produced by the aggregation
+  list_column_not_produced: (command, fields) =>
+    `${command} column(s) ${fields.join(', ')} are not produced by the preceding aggregation (Splunk shows them empty); skipped`,
+
+  // SPL: `* | stats count by a | table a`
+  list_keeps_aggregates: (command) =>
+    `${command} lists no aggregate column, but NRQL needs at least one alongside FACET; the aggregate column(s) are still returned`,
+
+  // SPL: `* | stats count by a, b | table a, count`
+  list_keeps_facets: (command, facets) =>
+    `${command} omits FACET key(s) ${facets.join(', ')}, but NRQL always returns FACET keys; they remain in the output`,
+
+  // SPL: `* | dedup 3 host` — keeps 3 events per key.
+  dedup_count_unsupported: (n) =>
+    `dedup ${n} keeps ${n} events per key; NRQL FACET returns one row per key, so there is no equivalent (dedup 1 translates)`,
+
   // SPL: `* | dedup host`
   dedup_facet_warning: () =>
     'dedup translated to FACET; add latest(field) for each field you want to keep',
@@ -158,8 +188,26 @@ export const messages = {
   // SPL: `* | stats count by host | where count > 5 | where count < 100`
   // After folding, a residual row-wise SubquerySource inner means the chain cannot
   // be collapsed into legal NRQL. Loud unsupported over non-compiling NRQL.
+  // (eval/where/stats AFTER an aggregation are generally supported — this is only
+  // the residual shape of a per-row step feeding a further aggregation.)
   compound_collapse_unsupported: () =>
-    'Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported',
+    'Per-row step (eval, rex, …) between two aggregations would have to run inside the nested aggregation, which NRQL does not allow; not yet supported',
+
+  // SPL: `* | stats count by host | eval a=count/60 | eval b=count/120`
+  post_agg_column_folded_away: (name) =>
+    `Post-aggregation step references '${name}', an aggregate column an earlier eval folded into its own result; reference the eval result instead, or compute both in one eval`,
+
+  // SPL: `* | stats count by uri | eval t=strftime(_time, "%H")`
+  post_agg_time_not_grouped: () =>
+    "Post-aggregation step references _time, but _time is not in the grouped output (the stats has no 'by _time'; Splunk's own value here is empty) — group by _time (or use timechart) to keep it",
+
+  // SPL: `* | stats count by uri | eval x=bytes*2`
+  post_agg_field_not_produced: (name) =>
+    `Post-aggregation step references '${name}', which the aggregation does not output (only its BY fields and aggregate columns survive stats)`,
+
+  // SPL: `* | stats count by host | eval a=count/60 | sort count`
+  post_agg_sort_on_folded_column: () =>
+    'sort after the aggregation uses an aggregate column an earlier eval folded into its result; sort on the eval result instead',
 
   // SPL: `* | stats count by host | stats sum(count) by region`
   // A trailing aggregating layer over an aggregating inner subquery is legal NRQL
@@ -262,6 +310,22 @@ export const messages = {
   eval_func_unsupported: (name) =>
     `eval function ${name}() has no NRQL equivalent`,
 
+  // SPL: `* | where searchmatch("error")`
+  searchmatch_raw_event: () =>
+    "searchmatch() translated as a search on the message attribute; Splunk matched bare terms against the whole raw event, so terms that only appear in other attributes won't match",
+
+  // SPL: `* | where searchmatch(pattern_field)`
+  searchmatch_nonliteral: () =>
+    'searchmatch() needs a single quoted search string; a field or expression argument cannot be translated',
+
+  // SPL: `* | where searchmatch("a | b")`
+  searchmatch_unparsed: (text) =>
+    `searchmatch("${text}") contains search syntax that could not be translated`,
+
+  // SPL: `* | eval t = relative_time(_time, "-1d@d")`
+  eval_relative_time_unsupported: () =>
+    'relative_time() in eval computes a per-event time and has no NRQL equivalent; to bound the time range use earliest=/latest= or where _time >= relative_time(now(), "<offset>")',
+
   // SPL: `* | eval x = strftime(_time, "%s")` — a %-code with no Java pattern letter.
   strftime_unmappable_code: (code) =>
     `strftime/strptime format code '${code}' has no Java DateTimeFormatter equivalent; remove it or reformat the field another way`,
@@ -280,6 +344,10 @@ export const messages = {
   // SPL: `* | join type=outer host [search *]`
   join_outer_unsupported: () =>
     'NRQL does not support full outer join; only INNER and LEFT joins are available',
+
+  // SPL: `* | join type=left a, b [search … | table a b c]`
+  join_multi_key: (fields) =>
+    `join on multiple keys (${fields}) has no NRQL equivalent; NRQL JOIN … ON supports a single key`,
 
   // SPL: `* | join host [search * | badcommand]`
   join_parse_failed: (msg) => `join subsearch could not be parsed: ${msg}`,
@@ -377,6 +445,24 @@ export const messages = {
   // SPL: `| where _time > relative_time(now(), "-7d")` when earliest=/latest= already set
   where_time_constraints_collapsed: () =>
     'multiple time constraints collapsed into one SINCE/UNTIL (last-writer-wins)',
+
+  // SPL: `* | where "a"="b"` — the whole condition constant-folds to false.
+  where_always_false: () =>
+    'where condition is always false (a comparison between two different literals), so the query would return no rows; remove or fix the condition',
+
+  // SPL: `* | where "$region$"="*" OR region="$region$"` — the dashboard "all" guard.
+  where_token_all_guard_dropped: (token) =>
+    `where "$${token}$"="*" (the dashboard "all values" guard) was dropped: New Relic substitutes {{${token}}} ` +
+    `directly into the field comparison, so a literal * would match nothing. To offer "all values", enable the ` +
+    `New Relic variable's multi-value / include-all option instead of a * choice.`,
+
+  // SPL: `* | where "$env$"="prod"` — a token compared with a literal other than "*".
+  where_token_const_comparison: (expr) =>
+    `where ${expr} compares a dashboard token with a literal; the result depends on the value chosen at run time and cannot be translated`,
+
+  // SPL: `* | where "1"=1` — string literal compared with a number literal.
+  where_mixed_const_comparison: (expr) =>
+    `where ${expr} compares a string literal with a number literal; Splunk's coercion for this cannot be reproduced reliably`,
 
   // SPL: `index=web | where bytes > jparse(payload, "size")`
   where_rhs_func_not_row_wise: (name) =>
@@ -521,6 +607,10 @@ export const messages = {
   search_func_unsupported: (name) =>
     `SPL function '${name}()' in search expression could not be translated`,
 
+  // SPL: `index=web "status":"500"` — the JSON-fragment search idiom.
+  search_json_fragment: (value) =>
+    `search term ${value} is a JSON fragment (quoted pieces joined by ':'); Splunk matches it by breaking it into terms, which a text match cannot reproduce — rewrite it as a field comparison (e.g. status=500 after spath) or a single quoted phrase`,
+
   // SPL: (unknown AST node in search expression)
   search_unknown_node: (type) => `Unknown search node type: ${type}`,
 
@@ -536,6 +626,22 @@ export const messages = {
   // SPL: `* | stats count by host`
   facet_default_limit: () =>
     'NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.',
+
+  // SPL: `* | timechart span=90ms count` — a span unit NRQL TIMESERIES cannot express.
+  span_unrecognized: (span) =>
+    `span=${span} is not a time span NRQL TIMESERIES can express (use s, m, h, d, w, mon, q, or y units)`,
+
+  // SPL: `* | timechart bins=90 count` / `minspan=1h` — Splunk's auto-bucket hints.
+  timechart_bucket_hint_auto: (option) =>
+    `${option} steers Splunk's automatic bucket size; translated as TIMESERIES AUTO, which also picks the bucket size from the time window, so bucket boundaries may differ`,
+
+  // SPL: `* | timechart cont=false count` — rendering-only options.
+  agg_display_options_ignored: (command, options) =>
+    `${command} option(s) ${options.join(', ')} only affect Splunk's rendering and were ignored`,
+
+  // SPL: `* | timechart aligntime=@d count` — an option with no NRQL equivalent.
+  agg_option_unsupported: (command, option) =>
+    `${command} option ${option} has no NRQL equivalent`,
 
   // SPL: `* | timechart count by f usenull=false`
   usenullNoEquivalent: () =>
@@ -555,14 +661,26 @@ export const messages = {
       ? `SPL 'transaction' groups loglines into per-key sessions and the '${windowArg}' arg splits them on a time gap/boundary; NRQL has no sessionization primitive (FACET groups globally, TIMESERIES buckets by wall-clock), so it has no equivalent`
       : `SPL 'transaction' groups loglines into per-key sessions; NRQL has no sessionization primitive, and even bare 'transaction' is not a plain FACET (Splunk's maxevents=1000 splits high-cardinality keys and connected=true groups by stream connectivity), so it has no equivalent`,
 
-  // SPL: `* | stats list(eventType) by orderId`
-  list_order_warning: () =>
-    'SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved',
+  // SPL: `* | sort -x | stats first(y)` — first/last after the rows were re-ordered.
+  first_last_after_reorder: (name) =>
+    `${name}() after a sort/reverse/tail depends on the re-ordered row order; NRQL latest()/earliest() pick by timestamp, so the result would differ`,
 
   // SPL: `* | timewrap 1d`
   unsupported_command: (name) =>
     `SPL command '${name}' has no known NRQL equivalent`,
 
+  // SPL: `* | where "a" LIKE b c` — a command we translate, whose arguments its own
+  // grammar rule rejected. Names the construct, not the command.
+  command_args_unparsed: (name, detail) =>
+    detail
+      ? `SPL '${name}' arguments could not be parsed ${detail}`
+      : `SPL '${name}' arguments could not be parsed`,
+
   // SPL: (unrecognized command type in AST)
   command_not_implemented: (type) => `command '${type}' not yet implemented`,
+
+  // Internal contract (translate.js): an empty NRQL must always carry a reason.
+  // Reaching this is a translator bug, reported instead of an empty, reasonless result.
+  empty_translation_internal: () =>
+    'internal: translation produced no NRQL and no reason; please report this query as a translator bug',
 };

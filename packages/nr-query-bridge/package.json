@@ -45,7 +45,7 @@
     "prepublishOnly": "npm test && npm run build:types",
     "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=html",
-    "build:parsers": "peggy -o src/input/spl/splParser.js --format es src/input/spl/spl.grammar",
+    "build:parsers": "peggy --allowed-start-rules start,strict_command -o src/input/spl/splParser.js --format es src/input/spl/spl.grammar",
     "build:types": "tsc --declaration --emitDeclarationOnly --noEmit false --outDir types",
     "types:check": "tsc --noEmit"
   }

@@ -56,10 +56,11 @@ export function formatSpan(span) {
 
 // ── Function mapping ────────────────────────────────────────
 
-const PERC_REGEX = /^perc(\d+)$/;
-const P_REGEX = /^p(\d+)$/;
-const EXACTPERC_REGEX = /^exactperc(\d+)$/;
-const UPPERPERC_REGEX = /^upperperc(\d+)$/;
+// Percentile functions; the rank may be fractional (perc99.9 → percentile(x, 99.9)).
+const PERC_REGEX = /^perc(\d+(?:\.\d+)?)$/;
+const P_REGEX = /^p(\d+(?:\.\d+)?)$/;
+const EXACTPERC_REGEX = /^exactperc(\d+(?:\.\d+)?)$/;
+const UPPERPERC_REGEX = /^upperperc(\d+(?:\.\d+)?)$/;
 
 const SPL_TO_NRQL_FUNCS = {
   count: { nrql: 'count' },
@@ -79,24 +80,24 @@ const SPL_TO_NRQL_FUNCS = {
     },
   },
   values: { nrql: 'uniques' },
-  list: {
-    nrql: 'uniques',
-    get warning() {
-      return messages.list_order_warning();
-    },
-  },
   earliest: { nrql: 'earliest' },
   latest: { nrql: 'latest' },
+  // Splunk returns events newest-first, so first() is the newest value and
+  // last() the oldest — as long as nothing re-ordered the rows (see
+  // ORDER_SENSITIVE_FUNCS in handleStats).
   first: { nrql: 'latest' },
   last: { nrql: 'earliest' },
   estdc: { nrql: 'uniqueCount' },
-  range: { nrql: 'max' },
 };
 
+// Aggregates with no faithful NRQL form. Each is reported as `unsupported` —
+// never dropped from the SELECT list with only a warning (that yields a query
+// that runs but silently answers a different question).
 const NO_EQUIV_FUNCS = {
   estdc_error:
     'estdc_error() (estimated distinct count error) has no NRQL equivalent',
-  mode: 'mode() has no direct NRQL equivalent; consider FACET field LIMIT 1 to find most common value',
+  mode: 'mode() (most common value) has no NRQL aggregate equivalent; use a separate query with FACET field LIMIT 1',
+  list: 'list() keeps every value including duplicates, in event order; NRQL uniques() de-duplicates and does not preserve order. Use values() if distinct values are acceptable',
   sumsq: 'sumsq() (sum of squares) has no NRQL equivalent',
   var: 'var() (sample variance) has no NRQL equivalent',
   varp: 'varp() (population variance) has no NRQL equivalent',
@@ -169,6 +170,15 @@ export function mapFunction(name, args) {
     };
   }
 
+  // range(x) = max(x) - min(x) — both halves are NRQL aggregates.
+  if (lowerName === 'range') {
+    const nrqlArgs = args.map(mapFunctionArg);
+    return {
+      expr: BinOp('-', Func('max', nrqlArgs), Func('min', nrqlArgs)),
+      warning: null,
+    };
+  }
+
   // rate(field) → rate(sum(field), 1 second)
   if (lowerName === 'rate') {
     const innerArg =
@@ -179,18 +189,20 @@ export function mapFunction(name, args) {
     };
   }
 
-  // Functions with no NRQL equivalent
+  // Functions with no NRQL equivalent — loud, never silently omitted.
   if (NO_EQUIV_FUNCS[lowerName]) {
     return {
       expr: null,
-      warning: messages.no_equiv_func(NO_EQUIV_FUNCS[lowerName]),
+      warning: null,
+      unsupported: messages.no_equiv_func(NO_EQUIV_FUNCS[lowerName]),
     };
   }
 
-  // Unknown function — warn and omit
+  // Unknown function — loud, never silently omitted.
   return {
     expr: null,
-    warning: messages.unknown_stats_func(name),
+    warning: null,
+    unsupported: messages.unknown_stats_func(name),
   };
 }
 
@@ -290,8 +302,17 @@ export function stripTimeBucketFacets(
 
 // Wrap the current query as a subquery source. The post-aggregation fold pass
 // (foldPostAggregationPass) handles any illegal nesting after all wrapAsSubquery
-// calls complete. Always returns true.
+// calls complete. Returns a function that restores the pre-wrap state, for a
+// caller that turns out to have nothing to put on the outer query.
 export function wrapAsSubquery(ir) {
+  const before = {
+    dataSource: ir.dataSource,
+    select: ir.select,
+    facet: ir.facet,
+    bindings: ir.bindings,
+    where: ir.where,
+    timeseries: ir.timeseries,
+  };
   // TIMESERIES already groups by time, so a _time/bucket facet on the inner is
   // redundant. The outer post-loop dedup (splToIR) can't reach the inner once
   // wrapped, so strip it here.
@@ -320,7 +341,7 @@ export function wrapAsSubquery(ir) {
   ir.bindings = [];
   ir.where = [];
   ir.timeseries = null;
-  return true;
+  return () => Object.assign(ir, before);
 }
 
 // ── Subsearch normalization ─────────────────────────────────

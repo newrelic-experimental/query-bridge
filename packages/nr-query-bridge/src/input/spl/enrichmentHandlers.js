@@ -31,6 +31,10 @@ export function handleJoin(cmd, ir) {
     ir.unsupported.push(messages.join_outer_unsupported());
     return;
   }
+  if (cmd.fields && cmd.fields.length > 1) {
+    ir.unsupported.push(messages.join_multi_key(cmd.fields.join(', ')));
+    return;
+  }
 
   let subIR;
   try {

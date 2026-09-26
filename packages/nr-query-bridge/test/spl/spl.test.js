@@ -1117,7 +1117,7 @@ const cases = [
   {
     spl: '* | stats count | eval x = round(total/count, 2)',
     nrql: '',
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    unsupportedFunc: ['post_agg_field_not_produced'],
     doc: 'eval-conditional',
     verified: false,
   },
@@ -1390,7 +1390,7 @@ const cases = [
     spl: '* | stats count by host | eval a=count/60 | where a>5 | where count<100',
     nrql: '',
     warningFunc: ['eval_after_agg_drops_source'],
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    unsupportedFunc: ['post_agg_column_folded_away'],
     doc: 'compound-where-where',
     verified: false,
   },
@@ -1409,7 +1409,7 @@ const cases = [
     spl: '* | stats count by host | eval a=count/60 | eval b=count/120',
     nrql: '',
     warningFunc: ['eval_after_agg_drops_source'],
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    unsupportedFunc: ['post_agg_column_folded_away'],
     doc: 'compound-eval-eval',
     verified: false,
   },
@@ -1417,7 +1417,7 @@ const cases = [
     spl: '* | stats count by host | eval a=count/60 | where count>5',
     nrql: '',
     warningFunc: ['eval_after_agg_drops_source'],
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    unsupportedFunc: ['post_agg_column_folded_away'],
     doc: 'compound-eval-where',
     verified: false,
   },
@@ -1428,7 +1428,7 @@ const cases = [
     spl: '* | stats count by host | eval a=count/60 | where NOT count>5',
     nrql: '',
     warningFunc: ['eval_after_agg_drops_source'],
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    unsupportedFunc: ['post_agg_column_folded_away'],
     doc: 'compound-eval-where',
     verified: false,
   },
@@ -1436,7 +1436,7 @@ const cases = [
     spl: '* | stats count by host | eval a=count/60 | where isnull(count)',
     nrql: '',
     warningFunc: ['eval_after_agg_drops_source'],
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    unsupportedFunc: ['post_agg_column_folded_away'],
     doc: 'compound-eval-where',
     verified: false,
   },
@@ -1446,7 +1446,7 @@ const cases = [
     spl: '* | stats count by host | eval a=count/60 | sort count',
     nrql: '',
     warningFunc: ['eval_after_agg_drops_source'],
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    unsupportedFunc: ['post_agg_sort_on_folded_column'],
     doc: 'compound-eval-where',
     verified: false,
   },
@@ -2596,19 +2596,26 @@ const cases = [
     doc: 'stats-functions',
     verified: 'human',
   },
+  // list() keeps duplicates in event order; uniques() de-duplicates — no faithful
+  // mapping, so loud unsupported (previously uniques() + a warning).
   {
     spl: '* | stats list(user) by host',
-    nrql: 'FROM Log SELECT uniques(user) FACET host',
-    warningFunc: ['list_order_warning', 'facet_default_limit'],
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['no_equiv_func'],
     doc: 'stats-functions',
-    verified: 'human',
+    verified: false,
   },
+  // An unknown aggregate is never silently dropped from SELECT (previously
+  // `SELECT * FACET host` + a warning — a query that runs but answers a
+  // different question).
   {
     spl: '* | stats xyzfunc(field) by host',
-    warningFunc: ['unknown_stats_func', 'facet_default_limit'],
-    nrql: 'FROM Log SELECT * FACET host',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['unknown_stats_func'],
+    nrql: '',
     doc: 'stats-functions',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | stats estdc(clientip) as approx_unique by host',
@@ -2677,26 +2684,31 @@ const cases = [
   // ── stats functions (no equiv) ──────────────────────────────────
   //
   // Stats no-equiv — representative cases: statistical, time-based, and rate
+  // No-equivalent aggregates are loud unsupported, never dropped from SELECT
+  // (previously `SELECT * FACET host` + a warning).
   {
     spl: '* | stats mode(status) by host',
-    warningFunc: ['no_equiv_func', 'facet_default_limit'],
-    nrql: 'FROM Log SELECT * FACET host',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['no_equiv_func'],
+    nrql: '',
     doc: 'stats-no-equiv',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | stats earliest_time(message) as first_seen by host',
-    warningFunc: ['no_equiv_func', 'facet_default_limit'],
-    nrql: 'FROM Log SELECT * FACET host',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['no_equiv_func'],
+    nrql: '',
     doc: 'stats-no-equiv',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | stats rate_avg(cpu) by host',
-    warningFunc: ['no_equiv_func', 'facet_default_limit'],
-    nrql: 'FROM Log SELECT * FACET host',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['no_equiv_func'],
+    nrql: '',
     doc: 'stats-no-equiv',
-    verified: 'human',
+    verified: false,
   },
   //
   // ── timechart command ───────────────────────────────────────────
@@ -3574,7 +3586,7 @@ const cases = [
   // guard against a future fold-safe mistake.)
   {
     spl: '* | stats count by host | eval d = strftime(_time, "%Y-%m-%d")',
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    unsupportedFunc: ['post_agg_time_not_grouped'],
     doc: 'eval-string',
     verified: false,
   },
@@ -3684,8 +3696,8 @@ const cases = [
   // Pattern 5: expand + sort only (no aggregation by field)
   {
     spl: 'index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber',
-    warningFunc: ['list_order_warning', 'facet_default_limit'],
-    unsupportedFunc: ['mvexpand_unsupported'],
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['no_equiv_func', 'mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: 'llm',
   },
@@ -4190,13 +4202,14 @@ const cases = [
     doc: 'fields-extract',
     verified: 'llm',
   },
-  // Gap #15 — list() order not preserved
+  // Gap #15 — list() order/duplicates not preservable → unsupported
   {
     spl: '* | stats list(eventType) by orderId',
-    nrql: 'FROM Log SELECT uniques(eventType) FACET orderId',
-    warningFunc: ['list_order_warning', 'facet_default_limit'],
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['no_equiv_func'],
     doc: 'reports-stats',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #4 — cross-expand field matching (two mvexpands on different fields)
   {
@@ -4877,7 +4890,549 @@ const cases = [
     doc: 'fields-eval-arithmetic',
     verified: 'llm',
   },
+  //
+  // ── Gaps report (nr-query-bridge-gaps.md) ───────────────────────
+  //
+  // §1 constant folding of literal-vs-literal where comparisons, incl. the
+  // dashboard "all values" token guard.
+  {
+    spl: 'index=web | where "$region$"="*" OR region="$region$"',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND region = {{region}}",
+    warningFunc: ['where_token_all_guard_dropped'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where region="$region$" OR "$region$"="*"',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND region = {{region}}",
+    warningFunc: ['where_token_all_guard_dropped'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where "$region$"!="*" AND region="$region$"',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND region = {{region}}",
+    warningFunc: ['where_token_all_guard_dropped'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where "a"="a"',
+    nrql: "FROM Log SELECT * WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where 1=1',
+    nrql: "FROM Log SELECT * WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where "a"="b" OR region="x"',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND region = 'x'",
+    warningFunc: [],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where "a"="b"',
+    nrql: '',
+    unsupportedFunc: ['where_always_false'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where NOT "a"="b"',
+    nrql: "FROM Log SELECT * WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where "$env$"="prod"',
+    nrql: '',
+    unsupportedFunc: ['where_token_const_comparison'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where "1"=1',
+    nrql: '',
+    unsupportedFunc: ['where_mixed_const_comparison'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count by host | where "a"="a"',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-where-on-agg',
+    verified: false,
+  },
+  // §2 post-aggregation stages: table/fields project aggregated columns,
+  // search filters the aggregated rows, mvcount(values()) folds to uniqueCount.
+  {
+    spl: 'index=web | stats count as c by a | table a, c',
+    nrql: "FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-table',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count as c, max(b) by a | table a, max(b)',
+    nrql: "FROM Log SELECT max(b) WHERE index = 'web' FACET a",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-table',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count as c, sum(b) as s by a | fields a, s',
+    nrql: "FROM Log SELECT sum(b) AS 's' WHERE index = 'web' FACET a",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-table',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count as c by a, b | table a, c',
+    nrql: "FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a, b",
+    warningFunc: ['list_keeps_facets', 'facet_default_limit'],
+    doc: 'results-table',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count by a | table a',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET a",
+    warningFunc: ['list_keeps_aggregates', 'facet_default_limit'],
+    doc: 'results-table',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count as c by a | table a, c, missing',
+    nrql: "FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a",
+    warningFunc: ['list_column_not_produced', 'facet_default_limit'],
+    doc: 'results-table',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count as c by a | where c>5 | table a c',
+    nrql: "FROM (FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a LIMIT MAX) SELECT a, c WHERE numeric(c) > 5",
+    warningFunc: [],
+    doc: 'results-table',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count as c by a | search c=5',
+    nrql: "FROM (FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a LIMIT MAX) SELECT * WHERE c = '5' OR numeric(c) = 5",
+    warningFunc: [],
+    doc: 'results-search',
+    verified: false,
+  },
+  // A search on a group-by key selects whole groups — pushed down, no subquery.
+  {
+    spl: 'index=web | stats count as c by a | search a=x',
+    nrql: "FROM Log SELECT count(*) AS 'c' WHERE index = 'web' AND a = 'x' FACET a",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-search',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats values(x) as v by a | eval n=mvcount(v)',
+    nrql: "FROM Log SELECT uniqueCount(x) AS 'n' WHERE index = 'web' FACET a LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count by uri | eval x=bytes*2',
+    nrql: '',
+    unsupportedFunc: ['post_agg_field_not_produced'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // §3 bare spath: field inference over every downstream field-referencing stage.
+  {
+    spl: 'index=web | spath input=j | search tenant="x" | stats count',
+    nrql: "FROM Log WITH jparse(j, 'tenant') AS tenant SELECT count(*) WHERE index = 'web' AND tenant = 'x'",
+    warningFunc: ['spath_auto_extract'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  {
+    spl: 'index=web | spath input=j | eval z=tenant | stats count by z',
+    nrql: "FROM Log WITH jparse(j, 'tenant') AS tenant, tenant AS z SELECT count(*) WHERE index = 'web' FACET z",
+    warningFunc: ['spath_auto_extract', 'facet_default_limit'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  {
+    spl: 'index=web | spath input=j | table tenant region',
+    nrql: "FROM Log WITH jparse(j, 'tenant') AS tenant, jparse(j, 'region') AS region SELECT tenant, region WHERE index = 'web'",
+    warningFunc: ['spath_auto_extract'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  // top's percent subquery carries the WITH bindings its copied WHERE needs.
+  {
+    spl: 'index=web | spath input=j | where tenant="x" | top limit=2 "a{}.c"',
+    nrql: "FROM Log WITH jparse(j, 'tenant') AS tenant, jparse(j, 'a[*].c') AS `a{}.c` SELECT count(*), count(*) * 100.0 / (FROM Log WITH jparse(j, 'tenant') AS tenant, jparse(j, 'a[*].c') AS `a{}.c` SELECT count(*) WHERE index = 'web' AND tenant = 'x') AS 'percent' WHERE index = 'web' AND tenant = 'x' FACET `a{}.c` ORDER BY count DESC LIMIT 2",
+    warningFunc: ['spath_auto_extract'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  {
+    spl: 'index=web | spath input=j | where tenant="x" | stats sum(bytes) by host',
+    nrql: "FROM Log WITH jparse(j, 'tenant') AS tenant, jparse(j, 'bytes') AS bytes SELECT sum(bytes) WHERE index = 'web' AND tenant = 'x' FACET host",
+    warningFunc: ['spath_auto_extract', 'facet_default_limit'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  // §4 options parsed position-independently.
+  {
+    spl: 'index=web | timechart avg(t) by method span=1h',
+    nrql: "FROM Log SELECT average(t) WHERE index = 'web' FACET method TIMESERIES 1 hour",
+    warningFunc: ['facet_default_limit'],
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart limit=50 count by uri',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET uri LIMIT 50 TIMESERIES AUTO",
+    warningFunc: [],
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart span=d count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 day",
+    warningFunc: [],
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart span=1mon count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 month",
+    warningFunc: [],
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart span=1q count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 3 months",
+    warningFunc: [],
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart span=90ms count',
+    nrql: '',
+    unsupportedFunc: ['span_unrecognized'],
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart cont=FALSE count by t',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET t TIMESERIES AUTO",
+    warningFunc: ['agg_display_options_ignored', 'facet_default_limit'],
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart sum(a) AS A bins=90',
+    nrql: "FROM Log SELECT sum(a) AS 'A' WHERE index = 'web' TIMESERIES AUTO",
+    warningFunc: ['timechart_bucket_hint_auto'],
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart dc(id) minspan=1h',
+    nrql: "FROM Log SELECT uniqueCount(id) WHERE index = 'web' TIMESERIES AUTO",
+    warningFunc: ['timechart_bucket_hint_auto'],
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart aligntime=@d count',
+    nrql: '',
+    unsupportedFunc: ['agg_option_unsupported'],
+    doc: 'timechart-by-options',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count by uri | sort limit=20 -count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET uri ORDER BY count DESC LIMIT 20",
+    warningFunc: [],
+    doc: 'results-sort',
+    verified: false,
+  },
+  {
+    spl: 'index=web | chart count as c over dow by hod',
+    nrql: "FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET dow, hod",
+    warningFunc: ['facet_default_limit'],
+    doc: 'reports-chart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | chart count by a, b limit=0',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET a, b LIMIT MAX",
+    warningFunc: [],
+    doc: 'reports-chart',
+    verified: false,
+  },
+  // §5 quoted identifiers accepted by every field-list parser.
+  {
+    spl: 'index=web | top limit=2 "a{}.b"',
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'web') AS 'percent' WHERE index = 'web' FACET `a{}.b` ORDER BY count DESC LIMIT 2",
+    warningFunc: [],
+    doc: 'reports-top',
+    verified: false,
+  },
+  {
+    spl: 'index=web | top limit=2 "Full Name"',
+    nrql: "FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'web') AS 'percent' WHERE index = 'web' FACET `Full Name` ORDER BY count DESC LIMIT 2",
+    warningFunc: [],
+    doc: 'reports-top',
+    verified: false,
+  },
+  {
+    spl: 'index=web | sort -"Time"',
+    nrql: "FROM Log SELECT * WHERE index = 'web' ORDER BY Time DESC",
+    warningFunc: [],
+    doc: 'results-sort',
+    verified: false,
+  },
+  {
+    spl: 'index=web | sort - "Time"',
+    nrql: "FROM Log SELECT * WHERE index = 'web' ORDER BY Time DESC",
+    warningFunc: [],
+    doc: 'results-sort',
+    verified: false,
+  },
+  {
+    spl: 'index=web | spath input=r path=body."Some Name{}" output=s',
+    nrql: "FROM Log WITH jparse(r, 'body.Some Name[*]') AS s SELECT * WHERE index = 'web'",
+    warningFunc: ['spath_json_only'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  {
+    spl: 'index=web | table a "B C" Totals*',
+    nrql: '',
+    unsupportedFunc: ['list_wildcard_field'],
+    doc: 'results-table',
+    verified: false,
+  },
+  {
+    spl: 'index=web | table a, max(b)',
+    nrql: '',
+    unsupportedFunc: ['list_stats_column_without_stats'],
+    doc: 'results-table',
+    verified: false,
+  },
+  // §6 where: IN / NOT IN, space before '(', searchmatch().
+  {
+    spl: 'index=web | where country IN ("za","us")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND country IN ('za', 'us')",
+    warningFunc: [],
+    doc: 'in-operator',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where NOT (country IN ("za","us"))',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND NOT country IN ('za', 'us')",
+    warningFunc: [],
+    doc: 'in-operator',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where like (src,"%x%")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND src LIKE '%x%'",
+    warningFunc: [],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where searchmatch("foo")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND message LIKE '%foo%'",
+    warningFunc: ['searchmatch_raw_event'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where searchmatch("status=500 timeout")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND status = '500' OR numeric(status) = 500 AND message LIKE '%timeout%'",
+    warningFunc: ['searchmatch_raw_event'],
+    doc: 'results-where',
+    verified: false,
+  },
+  // §7 rex: unquoted regex, max_match=1, sed with a named field/script.
+  {
+    spl: 'index=web | rex \\"t4\\"\\:\\"(?<T4>.+?)\\"',
+    nrql: 'FROM Log WITH capture(message, r\'.*\\"t4\\"\\:\\"(?P<T4>.+?)\\".*\') AS (T4) SELECT * WHERE index = \'web\'',
+    warningFunc: [],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex max_match=1 "a=(?<a>\\d+)"',
+    nrql: "FROM Log WITH capture(message, r'.*a=(?P<a>\\d+).*') AS (a) SELECT * WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex field=msg mode=sed "s/a/b/g"',
+    nrql: '',
+    unsupportedFunc: ['rex_sed_unsupported'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex "\\"cur\\":\\"(?<cur>[^\\"]+)"\\"',
+    nrql: '',
+    unsupportedFunc: ['rex_parse_failed'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // §8 constructs that used to fail without a usable reason.
+  {
+    spl: 'index=web | chart first(count) OVER host BY ver',
+    nrql: "FROM Log SELECT latest(count) WHERE index = 'web' FACET host, ver",
+    warningFunc: ['facet_default_limit'],
+    doc: 'reports-chart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | fillnull name value="-" | stats count by name',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET name OR '-'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-fillnull',
+    verified: false,
+  },
+  {
+    spl: 'index=web | join type=left a, b [search index=b | table a b]',
+    nrql: '',
+    unsupportedFunc: ['join_multi_key'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval s=a."|".b',
+    nrql: "FROM Log WITH concat(a, '|', b) AS s SELECT * WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: 'index=web "a":"b" | stats count',
+    nrql: '',
+    unsupportedFunc: ['search_json_fragment'],
+    doc: 'bare-keywords',
+    verified: false,
+  },
+  {
+    spl: 'index=web !!Title!!! | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND message LIKE '%!!Title!!!%'",
+    warningFunc: [],
+    doc: 'bare-keywords',
+    verified: false,
+  },
+  // A known command whose arguments fail its grammar reports the construct,
+  // not "no known NRQL equivalent".
+  {
+    spl: 'index=web | where "a" LIKE b c',
+    nrql: '',
+    unsupportedFunc: ['command_args_unparsed'],
+    doc: 'edge-cases',
+    verified: false,
+  },
+  {
+    spl: 'index=web | sort -dc(requestId',
+    errorIncludes: "in stage 'sort -dc(requestId'",
+    doc: 'edge-cases',
+    verified: false,
+  },
+  // §9 no aggregate is silently dropped or silently changed.
+  {
+    spl: 'index=web | stats range(x) by host',
+    nrql: "FROM Log SELECT max(x) - min(x) WHERE index = 'web' FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'stats-functions',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats first(x) as f by a',
+    nrql: "FROM Log SELECT latest(x) AS 'f' WHERE index = 'web' FACET a",
+    warningFunc: ['facet_default_limit'],
+    doc: 'stats-functions',
+    verified: false,
+  },
+  {
+    spl: 'index=web | sort x | stats first(x) as f by a',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['first_last_after_reorder'],
+    doc: 'stats-functions',
+    verified: false,
+  },
+  {
+    spl: 'index=web | dedup 1 a',
+    nrql: "FROM Log SELECT latest(timestamp) WHERE index = 'web' FACET a LIMIT MAX",
+    warningFunc: ['dedup_facet_warning'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  {
+    spl: 'index=web | dedup 3 a',
+    nrql: '',
+    unsupportedFunc: ['dedup_count_unsupported'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  // §10 fractional percentile, `.` concat with a literal, row-wise sum().
+  {
+    spl: 'index=web | stats perc99.9(d)',
+    nrql: "FROM Log SELECT percentile(d, 99.9) WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'stats-functions',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval s=a.":".b',
+    nrql: "FROM Log WITH concat(a, ':', b) AS s SELECT * WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval s=sum(a,b)',
+    nrql: "FROM Log WITH numeric(a) + numeric(b) AS s SELECT * WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'eval-math',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval t=relative_time(now(),"-1d")',
+    nrql: '',
+    unsupportedFunc: ['eval_relative_time_unsupported'],
+    doc: 'eval-math',
+    verified: false,
+  },
 ];
+
+// Contract: an empty nrql always carries a reason — and never the internal-bug
+// reason, which means some path produced empty-without-reason. (String match, not
+// a messages call: the runner spies on messages and would flag the extra call.)
+function expectReasonedResult(r) {
+  if (!r.nrql) {
+    expect(r.unsupported.length + r.errors.length).toBeGreaterThan(0);
+  }
+  expect(
+    r.errors.some((e) => e.startsWith('internal: translation produced')),
+  ).toBe(false);
+}
 
 describe('translateSplToNrql', () => {
   const spies = {};
@@ -4897,6 +5452,7 @@ describe('translateSplToNrql', () => {
     const testFn = c.skip ? it.skip : it;
     testFn(`[${i}] ${label.slice(0, 80)}`, () => {
       const r = translateSplToNrql(c.spl);
+      expectReasonedResult(r);
 
       if ('nrql' in c) expect(r.nrql).toBe(c.nrql);
       if ('errorIncludes' in c) {
@@ -5254,6 +5810,7 @@ describe('spl-real-world translations', () => {
   realWorldEntries.forEach((entry, i) => {
     it(`[${i}] ${entry.spl.slice(0, 80)}`, () => {
       const r = translateSplToNrql(entry.spl);
+      expectReasonedResult(r);
 
       if (r.errors.length > 0) realWorldStats.parseErrors++;
       else if (r.unsupported.length > 0) realWorldStats.unsupported++;

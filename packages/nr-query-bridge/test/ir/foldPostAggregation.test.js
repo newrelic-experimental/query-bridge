@@ -116,7 +116,7 @@ describe('foldPostAggregationPass — eval-after-aggregation fold', () => {
     const result = foldPostAggregationPass(ir);
     expect(result.dataSource.type).toBe('SubquerySource');
     expect(result.unsupported).toContain(
-      messages.compound_collapse_unsupported(),
+      messages.post_agg_field_not_produced('missing'),
     );
   });
 
@@ -179,7 +179,7 @@ describe('foldPostAggregationPass — eval-after-aggregation fold', () => {
     const result = foldPostAggregationPass(ir);
     expect(result.dataSource.type).toBe('SubquerySource');
     expect(result.unsupported).toContain(
-      messages.compound_collapse_unsupported(),
+      messages.post_agg_field_not_produced('rexcap'),
     );
   });
 });
@@ -458,7 +458,7 @@ describe('foldPostAggregationPass — residual guards', () => {
       messages.eval_after_agg_drops_source(['count']),
     );
     expect(result.unsupported).toContain(
-      messages.compound_collapse_unsupported(),
+      messages.post_agg_sort_on_folded_column(),
     );
   });
 

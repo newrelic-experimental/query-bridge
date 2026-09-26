@@ -13,6 +13,7 @@ import * as parser from './input/spl/splParser.js';
 import { translateAstToIR } from './input/spl/splToIR.js';
 import { emitQuery } from './output/nrql/irToNrql.js';
 import { optimize } from './ir/optimize.js';
+import { messages } from './messages.js';
 
 /**
  * The result of translating an SPL query to NRQL.
@@ -53,6 +54,8 @@ export function translateSplToNrql(spl) {
     let msg = 'Failed to parse SPL';
     if (e.location) {
       msg += ` at line ${e.location.start.line}:${e.location.start.column}`;
+      const stage = stageAt(spl, e.location.start.offset);
+      if (stage) msg += ` in stage '${stage}'`;
     }
     msg += `: ${e.message}`;
     return { nrql: '', warnings: [], unsupported: [], errors: [msg] };
@@ -77,5 +80,56 @@ export function translateSplToNrql(spl) {
   // Pass 3: IR → NRQL string
   const nrql = emitQuery(optimized);
 
+  // AI-DEV: Contract — an empty `nrql` MUST carry a reason in `unsupported` or
+  // `errors`. Callers classify on those arrays; empty-with-no-reason is
+  // untriageable. Do NOT remove this guard; fix the path that produced it.
+  if (!nrql || !nrql.trim()) {
+    return {
+      nrql: '',
+      warnings,
+      unsupported,
+      errors: [messages.empty_translation_internal()],
+    };
+  }
+
   return { nrql, warnings, unsupported, errors };
+}
+
+/**
+ * The pipeline stage (text between top-level `|`s) containing `offset`, trimmed
+ * and truncated — so a parse error names the construct that failed. Pipes inside
+ * quotes or [subsearch] brackets do not split stages.
+ *
+ * @param {string} spl
+ * @param {number} offset
+ * @returns {string|null}
+ */
+function stageAt(spl, offset) {
+  let start = 0;
+  let quote = null;
+  let depth = 0;
+  for (let i = 0; i <= spl.length; i++) {
+    const ch = spl[i];
+    if (i === spl.length || (ch === '|' && !quote && depth === 0)) {
+      if (offset >= start && offset <= i) {
+        const stage = spl.slice(start, i).trim();
+        if (!stage) return null;
+        return stage.length > 80 ? `${stage.slice(0, 77)}...` : stage;
+      }
+      start = i + 1;
+      continue;
+    }
+    if (ch === '\\') {
+      i++;
+    } else if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '[') {
+      depth++;
+    } else if (ch === ']' && depth > 0) {
+      depth--;
+    }
+  }
+  return null;
 }

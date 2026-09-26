@@ -32,6 +32,51 @@
 start
   = _* pipeline:pipeline _* { return pipeline; }
 
+// Secondary start rule (build:parsers --allowed-start-rules): one pipe command
+// parsed WITHOUT the unknown_command catch-all. When a known command's own rule
+// fails, `start` still succeeds via unknown_command; re-parsing the stage here
+// recovers the parser's position/expectation so the caller can report the exact
+// construct that failed instead of "no known NRQL equivalent".
+strict_command
+  = _* cmd:known_command _* { return cmd; }
+
+known_command
+  = stats_command
+  / timechart_command
+  / chart_command
+  / where_command
+  / search_pipe_command
+  / table_command
+  / fields_command
+  / sort_command
+  / head_command
+  / tail_command
+  / top_command
+  / rename_command
+  / dedup_command
+  / eval_command
+  / rex_command
+  / bin_command
+  / lookup_command
+  / inputlookup_command
+  / spath_command
+  / join_command
+  / regex_command
+  / fillnull_command
+  / rare_command
+  / reverse_command
+  / strcat_command
+  / uniq_command
+  / convert_command
+  / appendcols_command
+  / appendpipe_command
+  / append_command
+  / eventstats_command
+  / mvexpand_command
+  / replace_command
+  / predict_command
+  / tstats_command
+
 pipeline
   = search:search_clause? pipes:pipe_command* _* '|'* _*
     {
@@ -122,8 +167,10 @@ stats_function
       return { name: 'count', args: [], alias: alias };
     }
 
+// A function name; a fractional percentile (`perc99.9`, `p99.9`) keeps its
+// decimal part so it maps to percentile(x, 99.9).
 function_name
-  = chars:[a-zA-Z_0-9]+ { return chars.join('').toLowerCase(); }
+  = chars:$([a-zA-Z_0-9]+ ('.' [0-9]+ &'(')?) { return chars.toLowerCase(); }
 
 function_args
   = first:u_expr rest:(',' _* arg:u_expr { return arg; })*
@@ -148,8 +195,22 @@ by_field_item
   = name:quotable_field_name !(_* '=') { return name; }
 
 field_list
-  = (',' _*)? first:quotable_field_name rest:((_* ',' _* / _+) name:quotable_field_name { return name; })* (_* ',')?
+  = (',' _*)? first:list_field_name rest:((_* ',' _* / _+) name:list_field_name { return name; })* (_* ',')?
     { return [first].concat(rest); }
+
+// A field in a table/fields/dedup list: a quoted name, a stats output column
+// written as its function call (`max(b)` — the column an unaliased `stats max(b)`
+// produces), or a bare name that may carry `*` wildcards (`Totals*`). Handlers
+// decide what each form can translate to.
+list_field_name
+  = quotable_field_name_nonwild
+  / call:$([a-zA-Z_][a-zA-Z0-9_]* '(' [^()|]* ')') { return call; }
+  / chars:$([a-zA-Z0-9_.\-:{}*]+) { return chars; }
+
+quotable_field_name_nonwild
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / chars:$([a-zA-Z0-9_.\-:{}]+) ![*(] { return chars; }
+  / '*' ![a-zA-Z0-9_.\-:{}*(] { return '*'; }
 
 field_name
   = '*' { return '*'; }
@@ -167,28 +228,54 @@ quotable_field_name
 /* ============================================================
    Timechart command: | timechart [span=X] fn() [by field]
    ============================================================ */
+// Options (span=, limit=, bins=, cont=, …) are accepted in ANY position: before the
+// functions, between the functions and the by-clause, or after it. Each is parsed
+// once by the shared cmd_option rule; handleTimechart interprets them.
 timechart_command
-  = 'timechart'i _+ span:span_clause? fns:stats_function_list span2:(_+ 'span=' v:span_value { return v; })? trailingAlias:as_clause? by:by_clause? tc_options:timechart_option*
+  = 'timechart'i lead:cmd_option* _+ fns:stats_function_list midItems:(o:cmd_option { return { opt: o }; } / a:as_clause { return { alias: a }; })* by:by_clause? tail:cmd_option*
     {
-      if (trailingAlias && fns.length > 0 && !fns[fns.length - 1].alias) {
-        fns[fns.length - 1].alias = trailingAlias;
+      // A trailing `as X` (possibly after an option: `count(x) span=5m as X`)
+      // names the last function.
+      var mid = [];
+      for (var j = 0; j < midItems.length; j++) {
+        if (midItems[j].opt) mid.push(midItems[j].opt);
+        else if (fns.length > 0 && !fns[fns.length - 1].alias) fns[fns.length - 1].alias = midItems[j].alias;
+      }
+      var opts = lead.concat(mid, tail);
+      var span = null;
+      var options = [];
+      for (var i = 0; i < opts.length; i++) {
+        var o = opts[i];
+        if (o.key === 'span') {
+          var tok = /^\$([a-zA-Z0-9_.:-]+)\$$/.exec(o.value);
+          span = tok ? { type: 'SpanToken', name: tok[1] } : o.value;
+        } else if (o.key === 'limit' && /^[0-9]+$/.test(o.value)) {
+          options.push({ type: 'limit', value: parseInt(o.value, 10) });
+        } else {
+          options.push({ type: o.key, value: o.value });
+        }
       }
       return {
         type: 'TimechartCommand',
-        span: span || span2 || null,
+        span: span,
         functions: fns,
         groupBy: by || [],
-        options: tc_options
+        options: options
       };
     }
 
-timechart_option
-  = _+ 'nullstr'i '=' val:[^ \t\r\n\f|]+ { return { type: 'nullstr', value: val.join('') }; }
-  / _+ 'usenull'i '=' val:[^ \t\r\n\f|]+ { return { type: 'usenull', value: val.join('') }; }
-  / _+ 'useother'i '=' val:[^ \t\r\n\f|]+ { return { type: 'useother', value: val.join('') }; }
-  / _+ 'limit'i '=' val:[0-9]+ { return { type: 'limit', value: parseInt(val.join(''), 10) }; }
-  / _+ 'cont'i '=' val:[^ \t\r\n\f|]+ { return { type: 'cont', value: val.join('') }; }
-  / _+ 'fixedrange'i '=' val:[^ \t\r\n\f|]+ { return { type: 'fixedrange', value: val.join('') }; }
+// A `key=value` command option, shared by every command whose options may appear
+// in any position. The key must be immediately followed by '=' so a field or
+// function name is never mistaken for an option. Returns { key, value } with the
+// key lower-cased and the value unquoted.
+cmd_option
+  = _+ key:$([a-zA-Z_]+) '=' value:cmd_option_value
+    { return { key: key.toLowerCase(), value: value }; }
+
+cmd_option_value
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / "'" chars:single_string_char* "'" { return chars.join(''); }
+  / chars:$([^ \t\r\n\f|,()]+) { return chars; }
 
 span_clause
   = 'span=' value:span_value _+
@@ -208,18 +295,28 @@ span_value
 /* ============================================================
    Chart command: | chart fn() [by field] [over field]
    ============================================================ */
+// `over` and `by` may appear in either order (`chart f over X by Y` is the
+// canonical form); options may appear anywhere. Group-by fields keep the order
+// written.
 chart_command
-  = 'chart'i _+ fns:stats_function_list by:by_clause? over:over_clause?
+  = 'chart'i lead:cmd_option* _+ fns:stats_function_list mid:cmd_option* clauses:(c:(by_clause / over_clause) o:cmd_option* { return { fields: c, opts: o }; })*
     {
+      var groupBy = [];
+      var opts = lead.concat(mid);
+      for (var i = 0; i < clauses.length; i++) {
+        groupBy = groupBy.concat(clauses[i].fields);
+        opts = opts.concat(clauses[i].opts);
+      }
       return {
         type: 'ChartCommand',
         functions: fns,
-        groupBy: (by || []).concat(over || [])
+        groupBy: groupBy,
+        options: opts.map(function (o) { return { type: o.key, value: o.value }; })
       };
     }
 
 over_clause
-  = _+ 'over'i _+ field:field_name { return [field]; }
+  = _+ 'over'i _+ field:quotable_field_name !(_* '=') { return [field]; }
 
 /* ============================================================
    Where command: | where <expression>
@@ -267,12 +364,32 @@ where_not_expr
 
 where_primary
   = '(' _* expr:where_expression _* ')' { return expr; }
+  / where_const_comparison
+  / where_in_comparison
   / where_func_comparison
   / where_function_call
   / where_comparison
 
+// Literal-vs-literal comparison — the dashboard all-token guard idiom
+// `where "$tok$"="*" OR f="$tok$"`. Constant-folded in translateSearchExpr; it is
+// never emitted as NRQL. Each side must be a double-quoted string or a number
+// that is not the start of a longer expression. (In where/eval a single-quoted
+// token is a FIELD name, and a bare word is a field — neither is a constant.)
+where_const_comparison
+  = left:where_const_literal _* op:('==' / '!=' / '=') _* right:where_const_literal !(_* [+\-*/%.])
+    { return { type: 'ConstComparison', left: left, operator: op, right: right }; }
+
+where_const_literal
+  = '"' chars:double_string_char* '"' { return { kind: 'string', value: chars.join('') }; }
+  / n:$('-'? [0-9]+ ('.' [0-9]+)?) ![a-zA-Z0-9_.] { return { kind: 'number', value: n }; }
+
+// `where f IN ("a","b")` / `where f in (1, 2)` — NRQL has a direct IN.
+where_in_comparison
+  = field:field_name _+ 'IN'i _* '(' _* values:in_value_list _* ')'
+    { return { type: 'InComparison', field: field, values: values }; }
+
 where_function_call
-  = name:function_name '(' _* args:function_args _* ')'
+  = name:function_name _* '(' _* args:function_args _* ')'
     {
       return { type: 'FunctionCall', name: name, args: args };
     }
@@ -365,6 +482,8 @@ sort_command
 sort_limit
   = n:[0-9]+ _+
     { return parseInt(n.join(''), 10); }
+  / 'limit'i '=' n:[0-9]+ _+
+    { return parseInt(n.join(''), 10); }
 
 // SPL also allows a trailing `limit=N` after the sort fields.
 sort_trailing_limit
@@ -393,8 +512,8 @@ sort_field
 // The hint only tells Splunk how to compare; NRQL ignores it, so we keep the
 // bare field name. A bare field must not be `limit=...` (a trailing option).
 sort_field_name
-  = ('num'i / 'str'i / 'ip'i) '(' _* name:field_name _* ')' { return name; }
-  / !('limit'i '=') name:field_name { return name; }
+  = ('num'i / 'str'i / 'ip'i) '(' _* name:quotable_field_name _* ')' { return name; }
+  / !('limit'i '=') name:quotable_field_name { return name; }
 
 sort_order
   = _+ 'desc'i { return 'desc'; }
@@ -451,7 +570,7 @@ top_field_list
     { return [first].concat(rest); }
 
 top_field_item
-  = !('by'i _) name:field_name !(_* '=') { return name; }
+  = !('by'i _) name:quotable_field_name !(_* '=') { return name; }
 
 top_options
   = items:top_option*
@@ -521,11 +640,15 @@ rename_field
 /* ============================================================
    Dedup command: | dedup field1, field2, ...
    ============================================================ */
+// `dedup N f1 f2` keeps the first N events per combination; N defaults to 1. The
+// count is only recognized when it is followed by a field, so it is never
+// mistaken for a field name.
 dedup_command
-  = 'dedup'i _+ fields:field_list
+  = 'dedup'i _+ count:(n:$([0-9]+) _+ &list_field_name { return parseInt(n, 10); })? fields:field_list
     {
       return {
         type: 'DedupCommand',
+        count: count === null ? 1 : count,
         fields: fields
       };
     }
@@ -640,14 +763,21 @@ u_atom_base
   / u_func_call
   / eval_string_literal
   / n:eval_number ![a-zA-Z_] { return n; }
-  / f:field_name { return f; }
+  / f:eval_field_name { return f; }
+
+// A field reference inside an expression. Same charset as field_name, except a
+// '.' directly followed by a quote is the `.` concat operator, not part of the
+// name: `a.":".b` is concat(a, ':', b), not a field named `a.`.
+eval_field_name
+  = '*' { return '*'; }
+  / chars:$(([a-zA-Z0-9_\-:{}] / '.' !(_* ["'])))+ { return chars; }
 
 u_atom_stats_extra
   = chars:[a-zA-Z0-9_.:{}]* '*' ![0-9] rest:[a-zA-Z0-9_.:{}*]*
     { return (chars.join('') + '*' + rest.join('')); }
 
 u_func_call
-  = name:function_name '(' _* args:u_func_args _* ')'
+  = name:function_name _* '(' _* args:u_func_args _* ')'
     { return { type: 'EvalFunc', name: name, args: args }; }
 
 u_func_args
@@ -658,47 +788,27 @@ u_func_args
 /* ============================================================
    Rex command: | rex [field=F] "regex" or | rex mode=sed "expr"
    ============================================================ */
+// Options (field=, mode=, max_match=, offset_field=) may appear before or after
+// the regex, in any order. The regex is normally quoted; an UNQUOTED regex is
+// accepted too (exported dashboards often lose the outer quotes and keep `\"`
+// escapes, e.g. rex \"k\"\:\"(?<v>.+?)\"). An unquoted regex may not start with
+// a quote — `"…"\"` is malformed input, not a regex.
 rex_command
-  = 'rex'i _+ 'mode=sed'i _+ rest:rest_of_command
+  = 'rex'i lead:rex_option* _+ pattern:rex_pattern trail:rex_option* &(_* '|' / _* !.)
     {
+      var opts = lead.concat(trail);
+      var field = '_raw', mode = 'extract', maxMatch = null;
+      for (var i = 0; i < opts.length; i++) {
+        if (opts[i].key === 'field') field = opts[i].value;
+        else if (opts[i].key === 'mode') mode = opts[i].value.toLowerCase();
+        else if (opts[i].key === 'max_match') maxMatch = parseInt(opts[i].value, 10);
+      }
       return {
         type: 'RexCommand',
-        mode: 'sed',
-        field: null,
-        pattern: null,
-        rawText: rest
-      };
-    }
-  / 'rex'i _+ 'field=' '"' field:double_string_char* '"' _+ opts:rex_option* '"' pattern:rex_string_char* '"' _* trailing:rex_option*
-    {
-      return {
-        type: 'RexCommand',
-        mode: 'extract',
-        field: field.join(''),
-        pattern: pattern.join(''),
-        maxMatch: opts.length > 0 || trailing.length > 0,
-        rawText: null
-      };
-    }
-  / 'rex'i _+ 'field=' field:field_name _+ opts:rex_option* '"' pattern:rex_string_char* '"' _* trailing:rex_option*
-    {
-      return {
-        type: 'RexCommand',
-        mode: 'extract',
+        mode: mode,
         field: field,
-        pattern: pattern.join(''),
-        maxMatch: opts.length > 0 || trailing.length > 0,
-        rawText: null
-      };
-    }
-  / 'rex'i _+ opts:rex_option* '"' pattern:rex_string_char* '"' _* trailing:rex_option*
-    {
-      return {
-        type: 'RexCommand',
-        mode: 'extract',
-        field: '_raw',
-        pattern: pattern.join(''),
-        maxMatch: opts.length > 0 || trailing.length > 0,
+        pattern: pattern,
+        maxMatch: maxMatch,
         rawText: null
       };
     }
@@ -714,8 +824,16 @@ rex_command
     }
 
 rex_option
-  = 'max_match=' [0-9]+ _*
-  / 'offset_field=' field_name _*
+  = _+ key:$('field'i / 'mode'i / 'max_match'i / 'offset_field'i) '=' value:rex_option_value
+    { return { key: key.toLowerCase(), value: value }; }
+
+rex_option_value
+  = '"' chars:double_string_char* '"' { return chars.join(''); }
+  / chars:$([^ \t\r\n\f|"]+) { return chars; }
+
+rex_pattern
+  = '"' pattern:rex_string_char* '"' { return pattern.join(''); }
+  / !'"' !(('field'i / 'mode'i / 'max_match'i / 'offset_field'i) '=') chars:$([^ \t\r\n\f|]+) { return chars; }
 
 /* Regex string chars: preserves backslash sequences (unlike double_string_char which interprets them) */
 rex_string_char
@@ -837,12 +955,13 @@ inputlookup_command
    Join command: | join [type=inner|left|outer] field [subsearch]
    ============================================================ */
 join_command
-  = 'join'i jtype:join_type_option? _+ field:field_name _* '[' subsearch:subsearch_content ']'
+  = 'join'i jtype:join_type_option? _+ first:field_name rest:((_* ',' _* / _+) f:field_name { return f; })* _* '[' subsearch:subsearch_content ']'
     {
       return {
         type: 'JoinCommand',
         joinType: jtype || 'inner',
-        field: field,
+        field: first,
+        fields: [first].concat(rest),
         subsearch: subsearch
       };
     }
@@ -882,10 +1001,13 @@ spath_option
   = _+ key:('input'i / 'path'i / 'output'i) '=' value:spath_option_value
     { return { key: key.toLowerCase(), value: value }; }
 
+// A path may mix bare and quoted segments: path=body."Some Name{}".id — each
+// quoted piece contributes its unquoted text.
 spath_option_value
-  = '"' chars:double_string_char* '"' { return chars.join(''); }
-  / "'" chars:single_string_char* "'" { return chars.join(''); }
-  / chars:[^ \t\r\n\f|]+ { return chars.join(''); }
+  = parts:('"' chars:double_string_char* '"' { return chars.join(''); }
+          / "'" chars:single_string_char* "'" { return chars.join(''); }
+          / chars:$([^ \t\r\n\f|"']+) { return chars; })+
+    { return parts.join(''); }
 
 spath_positional
   = _+ '"' chars:double_string_char* '"' { return chars.join(''); }
@@ -937,9 +1059,15 @@ regex_command
 /* ============================================================
    Fillnull command: | fillnull [value=X] [field1 field2 ...]
    ============================================================ */
+// value= may come before, between, or after the field list.
 fillnull_command
-  = 'fillnull'i val:fillnull_value? fields:((_* ',' _* / _+) f:field_name { return f; })*
+  = 'fillnull'i items:(v:fillnull_value { return { value: v }; } / (_* ',' _* / _+) f:field_name !'=' { return { field: f }; })*
     {
+      var val = null, fields = [];
+      for (var i = 0; i < items.length; i++) {
+        if ('value' in items[i]) val = items[i].value;
+        else fields.push(items[i].field);
+      }
       return {
         type: 'FillnullCommand',
         value: val,
@@ -1180,8 +1308,10 @@ unknown_command
 command_name
   = chars:[a-zA-Z]+ { return chars.join('').toLowerCase(); }
 
+// Everything up to the next pipe. A `|` inside a quoted string is not a pipe; an
+// unbalanced quote is kept as an ordinary character.
 rest_of_command
-  = chars:[^|]+ { return chars.join('').trim(); }
+  = chars:$(('"' double_string_char* '"' / "'" single_string_char* "'" / [^|])+) { return chars.trim(); }
 
 /* ============================================================
    Search clause: boolean expressions of field=value, keywords, etc.
@@ -1399,15 +1529,23 @@ escaped_quote_inner
    Bare keywords (unqualified search terms)
    ============================================================ */
 bare_keyword
-  = '"' chars:double_string_char* '"'
+  // The JSON-fragment idiom `"key":"value"` / `"key":123`: quoted pieces joined by
+  // ':' with no whitespace. Kept as ONE term (fragment: true) so it can be
+  // reported by name, instead of failing the whole search at the ':'.
+  = text:$('"' double_string_char* '"' (':' ('"' double_string_char* '"' / keyword_char+))+)
+    { return { type: 'BareKeyword', value: text, quoted: true, fragment: true }; }
+  / '"' chars:double_string_char* '"'
     { return { type: 'BareKeyword', value: chars.join(''), quoted: true }; }
   / "'" chars:single_string_char* "'"
     { return { type: 'BareKeyword', value: chars.join(''), quoted: true }; }
   / chars:keyword_char+
     { return { type: 'BareKeyword', value: chars.join(''), quoted: false }; }
 
+// '!' is an ordinary term character (`!!Title!!!`) except where it starts the
+// `!=` operator — search has no `!` NOT operator.
 keyword_char
   = '\\' ch:. { return ch; }
+  / '!' !'=' { return '!'; }
   / [^ \t\r\n\f|()=!<>"`']
 
 /* String char rules. Splunk's only real escape sequences are \\, \", and

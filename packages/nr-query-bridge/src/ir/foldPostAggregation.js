@@ -377,8 +377,16 @@ function foldEvalLayer(outer, inner, warnings, droppedAcc) {
     .filter(isBareAggregateEntry)
     .map(exposedNameOf)
     .filter(Boolean);
+  // Helper columns the translator added itself (e.g. mvcount → uniqueCount) were
+  // never in Splunk's output, so they are not reported as dropped.
+  const reported = inner.select
+    .filter((item) => isBareAggregateEntry(item) && !item._synthetic)
+    .map(exposedNameOf)
+    .filter(Boolean);
   if (dropped.length > 0) {
-    if (warnings) warnings.push(messages.eval_after_agg_drops_source(dropped));
+    if (warnings && reported.length > 0) {
+      warnings.push(messages.eval_after_agg_drops_source(reported));
+    }
     // Record dropped names so a later orderBy referencing one is caught (silent
     // mis-order otherwise). select/where references are already caught by canFoldEval
     // / unexposedReference; orderBy is not folded through those.
@@ -685,12 +693,14 @@ function unexposedReference(query) {
 }
 
 // Walk the whole SubquerySource chain for the unexposed-reference hazard.
-function hasUnexposedReference(query) {
-  if (unexposedReference(query)) return true;
+// Returns the first offending name, or null.
+function findUnexposedReference(query) {
+  const here = unexposedReference(query);
+  if (here) return here;
   const ds = query.dataSource;
   if (ds && ds.type === 'SubquerySource')
-    return hasUnexposedReference(ds.query);
-  return false;
+    return findUnexposedReference(ds.query);
+  return null;
 }
 
 // A sort on a fold-DROPPED aggregate (`stats count … | eval a=count/60 | sort count`)
@@ -800,12 +810,20 @@ export function foldPostAggregationPass(ir) {
   // Loud failure over silent-wrong: a residual row-wise nested inner, or any
   // reference to a column the inner subquery no longer exposes (a dropped raw
   // aggregate a later step still needs), cannot be emitted as correct NRQL.
-  if (
-    hasRowwiseInner(folded) ||
-    hasUnexposedReference(folded) ||
-    orderByRefsDropped(folded, dropped)
-  ) {
+  // Each hazard gets its own message so triage sees the construct that failed.
+  const unexposed = findUnexposedReference(folded);
+  if (hasRowwiseInner(folded)) {
     folded.unsupported.push(messages.compound_collapse_unsupported());
+  } else if (unexposed) {
+    if (dropped.has(unexposed)) {
+      folded.unsupported.push(messages.post_agg_column_folded_away(unexposed));
+    } else if (unexposed === 'timestamp' || unexposed === '_time') {
+      folded.unsupported.push(messages.post_agg_time_not_grouped());
+    } else {
+      folded.unsupported.push(messages.post_agg_field_not_produced(unexposed));
+    }
+  } else if (orderByRefsDropped(folded, dropped)) {
+    folded.unsupported.push(messages.post_agg_sort_on_folded_column());
   } else {
     ensureInnerLimitMax(folded);
   }

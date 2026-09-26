@@ -24,7 +24,12 @@ import { recognizeWildcardRename, collectRefs } from './wildcardRename.js';
 import { messages } from '../../messages.js';
 
 export function handleTable(cmd, ir) {
-  ir.select = cmd.fields.map((f) => Identifier(mapFieldName(f)));
+  if (ir._hasAggregation) {
+    projectAggregatedColumns(cmd.fields, ir, 'table');
+    return;
+  }
+  const select = selectEventFields(cmd.fields, ir, 'table');
+  if (select) ir.select = select;
 }
 
 export function handleFields(cmd, ir) {
@@ -32,8 +37,118 @@ export function handleFields(cmd, ir) {
     // fields - X removes X from select (if explicit) or is a no-op
     // In NRQL, there's no way to exclude fields from SELECT *
     ir.warnings.push(messages.fields_exclude_limited());
+  } else if (ir._hasAggregation) {
+    projectAggregatedColumns(cmd.fields, ir, 'fields');
   } else {
-    ir.select = cmd.fields.map((f) => Identifier(mapFieldName(f)));
+    const select = selectEventFields(cmd.fields, ir, 'fields');
+    if (select) ir.select = select;
+  }
+}
+
+// table/fields over raw events → SELECT of those attributes. A `name*` wildcard
+// or a `fn(x)` stats-column name has no event-attribute equivalent → unsupported.
+function selectEventFields(fields, ir, command) {
+  const bad = fields.filter(
+    (f) => f !== '*' && (f.includes('*') || /\(.*\)$/.test(f)),
+  );
+  if (bad.length > 0) {
+    for (const f of bad) {
+      ir.unsupported.push(
+        f.includes('*')
+          ? messages.list_wildcard_field(command, f)
+          : messages.list_stats_column_without_stats(command, f),
+      );
+    }
+    return null;
+  }
+  return fields.map((f) => Identifier(mapFieldName(f)));
+}
+
+// A `*` glob as a RegExp over whole names.
+function globToRegExp(glob) {
+  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replace(/\*/g, '.*')}$`);
+}
+
+/**
+ * table/fields AFTER an aggregation is a projection of the aggregated columns,
+ * never a SELECT of event attributes (`SELECT a, c … FACET a` is invalid NRQL
+ * and drops the aggregate). Keeps the listed aggregate columns; FACET keys are
+ * always returned by NRQL, so an unlisted key stays (warned). Listed names the
+ * aggregation doesn't produce show as empty columns in Splunk — warned and
+ * skipped.
+ *
+ * Flat aggregation: filter ir.select. Wrapped (a where/eval already made the
+ * aggregation a subquery): the outer SELECT names inner columns row-wise.
+ */
+function projectAggregatedColumns(fields, ir, command) {
+  const wrapped = ir.dataSource?.type === 'SubquerySource';
+  const matches = (name, f) =>
+    !!name && (f.includes('*') ? globToRegExp(f).test(name) : name === f);
+
+  // Columns on offer: [{ names (Splunk-visible names), entry (select entry or
+  // null), ref (outer reference name when wrapped), facet }]
+  const columns = [];
+  const facetNames = new Set();
+  const facetSource = wrapped ? ir.dataSource.query.facet : ir.facet;
+  for (const f of facetSource) {
+    if (f.type === 'Identifier') {
+      facetNames.add(f.name);
+      columns.push({ names: [f.name], ref: f.name, facet: true });
+    }
+  }
+  const nameOf = (e) =>
+    e.type === 'Alias'
+      ? [e.name]
+      : [e._splName, e.type === 'Function' ? e.name : null].filter(Boolean);
+  if (wrapped && ir.select.length === 0) {
+    for (const e of ir.dataSource.query.select) {
+      // A subquery exposes an aggregate under its alias or bare NRQL name.
+      const names = nameOf(e);
+      if (names.length > 0) columns.push({ names, ref: e.name, entry: null });
+    }
+  } else {
+    for (const e of ir.select) {
+      if (e.type === 'Identifier' && facetNames.has(e.name)) continue;
+      columns.push({ names: nameOf(e), entry: e });
+    }
+  }
+
+  const kept = [];
+  const missing = [];
+  for (const f of fields) {
+    const hits = columns.filter((c) => c.names.some((n) => matches(n, f)));
+    if (hits.length === 0) {
+      if (f !== '*') missing.push(f);
+      continue;
+    }
+    for (const h of hits) if (!kept.includes(h)) kept.push(h);
+  }
+  if (fields.includes('*')) return; // everything stays
+
+  const keptAggs = kept.filter((c) => !c.facet);
+  const unlistedFacets = [...facetNames].filter(
+    (n) => !kept.some((c) => c.facet && c.ref === n),
+  );
+  if (missing.length > 0) {
+    ir.warnings.push(messages.list_column_not_produced(command, missing));
+  }
+
+  if (wrapped && ir.select.length === 0) {
+    // Outer row-wise projection over the subquery's exposed columns (nothing
+    // matched → leave SELECT *).
+    ir.select = kept.map((c) => Identifier(c.ref));
+    return;
+  }
+  if (keptAggs.length === 0) {
+    // NRQL needs at least one aggregate alongside FACET; keep them all.
+    ir.warnings.push(messages.list_keeps_aggregates(command));
+  } else {
+    const dropped = columns.filter((c) => !c.facet && !keptAggs.includes(c));
+    ir.select = ir.select.filter((e) => !dropped.some((c) => c.entry === e));
+  }
+  if (unlistedFacets.length > 0) {
+    ir.warnings.push(messages.list_keeps_facets(command, unlistedFacets));
   }
 }
 
@@ -109,6 +224,11 @@ export function handleRename(cmd, ir) {
 //   Source: splunk-to-nr migration guide (docs/references/splunk-to-nr-migration-guide.md)
 //   Feasibility: grammar change + handler change to use max()/min() instead of latest().
 export function handleDedup(cmd, ir) {
+  // `dedup N f` keeps N events per key; a FACET collapses to one row per key.
+  if (cmd.count != null && cmd.count !== 1) {
+    ir.unsupported.push(messages.dedup_count_unsupported(cmd.count));
+    return;
+  }
   for (const field of cmd.fields) {
     const id = Identifier(field);
     if (!ir.facet.some((f) => f.name === field)) {

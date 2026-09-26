@@ -71,6 +71,7 @@ import {
   handleTop,
   handleRare,
   handleEventstats,
+  handleChart,
 } from './aggregationHandlers.js';
 
 // NRQL functions NOT implemented in the row-wise (per-event) evaluator. They
@@ -249,6 +250,10 @@ export function translateSearchExpr(node, ir) {
   let sawTimeToken = false;
   let sawTimeLiteral = false;
 
+  // True once a literal-vs-literal comparison was constant-folded, so the caller
+  // knows an absent expression means "always true", not "untranslated".
+  let folded = false;
+
   function walk(node) {
     if (!node) return null;
 
@@ -256,6 +261,19 @@ export function translateSearchExpr(node, ir) {
       case 'BooleanOp': {
         const left = walk(node.left);
         const right = walk(node.right);
+        // Constant folding: a folded side simplifies the boolean and is never
+        // emitted. `true OR x` → true, `false OR x` → x, `true AND x` → x,
+        // `false AND x` → false.
+        const isOr = node.operator === 'OR';
+        for (const [side, other] of [
+          [left, right],
+          [right, left],
+        ]) {
+          if (side && side.type === 'Const') {
+            if (side.value === isOr) return side;
+            return other;
+          }
+        }
         if (!left && !right) return null;
         if (!left) return right;
         if (!right) return left;
@@ -265,7 +283,13 @@ export function translateSearchExpr(node, ir) {
       case 'Not': {
         const inner = walk(node.operand);
         if (!inner) return null;
+        if (inner.type === 'Const') return Const(!inner.value);
         return Not(inner);
+      }
+
+      case 'ConstComparison': {
+        folded = true;
+        return foldConstComparison(node, warnings, unsupported);
       }
 
       case 'Comparison': {
@@ -602,6 +626,12 @@ export function translateSearchExpr(node, ir) {
 
       case 'BareKeyword': {
         const { value } = node;
+        if (node.fragment) {
+          // `"key":"value"` — Splunk splits this on its breakers and matches the
+          // resulting terms, which a LIKE on the literal text does not reproduce.
+          unsupported.push(messages.search_json_fragment(value));
+          return null;
+        }
         if (!value || value === '*') return null;
         const escaped = escapeWildcard(value);
         return Like(Identifier('message'), `%${escaped}%`);
@@ -719,7 +749,14 @@ export function translateSearchExpr(node, ir) {
     }
   }
 
-  const expr = walk(node);
+  let expr = walk(node);
+  // A folded constant never reaches NRQL: always-true drops the condition;
+  // always-false would return no rows at all, which is almost certainly not the
+  // intent of a translated panel — fail loud rather than emit an empty query.
+  if (expr && expr.type === 'Const') {
+    if (!expr.value) unsupported.push(messages.where_always_false());
+    expr = null;
+  }
   return {
     expr,
     warnings,
@@ -727,9 +764,68 @@ export function translateSearchExpr(node, ir) {
     since,
     until,
     consumedTime,
+    folded,
     sawTimeToken,
     sawTimeLiteral,
   };
+}
+
+// A compile-time boolean from constant folding. Internal to translateSearchExpr:
+// it is always simplified away before an expression leaves this module.
+function Const(value) {
+  return { type: 'Const', value };
+}
+
+const TOKEN_ONLY_RE = /^\$([A-Za-z0-9_.:-]+)\$$/;
+
+/**
+ * Fold a literal-vs-literal `where` comparison (`"a"="a"`, `1=1`) to a Const.
+ *
+ * A side that is exactly a dashboard token (`"$tok$"`) compared with the literal
+ * `"*"` is the Splunk "all values" guard: `where "$tok$"="*" OR f="$tok$"`. NR
+ * substitutes {{tok}} directly into the field comparison, so the guard folds to
+ * false (`!=` → true) and the field comparison carries the filter; a warning says
+ * how to get "all" in NR. Any other comparison involving a token depends on the
+ * run-time value and cannot be folded — unsupported, named.
+ */
+function foldConstComparison(node, warnings, unsupported) {
+  const { left, right } = node;
+  const negate = node.operator === '!=';
+  const hasToken = (side) =>
+    side.kind === 'string' && /\$[A-Za-z0-9_.:-]+\$/.test(side.value);
+
+  if (hasToken(left) || hasToken(right)) {
+    const [tokSide, litSide] = hasToken(left) ? [left, right] : [right, left];
+    const tok = TOKEN_ONLY_RE.exec(tokSide.value);
+    if (tok && !hasToken(litSide) && litSide.value === '*') {
+      warnings.push(messages.where_token_all_guard_dropped(tok[1]));
+      return Const(negate);
+    }
+    unsupported.push(
+      messages.where_token_const_comparison(
+        `"${left.value}"${node.operator}"${right.value}"`,
+      ),
+    );
+    return null;
+  }
+
+  let equal;
+  if (left.kind === 'number' && right.kind === 'number') {
+    equal = Number(left.value) === Number(right.value);
+  } else if (left.kind === 'string' && right.kind === 'string') {
+    equal = left.value === right.value;
+  } else {
+    // String vs number: Splunk's coercion rules here are not something we can
+    // reproduce with confidence. Loud over a guess.
+    const show = (s) => (s.kind === 'string' ? `"${s.value}"` : s.value);
+    unsupported.push(
+      messages.where_mixed_const_comparison(
+        `${show(left)}${node.operator}${show(right)}`,
+      ),
+    );
+    return null;
+  }
+  return Const(negate ? !equal : equal);
 }
 
 // ── Command dispatch ─────────────────────────────────────────
@@ -738,7 +834,7 @@ const handlers = {
   // Aggregation
   StatsCommand: handleStats,
   TimechartCommand: handleTimechart,
-  ChartCommand: handleStats, // chart is structurally same as stats
+  ChartCommand: handleChart, // stats + chart options (limit=, …)
   TopCommand: handleTop,
   RareCommand: handleRare,
   TableCommand: handleTable,
@@ -776,6 +872,65 @@ const handlers = {
   MvexpandCommand: handleMvexpand,
   UniqCommand: handleUniq,
 };
+
+// Commands with a dedicated grammar rule (mirrors `known_command` in spl.grammar).
+// If one of these reaches the unknown_command catch-all, its arguments failed to
+// parse — it is not an unknown command.
+const KNOWN_COMMANDS = new Set([
+  'stats',
+  'timechart',
+  'chart',
+  'where',
+  'search',
+  'table',
+  'fields',
+  'sort',
+  'head',
+  'tail',
+  'top',
+  'rename',
+  'dedup',
+  'eval',
+  'rex',
+  'bin',
+  'bucket',
+  'lookup',
+  'inputlookup',
+  'spath',
+  'join',
+  'regex',
+  'fillnull',
+  'rare',
+  'reverse',
+  'strcat',
+  'uniq',
+  'convert',
+  'appendcols',
+  'appendpipe',
+  'append',
+  'eventstats',
+  'mvexpand',
+  'replace',
+  'predict',
+  'tstats',
+]);
+
+// Re-parse one stage with the strict (no catch-all) start rule to recover the
+// parser's own "Expected … but … found" for the argument that failed. Returns a
+// short `near '<text>': <expectation>` detail, or null if the strict parse
+// unexpectedly succeeds (the failure depended on surrounding context).
+function describeCommandParseFailure(name, rawText) {
+  const text = rawText ? `${name} ${rawText}` : name;
+  try {
+    parser.parse(text, { startRule: 'strict_command' });
+    return null;
+  } catch (e) {
+    const offset = e.location?.start?.offset ?? 0;
+    const near = text.slice(offset, offset + 30) || '(end of command)';
+    const expectation = String(e.message || '').replace(/\.$/, '');
+    return `near '${near}' (column ${offset + 1} of '${text.slice(0, 60)}'): ${expectation}`;
+  }
+}
 
 function applyCommand(cmd, ir) {
   const handler = handlers[cmd.type];
@@ -835,6 +990,17 @@ function applyCommand(cmd, ir) {
         );
         const windowArg = windowMatch ? windowMatch[1].toLowerCase() : null;
         ir.unsupported.push(messages.transaction_unsupported(windowArg));
+      } else if (KNOWN_COMMANDS.has(name)) {
+        // A command we DO translate, whose own grammar rule rejected these
+        // arguments (the catch-all then swallowed it). The command is not the
+        // problem — an option, identifier form, or sub-expression is. Report
+        // the parser's position/expectation for that construct instead.
+        ir.unsupported.push(
+          messages.command_args_unparsed(
+            name,
+            describeCommandParseFailure(name, cmd.rawText),
+          ),
+        );
       } else {
         ir.unsupported.push(messages.unsupported_command(name));
       }

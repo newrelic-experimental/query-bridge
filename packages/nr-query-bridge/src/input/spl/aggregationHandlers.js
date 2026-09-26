@@ -58,10 +58,26 @@ export function handleStats(cmd, ir) {
       continue;
     }
 
+    // first()/last() map to latest()/earliest() because Splunk returns events
+    // newest-first. A preceding sort/reverse/tail re-orders the rows, and then
+    // "first in input order" no longer means "newest".
+    if (ir.orderBy && (fn.name === 'first' || fn.name === 'last')) {
+      ir.unsupported.push(messages.first_last_after_reorder(fn.name));
+      continue;
+    }
     const mapped = mapFunction(fn.name, fn.args);
     if (mapped.warning) ir.warnings.push(mapped.warning);
+    if (mapped.unsupported) ir.unsupported.push(mapped.unsupported);
     if (mapped.expr) {
       const expr = fn.alias ? Alias(mapped.expr, fn.alias) : mapped.expr;
+      // The column name Splunk gives an unaliased aggregate (`count`, `max(b)`),
+      // so a later `table`/`fields` can find it. Non-enumerable (not emitted).
+      if (!fn.alias) {
+        Object.defineProperty(expr, '_splName', {
+          value: splColumnName(fn),
+          enumerable: false,
+        });
+      }
       ir.select.push(expr);
     }
   }
@@ -73,25 +89,133 @@ export function handleStats(cmd, ir) {
   ir._hasAggregation = true;
 }
 
+// Splunk's output column name for an unaliased stats function: `count` for a
+// bare/`count(*)` count, else `fn(arg, …)` as written. null when an argument is
+// an expression we can't render back to text.
+function splColumnName(fn) {
+  const args = fn.args || [];
+  if (args.length === 0 || (args.length === 1 && args[0] === '*')) {
+    return fn.name;
+  }
+  if (!args.every((a) => typeof a === 'string')) return null;
+  return `${fn.name}(${args.join(', ')})`;
+}
+
 export function handleTimechart(cmd, ir) {
   handleStats(cmd, ir);
+  const options = cmd.options || [];
   if (
     cmd.span &&
     typeof cmd.span === 'object' &&
     cmd.span.type === 'SpanToken'
   ) {
     ir.unsupported.push(messages.span_token_unsupported(`$${cmd.span.name}$`));
+  } else if (cmd.span) {
+    const span = normalizeSpan(cmd.span);
+    if (span) {
+      ir.timeseries = formatSpan(span);
+    } else {
+      ir.unsupported.push(messages.span_unrecognized(cmd.span));
+    }
   } else {
-    ir.timeseries = cmd.span ? formatSpan(cmd.span) : 'AUTO';
+    ir.timeseries = 'AUTO';
+    // bins=N / minspan=X only steer Splunk's automatic bucket size, which depends
+    // on the search window. NRQL's TIMESERIES AUTO does the same job; say so.
+    const hint = options.find((o) => o.type === 'bins' || o.type === 'minspan');
+    if (hint) {
+      ir.warnings.push(
+        messages.timechart_bucket_hint_auto(`${hint.type}=${hint.value}`),
+      );
+    }
   }
-  for (const opt of cmd.options || []) {
+  applyAggOptions(
+    options.filter((o) => o.type !== 'bins' && o.type !== 'minspan'),
+    ir,
+    'timechart',
+  );
+}
+
+export function handleChart(cmd, ir) {
+  handleStats(cmd, ir);
+  applyAggOptions(cmd.options || [], ir, 'chart');
+}
+
+// Options that change only how Splunk renders the result, never the numbers.
+const DISPLAY_ONLY_AGG_OPTIONS = new Set([
+  'cont',
+  'fixedrange',
+  'partial',
+  'nullstr',
+  'otherstr',
+  'format',
+  'sep',
+]);
+
+// Shared interpretation of the key=value options timechart/chart accept in any
+// position. `limit=` is the same knob as the FACET-default LIMIT warning.
+function applyAggOptions(options, ir, command) {
+  const ignored = [];
+  for (const opt of options) {
+    const value = String(opt.value);
     if (opt.type === 'limit') {
-      ir.limit = opt.value === 0 ? 'MAX' : opt.value;
+      const m = /^(?:top)?(\d+)$/i.exec(value);
+      if (m) {
+        const n = Number(m[1]);
+        ir.limit = n === 0 ? 'MAX' : n;
+      } else {
+        ir.unsupported.push(
+          messages.agg_option_unsupported(command, `limit=${value}`),
+        );
+      }
     } else if (opt.type === 'usenull') {
       ir.warnings.push(messages.usenullNoEquivalent());
+    } else if (opt.type === 'useother') {
+      // No-op: NRQL never synthesizes an OTHER bucket in the data.
+    } else if (DISPLAY_ONLY_AGG_OPTIONS.has(opt.type)) {
+      ignored.push(`${opt.type}=${value}`);
+    } else {
+      ir.unsupported.push(
+        messages.agg_option_unsupported(command, `${opt.type}=${value}`),
+      );
     }
-    // useother=false is a no-op: NRQL never synthesizes an OTHER bucket.
   }
+  if (ignored.length > 0) {
+    ir.warnings.push(messages.agg_display_options_ignored(command, ignored));
+  }
+}
+
+// Splunk span units → the single-letter units formatSpan understands. `m` is
+// minutes and `mon` months (Splunk); a bare `M` is kept as months for
+// compatibility. Quarters become 3 months.
+const SPAN_UNITS = [
+  { re: /^(s|sec|secs|second|seconds)$/, letter: 's', mult: 1 },
+  { re: /^(m|min|mins|minute|minutes)$/, letter: 'm', mult: 1 },
+  { re: /^(h|hr|hrs|hour|hours)$/, letter: 'h', mult: 1 },
+  { re: /^(d|day|days)$/, letter: 'd', mult: 1 },
+  { re: /^(w|week|weeks)$/, letter: 'w', mult: 1 },
+  { re: /^(mon|month|months)$/, letter: 'M', mult: 1 },
+  { re: /^(q|qtr|qtrs|quarter|quarters)$/, letter: 'M', mult: 3 },
+  { re: /^(y|yr|yrs|year|years)$/, letter: 'y', mult: 1 },
+];
+
+/**
+ * Normalize a Splunk span (`1h`, `d`, `1mon`, `30min`, `2 hours`) to the `<n><unit>`
+ * form formatSpan expects, or null if it is not a span we can express.
+ *
+ * @param {string} raw
+ * @returns {string|null}
+ */
+export function normalizeSpan(raw) {
+  const m = /^(\d*)\s*([a-zA-Z]+)$/.exec(String(raw).trim());
+  if (!m) return null;
+  const count = m[1] === '' ? 1 : Number(m[1]);
+  if (count === 0) return null;
+  if (m[2] === 'M') return `${count}M`;
+  const unit = m[2].toLowerCase();
+  for (const { re, letter, mult } of SPAN_UNITS) {
+    if (re.test(unit)) return `${count * mult}${letter}`;
+  }
+  return null;
 }
 
 export function handleTop(cmd, ir) {
@@ -108,7 +232,10 @@ export function handleTop(cmd, ir) {
   //   The percent-of-total denominator genuinely needs this scalar subquery. Do not re-chase.
   if (cmd.showperc !== false) {
     const subqWhere = [...ir.where];
+    // The copied WHERE may reference WITH bindings (rex/spath/eval fields); the
+    // subquery needs the same bindings or those names resolve to null there.
     const subquery = SelectQuery({
+      bindings: [...ir.bindings],
       select: [Func('count', [])],
       where: subqWhere,
     });
@@ -154,6 +281,7 @@ export function handleEventstats(cmd, ir) {
   for (const fn of cmd.functions) {
     const mapped = mapFunction(fn.name, fn.args);
     if (mapped.warning) ir.warnings.push(mapped.warning);
+    if (mapped.unsupported) ir.unsupported.push(mapped.unsupported);
     if (mapped.expr) {
       const alias = fn.alias || fn.args[0] || fn.name;
       subSelect.push(Alias(mapped.expr, alias));

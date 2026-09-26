@@ -209,6 +209,26 @@ SPL:  * | chart count by status
 NRQL: FROM Log SELECT count(*) FACET status
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
+
+```
+❓ Not confirmed
+SPL:  index=web | chart count as c over dow by hod
+NRQL: FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET dow, hod
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | chart count by a, b limit=0
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET a, b LIMIT MAX
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | chart first(count) OVER host BY ver
+NRQL: FROM Log SELECT latest(count) WHERE index = 'web' FACET host, ver
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
 <!-- /spl-cases -->
 
 ## `convert` — Partial support
@@ -319,6 +339,13 @@ NRQL: FROM Log SELECT count(*) FACET host LIMIT MAX
 
 ```
 ❓ Not confirmed
+SPL:  index=web | dedup 1 a
+NRQL: FROM Log SELECT latest(timestamp) WHERE index = 'web' FACET a LIMIT MAX
+🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
+```
+
+```
+❓ Not confirmed
 SPL:  * | dedup userId | stats count by routeName
 🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
 🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
@@ -331,8 +358,14 @@ SPL:  (routeName="AddItem" OR routeName="Submit") msg="Processed Server Request.
 🟡 `dedup` translated to FACET; add latest(field) for each field you want to keep
 🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
 🟡 `dedup` with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.
-🟡 SPL function eval() has no known NRQL equivalent
-🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
+🔴 SPL function eval() has no known NRQL equivalent
+🔴 Per-row step (eval, rex, …) between two aggregations would have to run inside the nested aggregation, which NRQL does not allow; not yet supported
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | dedup 3 a
+🔴 `dedup` 3 keeps 3 events per key; NRQL FACET returns one row per key, so there is no equivalent (dedup 1 translates)
 ```
 <!-- /spl-cases -->
 
@@ -705,6 +738,69 @@ SPL:  * | fields - _raw, _time
 NRQL: FROM Log SELECT *
 🟡 `fields` - (exclude mode) has limited NRQL support
 ```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as c by a | table a, c
+NRQL: FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as c, max(b) by a | table a, max(b)
+NRQL: FROM Log SELECT max(b) WHERE index = 'web' FACET a
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as c, sum(b) as s by a | fields a, s
+NRQL: FROM Log SELECT sum(b) AS 's' WHERE index = 'web' FACET a
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as c by a, b | table a, c
+NRQL: FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a, b
+🟡 `table` omits FACET key(s) b, but NRQL always returns FACET keys; they remain in the output
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count by a | table a
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET a
+🟡 `table` lists no aggregate column, but NRQL needs at least one alongside FACET; the aggregate column(s) are still returned
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as c by a | table a, c, missing
+NRQL: FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a
+🟡 `table` column(s) missing are not produced by the preceding aggregation (Splunk shows them empty); skipped
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as c by a | where c>5 | table a c
+NRQL: FROM (FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a LIMIT MAX) SELECT a, c WHERE numeric(c) > 5
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | table a "B C" Totals*
+🔴 `table` wildcard field 'Totals*' has no NRQL equivalent; NRQL SELECT cannot match attributes by name pattern — list the fields explicitly
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | table a, max(b)
+🔴 `table` field 'max(b)' names a stats output column, but no stats/chart/timechart precedes it
+```
 <!-- /spl-cases -->
 
 ## `fillnull` — Supported
@@ -747,6 +843,13 @@ NRQL: FROM Log SELECT sum(bytes OR 0) FACET host
 ✅ Confirmed by human
 SPL:  * | fillnull value=0 field1, field2, field3
 NRQL: FROM Log SELECT field1 OR 0, field2 OR 0, field3 OR 0, *
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | fillnull name value="-" | stats count by name
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET name OR '-'
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -874,6 +977,12 @@ SPL:  * | join type=outer host [search * | stats count by host]
 ✅ Confirmed by human
 SPL:  * | join host [search status=200 host=web*]
 🔴 Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | join type=left a, b [search index=b | table a b]
+🔴 `join` on multiple keys (a, b) has no NRQL equivalent; NRQL JOIN … ON supports a single key
 ```
 <!-- /spl-cases -->
 
@@ -1060,8 +1169,8 @@ SPL:  * | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand nota
 ```
 🤖 Confirmed by LLM
 SPL:  index=k8s_main bopus orderType=BOPUS storeNumber=* orderNumber=* | stats list(orderNumber) AS orderNumber BY orderStatus storeNumber | mvexpand orderNumber | sort -orderNumber
-🟡 SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 SPL list() keeps every value including duplicates, in event order; NRQL uniques() de-duplicates and does not preserve order. Use values() if distinct values are acceptable
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
 
@@ -1292,6 +1401,18 @@ NRQL: FROM Log WITH capture(f1, r'.*(?P<a>\w+).*') AS (a), capture(f2, r'.*(?P<b
 ```
 
 ```
+❓ Not confirmed
+SPL:  index=web | rex \"t4\"\:\"(?<T4>.+?)\"
+NRQL: FROM Log WITH capture(message, r'.*\"t4\"\:\"(?P<T4>.+?)\".*') AS (T4) SELECT * WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex max_match=1 "a=(?<a>\d+)"
+NRQL: FROM Log WITH capture(message, r'.*a=(?P<a>\d+).*') AS (a) SELECT * WHERE index = 'web'
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rex field=message "\d+"
 🔴 `rex` pattern has no named capture groups; nothing to extract
@@ -1300,7 +1421,13 @@ SPL:  * | rex field=message "\d+"
 ```
 ✅ Confirmed by human
 SPL:  * | rex field=message "(?<skus>\d{6,})" max_match=0
-🔴 `rex` max_match not supported; NRQL capture() returns first match only
+🔴 `rex` max_match=0 not supported; NRQL capture() returns only the first match per event
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "\"cur\":\"(?<cur>[^\"]+)"\"
+🔴 `rex` command could not be parsed: "\"cur\":\"(?<cur>[^\"]+)"\"
 ```
 <!-- /spl-cases -->
 
@@ -1312,7 +1439,13 @@ Uses sed-like syntax for in-line string substitution. Limited NRQL support via s
 ```
 ✅ Confirmed by human
 SPL:  * | rex mode=sed field=message "s/old/new/g"
-🔴 `rex` mode=sed has no NRQL equivalent
+🔴 `rex` mode=sed has no NRQL equivalent (field=message, sed script 's/old/new/g'); NRQL replace() is literal-only — apply this rewrite at ingest time with a parsing rule
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex field=msg mode=sed "s/a/b/g"
+🔴 `rex` mode=sed has no NRQL equivalent (field=msg, sed script 's/a/b/g'); NRQL replace() is literal-only — apply this rewrite at ingest time with a parsing rule
 ```
 <!-- /spl-cases -->
 
@@ -1416,6 +1549,19 @@ NRQL: FROM Log SELECT * WHERE status = '200' OR numeric(status) = 200 OR status 
 ✅ Confirmed by human
 SPL:  | search host=web01
 NRQL: FROM Log SELECT * WHERE host = 'web01'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as c by a | search c=5
+NRQL: FROM (FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a LIMIT MAX) SELECT * WHERE c = '5' OR numeric(c) = 5
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as c by a | search a=x
+NRQL: FROM Log SELECT count(*) AS 'c' WHERE index = 'web' AND a = 'x' FACET a
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 <!-- /spl-cases -->
 
@@ -1524,6 +1670,50 @@ NRQL: FROM Log WITH jparse(payload, 'user.id') AS user_id SELECT *
 ```
 
 ```
+❓ Not confirmed
+SPL:  index=web | spath input=j | search tenant="x" | stats count
+NRQL: FROM Log WITH jparse(j, 'tenant') AS tenant SELECT count(*) WHERE index = 'web' AND tenant = 'x'
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) tenant as jparse(<source>, '<field>') — confirm each is a JSON property of the source
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | spath input=j | eval z=tenant | stats count by z
+NRQL: FROM Log WITH jparse(j, 'tenant') AS tenant, tenant AS z SELECT count(*) WHERE index = 'web' FACET z
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) tenant as jparse(<source>, '<field>') — confirm each is a JSON property of the source
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | spath input=j | table tenant region
+NRQL: FROM Log WITH jparse(j, 'tenant') AS tenant, jparse(j, 'region') AS region SELECT tenant, region WHERE index = 'web'
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) tenant, region as jparse(<source>, '<field>') — confirm each is a JSON property of the source
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | spath input=j | where tenant="x" | top limit=2 "a{}.c"
+NRQL: FROM Log WITH jparse(j, 'tenant') AS tenant, jparse(j, 'a[*].c') AS `a{}.c` SELECT count(*), count(*) * 100.0 / (FROM Log WITH jparse(j, 'tenant') AS tenant, jparse(j, 'a[*].c') AS `a{}.c` SELECT count(*) WHERE index = 'web' AND tenant = 'x') AS 'percent' WHERE index = 'web' AND tenant = 'x' FACET `a{}.c` ORDER BY count DESC LIMIT 2
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) tenant, a{}.c as jparse(<source>, '<field>') — confirm each is a JSON property of the source
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | spath input=j | where tenant="x" | stats sum(bytes) by host
+NRQL: FROM Log WITH jparse(j, 'tenant') AS tenant, jparse(j, 'bytes') AS bytes SELECT sum(bytes) WHERE index = 'web' AND tenant = 'x' FACET host
+🟡 `spath` without path= auto-extracts all fields; rewrote downstream reference(s) tenant, bytes as jparse(<source>, '<field>') — confirm each is a JSON property of the source
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | spath input=r path=body."Some Name{}" output=s
+NRQL: FROM Log WITH jparse(r, 'body.Some Name[*]') AS s SELECT * WHERE index = 'web'
+🟡 `jparse()` only works on JSON data; if the input is XML, use capture() with a regex pattern instead
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | spath
 🔴 `spath` without path= does auto-extraction, which has no NRQL equivalent; specify path= to extract a specific JSON field
@@ -1608,14 +1798,6 @@ NRQL: FROM Log SELECT filter(count(*), WHERE EventCode = '4648' OR numeric(Event
 
 ```
 🤖 Confirmed by LLM
-SPL:  * | stats list(eventType) by orderId
-NRQL: FROM Log SELECT uniques(eventType) FACET orderId
-🟡 SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved
-🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-```
-
-```
-🤖 Confirmed by LLM
 SPL:  * | stats count by host
 NRQL: FROM Log SELECT count(*) FACET host
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
@@ -1626,6 +1808,13 @@ NRQL: FROM Log SELECT count(*) FACET host
 SPL:  * | stats count by validations{}.code
 NRQL: FROM Log SELECT count(*) FACET `validations{}.code`
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats list(eventType) by orderId
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 SPL list() keeps every value including duplicates, in event order; NRQL uniques() de-duplicates and does not preserve order. Use values() if distinct values are acceptable
 ```
 <!-- /spl-cases -->
 
@@ -1842,6 +2031,30 @@ NRQL: FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT cou
 🟡 `dedup` translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields
 🟡 `dedup` with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.
 ```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=d count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 day
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=1mon count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 1 month
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=1q count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' TIMESERIES 3 months
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=90ms count
+🔴 Span=90ms is not a time span NRQL TIMESERIES can express (use s, m, h, d, w, mon, q, or y units)
+```
 <!-- /spl-cases -->
 
 ## `timewrap` — Not supported
@@ -1922,6 +2135,18 @@ NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*)) AS
 ✅ Confirmed by human
 SPL:  error | top 5 status
 NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE message LIKE '%error%') AS 'percent' WHERE message LIKE '%error%' FACET status ORDER BY count DESC LIMIT 5
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | top limit=2 "a{}.b"
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'web') AS 'percent' WHERE index = 'web' FACET `a{}.b` ORDER BY count DESC LIMIT 2
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | top limit=2 "Full Name"
+NRQL: FROM Log SELECT count(*), count(*) * 100.0 / (FROM Log SELECT count(*) WHERE index = 'web') AS 'percent' WHERE index = 'web' FACET `Full Name` ORDER BY count DESC LIMIT 2
 ```
 <!-- /spl-cases -->
 
@@ -2113,6 +2338,89 @@ NRQL: FROM Log SELECT * WHERE numeric(status) >= 400 AND numeric(status) < 500
 SPL:  * | where NOT status = 200
 NRQL: FROM Log SELECT * WHERE NOT (status = '200' OR numeric(status) = 200)
 ```
+
+```
+❓ Not confirmed
+SPL:  index=web | where "$region$"="*" OR region="$region$"
+NRQL: FROM Log SELECT * WHERE index = 'web' AND region = {{region}}
+🟡 `where` "$region$"="*" (the dashboard "all values" guard) was dropped: New Relic substitutes {{region}} directly into the field comparison, so a literal * would match nothing. To offer "all values", enable the New Relic variable's multi-value / include-all option instead of a * choice.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where region="$region$" OR "$region$"="*"
+NRQL: FROM Log SELECT * WHERE index = 'web' AND region = {{region}}
+🟡 `where` "$region$"="*" (the dashboard "all values" guard) was dropped: New Relic substitutes {{region}} directly into the field comparison, so a literal * would match nothing. To offer "all values", enable the New Relic variable's multi-value / include-all option instead of a * choice.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where "$region$"!="*" AND region="$region$"
+NRQL: FROM Log SELECT * WHERE index = 'web' AND region = {{region}}
+🟡 `where` "$region$"="*" (the dashboard "all values" guard) was dropped: New Relic substitutes {{region}} directly into the field comparison, so a literal * would match nothing. To offer "all values", enable the New Relic variable's multi-value / include-all option instead of a * choice.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where "a"="a"
+NRQL: FROM Log SELECT * WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where 1=1
+NRQL: FROM Log SELECT * WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where "a"="b" OR region="x"
+NRQL: FROM Log SELECT * WHERE index = 'web' AND region = 'x'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where NOT "a"="b"
+NRQL: FROM Log SELECT * WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where like (src,"%x%")
+NRQL: FROM Log SELECT * WHERE index = 'web' AND src LIKE '%x%'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where searchmatch("foo")
+NRQL: FROM Log SELECT * WHERE index = 'web' AND message LIKE '%foo%'
+🟡 `searchmatch()` translated as a search on the message attribute; Splunk matched bare terms against the whole raw event, so terms that only appear in other attributes won't match
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where searchmatch("status=500 timeout")
+NRQL: FROM Log SELECT * WHERE index = 'web' AND status = '500' OR numeric(status) = 500 AND message LIKE '%timeout%'
+🟡 `searchmatch()` translated as a search on the message attribute; Splunk matched bare terms against the whole raw event, so terms that only appear in other attributes won't match
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where "a"="b"
+🔴 `where` condition is always false (a comparison between two different literals), so the query would return no rows; remove or fix the condition
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where "$env$"="prod"
+🔴 `where` "$env$"="prod" compares a dashboard token with a literal; the result depends on the value chosen at run time and cannot be translated
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where "1"=1
+🔴 `where` "1"=1 compares a string literal with a number literal; Splunk's coercion for this cannot be reproduced reliably
+```
 <!-- /spl-cases -->
 
 ## `where` on aggregation result — Supported
@@ -2160,6 +2468,13 @@ NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT * WHERE numeri
 ✅ Confirmed by human
 SPL:  * | stats count | where count > 0
 NRQL: FROM (FROM Log SELECT count(*)) SELECT * WHERE numeric(count) > 0
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count by host | where "a"="a"
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 <!-- /spl-cases -->
 
@@ -2327,7 +2642,7 @@ NRQL: FROM Log WITH if(status = '500' OR numeric(status) = 500, 1, 0) AS r SELEC
 ```
 ❓ Not confirmed
 SPL:  * | stats count | eval x = round(total/count, 2)
-🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
+🔴 Post-aggregation step references 'total', which the aggregation does not output (only its BY fields and aggregate columns survive stats)
 ```
 <!-- /spl-cases -->
 
@@ -2485,6 +2800,18 @@ NRQL: FROM Log WITH concat(string(cost), suffix) AS z SELECT *
 ```
 
 ```
+❓ Not confirmed
+SPL:  index=web | eval s=a."|".b
+NRQL: FROM Log WITH concat(a, '|', b) AS s SELECT * WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | eval s=a.":".b
+NRQL: FROM Log WITH concat(a, ':', b) AS s SELECT * WHERE index = 'web'
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | eval x=replace(name, "\\d+", "")
 🔴 `replace()` with regex pattern '\d+' not supported — NRQL replace() is literal-only
@@ -2561,7 +2888,7 @@ SPL:  * | eval d = strftime(_time, myfmt)
 ```
 ❓ Not confirmed
 SPL:  * | stats count by host | eval d = strftime(_time, "%Y-%m-%d")
-🔴 Steps that run after an aggregation (a further eval, where, or strftime on the grouped results) cannot be rewritten as valid NRQL here — NRQL would have to nest them inside the aggregation, which it does not allow; not yet supported
+🔴 Post-aggregation step references _time, but _time is not in the grouped output (the stats has no 'by _time'; Splunk's own value here is empty) — group by _time (or use timechart) to keep it
 ```
 
 ```
@@ -2624,6 +2951,18 @@ NRQL: FROM Log WITH ceiling(val) AS x SELECT *
 ✅ Confirmed by human
 SPL:  * | eval x=log(val)
 NRQL: FROM Log WITH log10(val) AS x SELECT *
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | eval s=sum(a,b)
+NRQL: FROM Log WITH numeric(a) + numeric(b) AS s SELECT * WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | eval t=relative_time(now(),"-1d")
+🔴 `relative_time()` in eval computes a per-event time and has no NRQL equivalent; to bound the time range use earliest=/latest= or where _time >= relative_time(now(), "<offset>")
 ```
 <!-- /spl-cases -->
 
@@ -2852,6 +3191,24 @@ NRQL: FROM Log SELECT * ORDER BY firstTime DESC
 SPL:  * | sort host, -duration
 NRQL: FROM Log SELECT * ORDER BY host ASC
 🟡 NRQL ORDER BY supports only one field; additional sort fields ignored
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count by uri | sort limit=20 -count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET uri ORDER BY count DESC LIMIT 20
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | sort -"Time"
+NRQL: FROM Log SELECT * WHERE index = 'web' ORDER BY Time DESC
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | sort - "Time"
+NRQL: FROM Log SELECT * WHERE index = 'web' ORDER BY Time DESC
 ```
 <!-- /spl-cases -->
 
@@ -3139,8 +3496,8 @@ Commands not recognized by the translator produce a generic unsupported message.
 | `first(field)` | `latest(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `last(field)` | `earliest(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `rate(field)` | `rate(sum(field), 1 second)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
-| `list(field)` | `uniques(field)` | list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved |
-| `xyzfunc(field)` | `*` | function xyzfunc() has no known NRQL equivalent |
+| `list(field)` | `—` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `xyzfunc(field)` | `—` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `estdc(field)` | `uniqueCount(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `exactperc95(field)` | `percentile(field, 95)` | exactperc95() mapped to NRQL percentile(); precision may differ |
 | `upperperc99(field)` | `percentile(field, 99)` | upperperc99() mapped to NRQL percentile(); precision may differ |
@@ -3150,6 +3507,8 @@ Commands not recognized by the translator produce a generic unsupported message.
 | `per_day(field)` | `—` |  |
 | `max(field)` | `max(numeric(field) / 1000)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 | `perc95(field)` | `—` |  |
+| `range(field)` | `max(field) - min(x)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `perc99.9(field)` | `percentile(d, 99.9)` |  |
 <!-- /spl-table -->
 
 <!-- spl-cases: stats-functions -->
@@ -3200,22 +3559,6 @@ NRQL: FROM Log SELECT earliest(status) FACET host
 ✅ Confirmed by human
 SPL:  * | stats rate(bytes) by host
 NRQL: FROM Log SELECT rate(sum(bytes), 1 second) FACET host
-🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-```
-
-```
-✅ Confirmed by human
-SPL:  * | stats list(user) by host
-NRQL: FROM Log SELECT uniques(user) FACET host
-🟡 SPL list() mapped to NRQL uniques(); duplicates are removed and insertion order is not preserved
-🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-```
-
-```
-✅ Confirmed by human
-SPL:  * | stats xyzfunc(field) by host
-NRQL: FROM Log SELECT * FACET host
-🟡 SPL function xyzfunc() has no known NRQL equivalent
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
@@ -3287,6 +3630,47 @@ NRQL: FROM Log SELECT average(numeric(bytes) * 8 / 1024) TIMESERIES 1 hour
 SPL:  * | stats perc95(duration / 1000) as p95_sec
 NRQL: FROM Log SELECT percentile(numeric(duration) / 1000, 95) AS 'p95_sec'
 ```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats range(x) by host
+NRQL: FROM Log SELECT max(x) - min(x) WHERE index = 'web' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats first(x) as f by a
+NRQL: FROM Log SELECT latest(x) AS 'f' WHERE index = 'web' FACET a
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats perc99.9(d)
+NRQL: FROM Log SELECT percentile(d, 99.9) WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats list(user) by host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 SPL list() keeps every value including duplicates, in event order; NRQL uniques() de-duplicates and does not preserve order. Use values() if distinct values are acceptable
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats xyzfunc(field) by host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 SPL function xyzfunc() has no known NRQL equivalent
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | sort x | stats first(x) as f by a
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 `first()` after a sort/reverse/tail depends on the re-ordered row order; NRQL latest()/earliest() pick by timestamp, so the result would differ
+```
 <!-- /spl-cases -->
 
 ## Stats Functions with No NRQL Equivalent
@@ -3294,34 +3678,31 @@ NRQL: FROM Log SELECT percentile(numeric(duration) / 1000, 95) AS 'p95_sec'
 <!-- spl-table: stats-no-equiv -->
 | SPL function | Notes |
 |---|---|
-| `mode(field)` | Has no direct NRQL equivalent; consider FACET field LIMIT 1 to find most common value |
-| `earliest_time(field)` | Has no NRQL equivalent; earliest() returns the value, not the timestamp |
-| `rate_avg(field)` | Is Splunk metrics-specific; no NRQL equivalent |
+| `mode(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `earliest_time(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
+| `rate_avg(field)` | NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups. |
 <!-- /spl-table -->
 
 <!-- spl-cases: stats-no-equiv -->
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | stats mode(status) by host
-NRQL: FROM Log SELECT * FACET host
-🟡 SPL mode() has no direct NRQL equivalent; consider FACET field LIMIT 1 to find most common value
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 SPL mode() (most common value) has no NRQL aggregate equivalent; use a separate query with FACET field LIMIT 1
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | stats earliest_time(message) as first_seen by host
-NRQL: FROM Log SELECT * FACET host
-🟡 SPL earliest_time() has no NRQL equivalent; earliest() returns the value, not the timestamp
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 SPL earliest_time() has no NRQL equivalent; earliest() returns the value, not the timestamp
 ```
 
 ```
-✅ Confirmed by human
+❓ Not confirmed
 SPL:  * | stats rate_avg(cpu) by host
-NRQL: FROM Log SELECT * FACET host
-🟡 SPL rate_avg() is Splunk metrics-specific; no NRQL equivalent
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 SPL rate_avg() is Splunk metrics-specific; no NRQL equivalent
 ```
 <!-- /spl-cases -->
 
@@ -3928,6 +4309,18 @@ NRQL: FROM Log SELECT count(*) WHERE {{column}} NOT IN (FROM lookup(exclude) SEL
 SPL:  "parameters.doc_title" IN ("*dhl*", "*invoice*")
 NRQL: FROM Log SELECT * WHERE `parameters.doc_title` LIKE '%dhl%' OR `parameters.doc_title` LIKE '%invoice%'
 ```
+
+```
+❓ Not confirmed
+SPL:  index=web | where country IN ("za","us")
+NRQL: FROM Log SELECT * WHERE index = 'web' AND country IN ('za', 'us')
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where NOT (country IN ("za","us"))
+NRQL: FROM Log SELECT * WHERE index = 'web' AND NOT country IN ('za', 'us')
+```
 <!-- /spl-cases -->
 
 ## Wildcards
@@ -4208,6 +4601,18 @@ NRQL: FROM Log SELECT count(*) WHERE message LIKE '%control-connection-state-cha
 SPL:  TERM("*peer-system-ip:*") | stats count
 NRQL: FROM Log SELECT count(*) WHERE message LIKE '%%peer-system-ip:%%'
 ```
+
+```
+❓ Not confirmed
+SPL:  index=web !!Title!!! | stats count
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND message LIKE '%!!Title!!!%'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web "a":"b" | stats count
+🔴 `search` term "a":"b" is a JSON fragment (quoted pieces joined by ':'); Splunk matches it by breaking it into terms, which a text match cannot reproduce — rewrite it as a field comparison (e.g. status=500 after spath) or a single quoted phrase
+```
 <!-- /spl-cases -->
 
 ---
@@ -4392,6 +4797,17 @@ NRQL: FROM Log SELECT count(*) FACET host
 SPL:  * | stats avg(response.time) by host
 NRQL: FROM Log SELECT average(`response.time`) FACET host
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | sort -dc(requestId
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where "a" LIKE b c
+🔴 SPL 'where' arguments could not be parsed near 'LIKE b c' (column 11 of 'where "a" LIKE b c'): Expected "!=", "=", "==", or whitespace but "L" found
 ```
 <!-- /spl-cases -->
 
