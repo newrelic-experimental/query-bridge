@@ -116,6 +116,8 @@ export const SelectQuery = (overrides = {}) => ({
   _hasAggregation: false,
   /** @type {boolean} internal: true when a head/tail ran between two aggregations (→ unsupported) */
   _headBetweenAgg: false,
+  /** @type {string|null} internal: key of a `dedup K` deferred to the next aggregation's counts (→ uniqueCount(K)) */
+  _dedupCountKey: null,
   /** @type {Object|undefined} internal: fillnull default-value map, consumed during IR build */
   _fillnullMap: undefined,
   /** @type {Map<string,string>|undefined} internal: field rename map, consumed during IR build */

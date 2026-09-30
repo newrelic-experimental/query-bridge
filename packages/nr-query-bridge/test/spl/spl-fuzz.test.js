@@ -1543,7 +1543,8 @@ class StatsCommand {
     const r = m.translate();
     expect(r.nrql).not.toContain('[object Object]');
     if (r.nrql) {
-      expect(r.nrql).toContain('count(');
+      // count( — or uniqueCount( when a preceding dedup is folded into the count
+      expect(r.nrql).toMatch(/count\(/i);
       // FACET may be absent if _time was absorbed into TIMESERIES
       if (this.field !== '_time' || !m.hasTimeseries) {
         expect(r.nrql).toContain('FACET');
@@ -1803,7 +1804,7 @@ describe('model-based testing', () => {
               // Dedup uses FACET + LIMIT MAX (may not have explicit agg function)
               // Stats/timechart always have an agg function
               expect(r.nrql).toMatch(
-                /count\(|average\(|sum\(|max\(|min\(|latest\(|FACET/,
+                /count\(|uniqueCount\(|average\(|sum\(|max\(|min\(|latest\(|FACET/,
               );
             }
             if (model.hasTimeseries) {

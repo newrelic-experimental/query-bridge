@@ -412,12 +412,18 @@ where_func_comparison
       return { type: 'FuncComparison', left: fn, operator: op, value: value };
     }
 
+// A where-comparison LHS: a field name, or a single-quoted field name
+// (`where 'request.status'>=500`) — single quotes name a field in where.
+where_field
+  = "'" chars:single_string_char* "'" { return chars.join(''); }
+  / field_name
+
 where_comparison
-  = field:field_name _+ 'like'i _+ value:where_value
+  = field:where_field _+ 'like'i _+ value:where_value
     {
       return { type: 'Comparison', field: field, operator: 'like', value: value };
     }
-  / field:field_name _* op:comparison_op _* rhs:u_add
+  / field:where_field _* op:comparison_op _* rhs:u_add
     &{
       // Route through rhsExpr ONLY for non-literal RHS (field/func/arith/parens).
       // A lone number string or a lone StringLiteral must backtrack to where_value
@@ -429,7 +435,7 @@ where_comparison
     {
       return { type: 'Comparison', field: field, operator: op, rhsExpr: rhs };
     }
-  / field:field_name _* op:comparison_op _* value:where_value
+  / field:where_field _* op:comparison_op _* value:where_value
     {
       return { type: 'Comparison', field: field, operator: op, value: value };
     }
@@ -694,9 +700,13 @@ eval_assignment
   = field:field_name _* '=' _* expr:u_expr
     { return { field: field, expr: expr }; }
 
+// In SPL eval/where, double quotes make a string and single quotes NAME A FIELD
+// (`'duration_ms'`, `'request.path'`, `'avg(x)'` — the way to reference a name
+// containing `.`, which would otherwise be the concat operator). Emitting a
+// single-quoted token as an NRQL string silently compares/computes on a constant.
 eval_string_literal
   = '"' chars:double_string_char* '"' { return { type: 'StringLiteral', value: chars.join('') }; }
-  / "'" chars:single_string_char* "'" { return { type: 'StringLiteral', value: chars.join('') }; }
+  / "'" chars:single_string_char* "'" { return { type: 'QuotedField', name: chars.join('') }; }
 
 eval_number
   = digits:[0-9]+ frac:('.' d:[0-9]+ { return '.' + d.join(''); })?
@@ -1542,7 +1552,7 @@ comparison_op
   = '!=' { return '!='; }
   / '>=' { return '>='; }
   / '<=' { return '<='; }
-  / '==' { return '=='; }
+  / '==' { return '='; } // SPL's == is NRQL's =
   / '>' { return '>'; }
   / '<' { return '<'; }
   / '=' { return '='; }

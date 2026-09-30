@@ -91,9 +91,42 @@ const escapeStringWildcardForNrql = (string) =>
 const escapeRegexPatternForNrql = (pattern) =>
   typeof pattern === 'string' ? pattern.replace(/'/g, "\\'") : pattern;
 
+const PLAIN_JSON_KEY = /^[A-Za-z_]\w*$/;
+
+/**
+ * Format a dotted jparse() path so New Relic's JSON-path parser accepts it.
+ * A dot nests (Splunk spath semantics: `a.b` reads {"a":{"b":…}}). A key that
+ * isn't a plain name (`csp-report`, `Some Name`) fails to parse in dotted form,
+ * and brackets and dots cannot be mixed — so when any key is not plain, EVERY
+ * key is written as `["…"]`, keeping `[n]`/`[*]` (sandbox-verified by the
+ * consumer: `'["x-region"][*]["a-b"]["c"]'`). A plain path, or one already
+ * using `["…"]`, is returned unchanged.
+ * @param {string} path
+ * @returns {string}
+ */
+const formatJsonPathForNrql = (path) => {
+  if (typeof path !== 'string' || path.includes('["')) return path;
+  const segments = [];
+  const re = /\[(\d+|\*)\]|([^.[\]]+)/g;
+  let m;
+  while ((m = re.exec(path)) !== null) {
+    segments.push(m[1] !== undefined ? { index: m[1] } : { key: m[2] });
+  }
+  if (segments.every((s) => s.key === undefined || PLAIN_JSON_KEY.test(s.key)))
+    return path;
+  return segments
+    .map((s) =>
+      s.key === undefined
+        ? `[${s.index}]`
+        : `["${s.key.replace(/[\\"]/g, '\\$&')}"]`,
+    )
+    .join('');
+};
+
 export {
   escapeAttributeNameForNrql,
   escapeStringLiteralForNrql,
   escapeStringWildcardForNrql,
   escapeRegexPatternForNrql,
+  formatJsonPathForNrql,
 };

@@ -19,7 +19,12 @@ import {
   Wildcard,
   Binding,
 } from '../../ir/nodes.js';
-import { mapFieldName, formatSpan, looksLikeNumber } from './splExprUtils.js';
+import {
+  mapFieldName,
+  formatSpan,
+  looksLikeNumber,
+  rawEventIdentifier,
+} from './splExprUtils.js';
 import { recognizeWildcardRename, collectRefs } from './wildcardRename.js';
 import { messages } from '../../messages.js';
 
@@ -60,6 +65,14 @@ function selectEventFields(fields, ir, command) {
       );
     }
     return null;
+  }
+  // `table _raw` shows the whole raw event. In New Relic that is every attribute
+  // (SELECT *, rendered as a log table) — `message` alone is one attribute, and
+  // is absent when the Log API flattened a JSON-only message into attributes.
+  // SELECT * is a superset of any other listed field.
+  if (fields.includes('_raw')) {
+    ir.warnings.push(messages.list_raw_select_all(command));
+    return [Wildcard()];
   }
   return fields.map((f) => Identifier(mapFieldName(f)));
 }
@@ -219,6 +232,10 @@ export function handleRename(cmd, ir) {
     );
     if (existingIdx >= 0) {
       ir.select[existingIdx] = Alias(ir.select[existingIdx].expr, rename.to);
+    } else if (ir._hasAggregation && renameAggregateColumn(ir, rename)) {
+      // An aggregate or group-by column of this level: alias it in place.
+      // Re-selecting it by name is invalid NRQL (`count` is not a column;
+      // a FACET key in SELECT is "not constant in its context").
     } else {
       ir.select.push(Alias(Identifier(mapFieldName(rename.from)), rename.to));
     }
@@ -229,6 +246,33 @@ export function handleRename(cmd, ir) {
     ir.select.push(Wildcard());
     ir.warnings.push(messages.rename_keeps_original());
   }
+}
+
+// `rename count AS Count` / `rename Task AS Detail` after a flat aggregation:
+// alias the unaliased aggregate Splunk calls `count`, or the FACET key. Returns
+// false when the name is neither (the caller keeps its old behavior).
+function renameAggregateColumn(ir, rename) {
+  if (ir.dataSource && ir.dataSource.type === 'SubquerySource') return false;
+  const aggIdx = ir.select.findIndex(
+    (e) => e.type !== 'Alias' && e._splName === rename.from,
+  );
+  if (aggIdx >= 0) {
+    ir.select[aggIdx] = Alias(ir.select[aggIdx], rename.to);
+    return true;
+  }
+  const key = mapFieldName(rename.from);
+  const facetIdx = ir.facet.findIndex(
+    (f) =>
+      (f.type === 'Identifier' && f.name === key) ||
+      (f.type === 'Alias' && f.name === rename.from),
+  );
+  if (facetIdx < 0) return false;
+  const facet = ir.facet[facetIdx];
+  ir.facet[facetIdx] = Alias(
+    facet.type === 'Alias' ? facet.expr : facet,
+    rename.to,
+  );
+  return true;
 }
 
 // TODO: dedup sortby — SPL `dedup host sortby -duration` keeps the row with
@@ -242,18 +286,65 @@ export function handleDedup(cmd, ir) {
     ir.unsupported.push(messages.dedup_count_unsupported(cmd.count));
     return;
   }
+  // Only plain counts follow (splToIR lookahead): stay row-wise and let the
+  // aggregation count distinct keys — no nesting, no 5,000-key FACET cap.
+  if (cmd._countDistinct) {
+    ir._dedupCountKey = cmd.fields[0];
+    ir.warnings.push(messages.dedup_unique_count(cmd.fields[0]));
+    return;
+  }
+  const isOverEvents = !ir._hasAggregation;
+  const carried = isOverEvents ? getDedupCarriedColumns(cmd, ir) : null;
   for (const field of cmd.fields) {
     const id = Identifier(field);
     if (!ir.facet.some((f) => f.name === field)) {
       ir.facet.push(id);
     }
   }
-  if (ir.select.length === 0) {
+  if (carried && carried.length > 0) {
+    ir.select = carried;
+  } else if (ir.select.length === 0) {
     ir.select.push(Func('latest', [Identifier('timestamp')]));
   }
   ir.limit = 'MAX';
   ir._hasAggregation = true;
-  ir.warnings.push(messages.dedup_facet_warning());
+  ir._dedupLevel = isOverEvents; // a later join may carry more (handleJoin)
+  if (carried && carried.length > 0) {
+    ir.warnings.push(
+      messages.dedup_latest_per_field(carried.map((c) => c.name)),
+    );
+  } else {
+    ir.warnings.push(messages.dedup_facet_warning());
+  }
+}
+
+// The fields `dedup` must keep for the steps after it: each is carried as
+// `latest(f) AS 'f'` beside FACET <keys>, so a later eval/where/stats reads it in
+// the level above (sandbox-verified). Also turns an earlier raw projection
+// (`table a b | dedup k`) into latest() columns — `SELECT a … FACET k` is
+// invalid. null when the later reads can't be enumerated (dedup then keeps only
+// its keys, as before).
+function getDedupCarriedColumns(cmd, ir) {
+  const refs = cmd._downstreamRefs;
+  if (!refs) return null;
+  const keys = new Set(cmd.fields.map(mapFieldName));
+  const columns = [];
+  const add = (name, expr) => {
+    if (keys.has(name) || columns.some((c) => c.name === name)) return;
+    const column = Alias(Func('latest', [expr]), name);
+    column.carried = true; // a per-key row value, not an aggregate (fold pass)
+    columns.push(column);
+  };
+  for (const item of ir.select) {
+    if (item.type === 'Identifier') add(item.name, item);
+    else if (item.type === 'Alias') add(item.name, item.expr);
+    else if (item.type !== 'Wildcard') return null;
+  }
+  for (const name of refs.fields) {
+    const field = mapFieldName(name);
+    add(field, field === 'message' ? rawEventIdentifier() : Identifier(field));
+  }
+  return columns;
 }
 
 export function handleBin(cmd, ir) {
@@ -296,6 +387,27 @@ export function handleReverse(cmd, ir) {
   }
 }
 
+// The select entry of a column this flat aggregation level produces (its alias
+// or Splunk name), or undefined.
+function getAggregateOutput(ir, field) {
+  if (!ir._hasAggregation) return undefined;
+  if (ir.dataSource && ir.dataSource.type === 'SubquerySource')
+    return undefined;
+  return ir.select.find((e) =>
+    e.type === 'Alias' ? e.name === field : e._splName === field,
+  );
+}
+
+// Aggregates an empty bucket reports as 0 (not null) — sandbox-verified:
+// count/sum give 0, average gives null.
+const ZERO_WHEN_EMPTY = new Set(['count', 'sum', 'uniqueCount']);
+
+function isZeroWhenEmpty(entry) {
+  let e = entry.type === 'Alias' ? entry.expr : entry;
+  if (e.type === 'Function' && e.name === 'filter') e = e.args[0];
+  return e.type === 'Function' && ZERO_WHEN_EMPTY.has(e.name);
+}
+
 export function handleFillnull(cmd, ir) {
   const fillValue = cmd.value || '0';
   // SPL fillnull default is string '0', not numeric 0 — only use numeric
@@ -308,6 +420,18 @@ export function handleFillnull(cmd, ir) {
     // Store substitutions — downstream references to these fields get (field OR default) inlined
     if (!ir._fillnullMap) ir._fillnullMap = {};
     for (const field of cmd.fields) {
+      const aggregate = getAggregateOutput(ir, field);
+      if (aggregate) {
+        // `timechart count … | fillnull value=0 x`: x is an aggregate of this
+        // level, not a column NRQL can re-read (`x OR 0` is rejected). An
+        // empty count/sum bucket already shows as 0; anything else can't be set.
+        if (Number(fillValue) === 0 && isZeroWhenEmpty(aggregate)) {
+          ir.warnings.push(messages.fillnull_aggregate_zero(field));
+        } else {
+          ir.unsupported.push(messages.fillnull_aggregate_value(field));
+        }
+        continue;
+      }
       ir._fillnullMap[field] = litValue;
     }
   } else {

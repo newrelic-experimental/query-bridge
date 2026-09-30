@@ -19,6 +19,7 @@ import {
   RawNrql,
   OrderBy,
   JoinClause,
+  Binding,
 } from '../../ir/nodes.js';
 import {
   mapFunction,
@@ -51,14 +52,30 @@ export function handleStats(cmd, ir) {
   ir.select = [];
   ir.facet = [];
 
+  // A preceding `dedup K` deferred to this aggregation (handleDedup); every
+  // function here is a plain count, so each counts distinct K.
+  const dedupKey = ir._dedupCountKey;
+  ir._dedupCountKey = null;
+
   for (const fn of cmd.functions) {
     if (fn.evalFilter) {
       // count(eval(expr)) → filter(count(*), WHERE expr)
       const filterCondition = walkEvalExpr(fn.evalFilter, ir);
-      const filterExpr = Func(
-        'filter',
-        [Func('count', []), filterCondition].filter(Boolean),
-      );
+      if (!filterCondition) {
+        // The walker already reported why; a condition-less filter() would
+        // silently count every event.
+        continue;
+      }
+      // filter()'s WHERE needs a constant on one side of each comparison — New
+      // Relic rejects `WHERE a = b` there ("must be a constant in this context").
+      const pair = findFieldVsFieldComparison(filterCondition);
+      if (pair) {
+        ir.unsupported.push(
+          messages.filter_field_vs_field(pair.left, pair.right),
+        );
+        continue;
+      }
+      const filterExpr = Func('filter', [Func('count', []), filterCondition]);
       const expr = fn.alias ? Alias(filterExpr, fn.alias) : filterExpr;
       ir.select.push(expr);
       continue;
@@ -75,7 +92,9 @@ export function handleStats(cmd, ir) {
     /** @type {{ expr: any, warning?: string|null, warnings?: string[], unsupported?: string|string[] }} */
     const mapped = isAggregateExpression(fn)
       ? mapAggregateExpression(fn)
-      : mapFunction(fn.name, fn.args);
+      : dedupKey
+        ? { expr: Func('uniqueCount', [Identifier(dedupKey)]) }
+        : mapFunction(fn.name, fn.args);
     for (const w of [mapped.warnings || [], mapped.warning || []].flat()) {
       ir.warnings.push(w);
     }
@@ -83,7 +102,9 @@ export function handleStats(cmd, ir) {
       ir.unsupported.push(u);
     }
     if (mapped.expr) {
-      const expr = fn.alias ? Alias(mapped.expr, fn.alias) : mapped.expr;
+      // uniqueCount(K) keeps Splunk's `count` column name for later stages.
+      const alias = fn.alias || (dedupKey ? 'count' : null);
+      const expr = alias ? Alias(mapped.expr, alias) : mapped.expr;
       // The column name Splunk gives an unaliased aggregate (`count`, `max(b)`),
       // so a later `table`/`fields` can find it. Non-enumerable (not emitted).
       if (!fn.alias) {
@@ -101,6 +122,50 @@ export function handleStats(cmd, ir) {
   }
 
   ir._hasAggregation = true;
+}
+
+const COMPARISON_OPS = new Set(['=', '!=', '<', '<=', '>', '>=']);
+
+// The name of the first attribute an IR expression reads, or null. A dashboard
+// {{token}} is a constant at query time, not an attribute.
+function firstAttributeName(node) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.type === 'Identifier') {
+    return node.name.startsWith('{{') ? null : node.name;
+  }
+  if (node.type === 'Function') {
+    for (const arg of node.args) {
+      const name = firstAttributeName(arg);
+      if (name) return name;
+    }
+    return null;
+  }
+  if (node.type === 'BinOp') {
+    return firstAttributeName(node.left) || firstAttributeName(node.right);
+  }
+  return null;
+}
+
+// A comparison (possibly nested in AND/OR/NOT, or a DualCheck) whose two sides
+// both read an attribute: `a = b`, `numeric(a) > numeric(b)`.
+function findFieldVsFieldComparison(node) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.type === 'Not') return findFieldVsFieldComparison(node.child);
+  if (node.type === 'DualCheck') {
+    const left = firstAttributeName(node.field);
+    const right = firstAttributeName(node.value);
+    return left && right ? { left, right } : null;
+  }
+  if (node.type !== 'BinOp') return null;
+  if (COMPARISON_OPS.has(node.op)) {
+    const left = firstAttributeName(node.left);
+    const right = firstAttributeName(node.right);
+    return left && right ? { left, right } : null;
+  }
+  return (
+    findFieldVsFieldComparison(node.left) ||
+    findFieldVsFieldComparison(node.right)
+  );
 }
 
 // Splunk's output column name for an unaliased stats function: `count` for a
@@ -362,11 +427,34 @@ export function handleEventstats(cmd, ir) {
     return;
   }
 
-  // eventstats with single BY → subquery JOIN
+  // A values()/list() column is a list, and a list can't be a JOIN column
+  // ("Logic error in result flattening", sandbox-verified). Unread, it can go;
+  // read later, there is no faithful form.
+  const lists = subSelect.filter(
+    (s) => s.expr.type === 'Function' && s.expr.name === 'uniques',
+  );
+  if (lists.length > 0) {
+    const refs = cmd._downstreamRefs;
+    const names = lists.map((s) => s.name);
+    if (!refs || names.some((n) => refs.fields.includes(n))) {
+      ir.unsupported.push(messages.eventstats_list_join(names));
+      return;
+    }
+    ir.warnings.push(messages.eventstats_unread_list_dropped(names));
+    for (const s of lists) subSelect.splice(subSelect.indexOf(s), 1);
+    if (subSelect.length === 0) return;
+  }
+
+  // eventstats with single BY → subquery JOIN over the same events: the base
+  // search, and the fields extracted so far (bindingScope points the key and
+  // arguments at their binding names).
   const onKey = Identifier(cmd.groupBy[0]);
   const subquery = SelectQuery({
     dataSource: ir.dataSource,
+    // Own copies: a JOIN-column clash renames the OUTER binding only.
+    bindings: ir.bindings.map((b) => Binding(b.name, b.expr)),
     select: subSelect,
+    where: [...ir.where],
     facet: [onKey],
     limit: 'MAX',
   });

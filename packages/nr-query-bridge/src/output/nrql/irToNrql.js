@@ -13,6 +13,7 @@ import {
   escapeAttributeNameForNrql,
   escapeStringLiteralForNrql,
   escapeRegexPatternForNrql,
+  formatJsonPathForNrql,
 } from './nrqlEncoding.js';
 
 // ── Expression emission ──────────────────────────────────────
@@ -69,6 +70,16 @@ export function emitExpr(node) {
       // filter(func, WHERE condition) has special NRQL syntax
       if (node.name === 'filter' && node.args.length === 2) {
         return `filter(${emitExpr(node.args[0])}, WHERE ${emitExpr(node.args[1])})`;
+      }
+      // jparse(field, 'path'): non-plain keys need the all-bracketed path form.
+      if (
+        node.name === 'jparse' &&
+        node.args.length === 2 &&
+        node.args[1].type === 'Literal' &&
+        node.args[1].kind === 'string'
+      ) {
+        const path = formatJsonPathForNrql(node.args[1].value);
+        return `jparse(${emitExpr(node.args[0])}, '${escapeStringLiteralForNrql(path)}')`;
       }
       return `${node.name}(${node.args.map(emitExpr).join(', ')})`;
 

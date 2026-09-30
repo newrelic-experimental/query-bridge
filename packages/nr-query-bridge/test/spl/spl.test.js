@@ -197,11 +197,20 @@ const cases = [
   //
   //
   {
+    // Was `message LIKE` (human-verified); changed on request to dimensions()
+    // so the search spans every attribute — re-verify via the consumer.
     spl: '_raw=*error*',
-    nrql: "FROM Log SELECT * WHERE message LIKE '%error%'",
-    warningFunc: ['raw_mapped_to_message'],
+    nrql: "FROM Log SELECT * WHERE dimensions() LIKE '%error%'",
+    warningFunc: ['raw_search_dimensions'],
     doc: 'field-comparisons',
-    verified: 'human',
+    verified: false,
+  },
+  {
+    spl: 'index=web _raw!=*debug* | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND dimensions() NOT LIKE '%debug%'",
+    warningFunc: ['raw_search_dimensions'],
+    doc: 'field-comparisons',
+    verified: false,
   },
   //
   //
@@ -783,7 +792,7 @@ const cases = [
   // (a dashboard variable filled at render time), never a quoted literal.
   {
     spl: 'index=web status=$sev$ | stats count',
-    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND status = {{sev}}",
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND lower(string(status)) = lower(string({{sev}}))",
     doc: 'dashboard-time-tokens',
     verified: false,
   },
@@ -792,7 +801,7 @@ const cases = [
   // value-position token, not dropped as a time bound).
   {
     spl: 'index=web earliestSeen=$earliestSeen$ | stats count',
-    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND earliestSeen = {{earliestSeen}}",
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND lower(string(earliestSeen)) = lower(string({{earliestSeen}}))",
     doc: 'dashboard-time-tokens',
     verified: false,
   },
@@ -1799,12 +1808,13 @@ const cases = [
     doc: 'eval-multivalue',
     verified: 'human',
   },
-  // mvindex(split(...), 0) → getField(split(...), 0)
+  // mvindex(split(...), 0) → a capture() of item 0 (split() is unavailable on
+  // production accounts; demoted from 'human' after the change, re-approve).
   {
     spl: '* | eval x=mvindex(split(data, ","), 0)',
-    nrql: "FROM Log WITH getField(split(data, ','), 0) AS x SELECT *",
+    nrql: "FROM Log WITH capture(data, r'^(?:[^,]*,){0}(?P<item>[^,]*)(?s:.*)$') AS x SELECT *",
     doc: 'eval-multivalue',
-    verified: 'human',
+    verified: false,
   },
   // replace() with bracket chars that are NOT regex — ] alone is a literal
   {
@@ -1983,22 +1993,22 @@ const cases = [
   //
   {
     spl: '* | rex field=message "(?<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)"',
-    nrql: "FROM Log WITH capture(message, r'.*(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+).*') AS (ip) SELECT *",
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)(?s:.*)') AS (ip) SELECT *",
     doc: 'fields-rex',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | rex "user=(?<username>\\w+)"',
-    nrql: "FROM Log WITH capture(message, r'.*user=(?P<username>\\w+).*') AS (username) SELECT *",
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)user=(?P<username>\\w+)(?s:.*)') AS (username) SELECT *",
     doc: 'fields-rex',
-    verified: 'human',
+    verified: false,
   },
   // multi-capture rex: single capture() with tuple destructuring
   {
     spl: '* | rex field=_raw "From: <(?<from>.*)> To: <(?<to>.*)>"',
-    nrql: "FROM Log WITH capture(message, r'.*From: <(?P<from>.*)> To: <(?P<to>.*)>.*') AS (from, to) SELECT *",
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)From: <(?P<from>.*)> To: <(?P<to>.*)>(?s:.*)') AS (from, to) SELECT *",
     doc: 'fields-rex',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | rex field=message "\\d+"',
@@ -2009,9 +2019,9 @@ const cases = [
   // Python-style (?P<name>) named groups
   {
     spl: '* | rex field=_raw ".*dlq\\/(?P<dlq_key>\\d+),"',
-    nrql: "FROM Log WITH capture(message, r'.*dlq\\/(?P<dlq_key>\\d+),.*') AS (dlq_key) SELECT *",
+    nrql: "FROM Log WITH capture(message, r'.*dlq\\/(?P<dlq_key>\\d+),(?s:.*)') AS (dlq_key) SELECT *",
     doc: 'fields-rex',
-    verified: 'human',
+    verified: false,
   },
   // max_match=0 parsed but unsupported — capture() returns first match only
   {
@@ -2023,27 +2033,37 @@ const cases = [
   // Default field (no field= → uses message) + piped to stats
   {
     spl: '* | rex "status=(?<code>\\d+)" | stats count by code',
-    nrql: "FROM Log WITH capture(message, r'.*status=(?P<code>\\d+).*') AS (code) SELECT count(*) FACET code",
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)status=(?P<code>\\d+)(?s:.*)') AS (code) SELECT count(*) FACET code",
     doc: 'fields-rex',
-    verified: 'human',
+    verified: false,
   },
   //
   // ── rex sed mode ────────────────────────────────────────────────
   //
   {
+    // Was unsupported (human-verified); a literal global sed is exactly NRQL
+    // replace() (F15) — re-verify via the consumer.
     spl: '* | rex mode=sed field=message "s/old/new/g"',
-    unsupportedFunc: ['rex_sed_unsupported'],
+    nrql: "FROM Log WITH replace(message, 'old', 'new') AS parsed_message SELECT *",
     doc: 'fields-rex-sed',
-    verified: 'human',
+    verified: false,
   },
   //
   // ── rex PCRE mode ───────────────────────────────────────────────
   //
+  // Was unsupported (human-verified); a LEADING positive lookbehind now consumes
+  // its context instead (F13, same extraction) — re-verify via the consumer.
   {
     spl: '* | rex field=message "(?<=prefix)(?<val>\\w+)"',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)(?:prefix)(?P<val>\\w+)(?s:.*)') AS (val) SELECT *",
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  {
+    spl: '* | rex field=message "(?<!prefix)(?<val>\\w+)"',
     unsupportedFunc: ['rex_lookaround'],
     doc: 'fields-rex-pcre',
-    verified: 'human',
+    verified: false,
   },
   // backreference — capture() (RE2) rejects \1 at runtime; must be loud, not a
   // silently-broken capture() (the confirmed-live bug).
@@ -2064,14 +2084,14 @@ const cases = [
   // no-regression: a plain named group still translates unchanged.
   {
     spl: '* | rex field=x "user=(?<user_id>\\w+)"',
-    nrql: "FROM Log WITH capture(x, r'.*user=(?P<user_id>\\w+).*') AS (user_id) SELECT *",
+    nrql: "FROM Log WITH capture(x, r'(?s:.*?)user=(?P<user_id>\\w+)(?s:.*)') AS (user_id) SELECT *",
     doc: 'fields-rex-pcre',
     verified: false,
   },
   // no-regression: multi-capture destructuring still translates.
   {
     spl: '* | rex field=x "(?<a>\\w+) (?<b>\\w+)"',
-    nrql: "FROM Log WITH capture(x, r'.*(?P<a>\\w+) (?P<b>\\w+).*') AS (a, b) SELECT *",
+    nrql: "FROM Log WITH capture(x, r'(?s:.*?)(?P<a>\\w+) (?P<b>\\w+)(?s:.*)') AS (a, b) SELECT *",
     doc: 'fields-rex-pcre',
     verified: false,
   },
@@ -2114,7 +2134,7 @@ const cases = [
   // scoped inline flag MUST NOT be rejected (capture() accepts it — staging-verified).
   {
     spl: '* | rex field=x "(?i:foo)(?<a>\\w+)"',
-    nrql: "FROM Log WITH capture(x, r'.*(?i:foo)(?P<a>\\w+).*') AS (a) SELECT *",
+    nrql: "FROM Log WITH capture(x, r'(?s:.*?)(?i:foo)(?P<a>\\w+)(?s:.*)') AS (a) SELECT *",
     doc: 'fields-rex-pcre',
     verified: false,
   },
@@ -2201,10 +2221,10 @@ const cases = [
   },
   {
     spl: '* | spath path=request.url output=url | rex field=url "(?<domain>[^/]+)"',
-    nrql: "FROM Log WITH jparse(message, 'request.url') AS url, capture(url, r'.*(?P<domain>[^/]+).*') AS (domain) SELECT *",
+    nrql: "FROM Log WITH jparse(message, 'request.url') AS url, capture(url, r'(?s:.*?)(?P<domain>[^/]+)(?s:.*)') AS (domain) SELECT *",
     warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
-    verified: 'human',
+    verified: false,
   },
   // Positional argument (quoted) — shorthand for path="AppID"
   {
@@ -2249,9 +2269,9 @@ const cases = [
   // rex extracting from embedded JSON string
   {
     spl: '* | rex field=message "\\"orderId\\":\\"(?<orderId>[A-Z0-9-]+)\\""',
-    nrql: 'FROM Log WITH capture(message, r\'.*\\"orderId\\":\\"(?P<orderId>[A-Z0-9-]+)\\".*\') AS (orderId) SELECT *',
+    nrql: 'FROM Log WITH capture(message, r\'(?s:.*?)\\"orderId\\":\\"(?P<orderId>[A-Z0-9-]+)\\"(?s:.*)\') AS (orderId) SELECT *',
     doc: 'fields-rex',
-    verified: 'human',
+    verified: false,
   },
   // eval json_extract → jparse (strips $. prefix)
   {
@@ -3228,15 +3248,18 @@ const cases = [
     verified: 'human',
   },
   {
+    // Was human-verified as `FROM Log JOIN (…) SELECT count(*) FACET host`,
+    // which dropped the subsearch's avg column. The aggregation is now the
+    // JOIN's left subquery (sandbox: both columns per key) — re-verify.
     spl: '* | stats count by host | join host [search * | stats avg(cpu) by host]',
-    nrql: 'FROM Log JOIN (FROM Log SELECT average(cpu) FACET host LIMIT MAX) ON host = host SELECT count(*) FACET host',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) JOIN (FROM Log SELECT average(cpu) FACET host LIMIT MAX) ON host = host SELECT * LIMIT MAX',
     warningFunc: [
       'join_subsearch_warning',
       'join_cardinality_limit',
       'facet_default_limit',
     ],
     doc: 'correlation-join',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | join user [search * | table user, role]',
@@ -3278,9 +3301,9 @@ const cases = [
   //
   {
     spl: '* | regex message="error\\\\d+"',
-    nrql: "FROM Log SELECT * WHERE message RLIKE r'error\\\\d+'",
+    nrql: "FROM Log SELECT * WHERE message RLIKE r'(?s:.*)error\\\\d+(?s:.*)'",
     doc: 'results-regex',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | regex status!="^2\\\\d{2}$"',
@@ -3290,28 +3313,28 @@ const cases = [
   },
   {
     spl: '* | regex "fatal|critical"',
-    nrql: "FROM Log SELECT * WHERE message RLIKE r'fatal|critical'",
+    nrql: "FROM Log SELECT * WHERE message RLIKE r'(?s:.*)(?:fatal|critical)(?s:.*)'",
     doc: 'results-regex',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: 'status=500 | regex message="timeout"',
-    nrql: "FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'timeout'",
+    nrql: "FROM Log SELECT * WHERE status = '500' OR numeric(status) = 500 AND message RLIKE r'(?s:.*)timeout(?s:.*)'",
     doc: 'results-regex',
-    verified: 'human',
+    verified: false,
   },
   {
     spl: '* | regex uri_path="^/api/v[0-9]+"',
-    nrql: "FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+'",
+    nrql: "FROM Log SELECT * WHERE uri_path RLIKE r'^/api/v[0-9]+(?s:.*)'",
     doc: 'results-regex',
-    verified: 'human',
+    verified: false,
   },
   // Regression: regex pattern containing a literal apostrophe must escape it
   // as \' inside the r'...' literal so the regex literal doesn't terminate
   // early and produce invalid NRQL.
   {
     spl: '* | regex message="don\'t"',
-    nrql: "FROM Log SELECT * WHERE message RLIKE r'don\\'t'",
+    nrql: "FROM Log SELECT * WHERE message RLIKE r'(?s:.*)don\\'t(?s:.*)'",
     doc: 'regex-apostrophe-regression',
     verified: 'llm',
   },
@@ -3689,7 +3712,7 @@ const cases = [
   {
     spl: '* | eval notable_asset=mvappend(notable_src, notable_dest) | mvexpand notable_asset | stats count by notable_asset',
     warningFunc: ['facet_default_limit'],
-    unsupportedFunc: ['mvexpand_unsupported'],
+    unsupportedFunc: ['eval_func_unsupported', 'mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: 'llm',
   },
@@ -4131,39 +4154,120 @@ const cases = [
   // ── NRQL Feature Gaps (customer migration feedback) ───────────────
   //
 
-  // Gap #2 — dedup + stats: Task 4's regroup guard flips this from silently-wrong to
-  // loud unsupported. dedup translates to `SELECT latest(timestamp) FACET userId`, which
-  // does NOT expose `routeName`, so the trailing `stats count by routeName` regrouped on
-  // a column the inner never produced → NRQL groups on null (silently empty). Was
-  // verified:'llm' emitting that wrong NRQL; now correctly unsupported (downgraded to
-  // verified:false — the prior translation was wrong, not human-confirmed).
+  // Gap #2 — dedup + count: counting the rows `dedup K` keeps is counting distinct K,
+  // so it translates flat as uniqueCount(K). The by-field stays an ordinary FACET
+  // (the old nested `FACET userId` form exposed only userId, so `by routeName` was
+  // unsupported).
   {
     spl: '* | dedup userId | stats count by routeName',
-    nrql: '',
-    warningFunc: ['dedup_facet_warning', 'dedup_limit_max_cap'],
-    unsupportedFunc: ['compound_trailing_regroup_unsupported'],
+    nrql: "FROM Log SELECT uniqueCount(userId) AS 'count' FACET routeName",
+    warningFunc: ['dedup_unique_count', 'facet_default_limit'],
     doc: 'results-dedup',
     verified: false,
   },
-  // Gap #9 — dedup + timechart: warn about TIMESERIES null buckets
+  // Gap #9 — dedup + timechart count: flat uniqueCount, so every TIMESERIES bucket
+  // populates (no nested subquery).
   {
     spl: '* | dedup userId | timechart count span=1m',
-    nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) LIMIT MAX TIMESERIES 1 minute',
+    nrql: "FROM Log SELECT uniqueCount(userId) AS 'count' TIMESERIES 1 minute",
+    warningFunc: ['dedup_unique_count'],
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  // Per-row steps between dedup and the count run flat: eval → WITH, where → WHERE.
+  {
+    spl: 'index=web | dedup id | eval s=if(status>=500,"err","ok") | stats count by s',
+    nrql: "FROM Log WITH if(numeric(status) >= 500, 'err', 'ok') AS s SELECT uniqueCount(id) AS 'count' WHERE index = 'web' FACET s",
+    warningFunc: ['dedup_unique_count', 'facet_default_limit'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  {
+    spl: 'index=web | dedup id | where status>=500 | stats count by host',
+    nrql: "FROM Log SELECT uniqueCount(id) AS 'count' WHERE index = 'web' AND numeric(status) >= 500 FACET host",
+    warningFunc: ['dedup_unique_count', 'facet_default_limit'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  {
+    spl: 'index=web | dedup id | timechart count by status',
+    nrql: "FROM Log SELECT uniqueCount(id) AS 'count' WHERE index = 'web' FACET status TIMESERIES AUTO",
+    warningFunc: ['dedup_unique_count', 'facet_default_limit'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  // A user alias is kept on the uniqueCount.
+  {
+    spl: '* | dedup userId | stats count as users',
+    nrql: "FROM Log SELECT uniqueCount(userId) AS 'users'",
+    warningFunc: ['dedup_unique_count'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  // Not a plain count (count(field) counts non-null values) → nested path.
+  {
+    spl: '* | dedup userId | stats count(routeName)',
+    nrql: "FROM (FROM Log SELECT latest(routeName) AS 'routeName' FACET userId LIMIT MAX) SELECT count(routeName) LIMIT MAX",
+    warningFunc: ['dedup_latest_per_field', 'dedup_limit_max_cap'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  // eval rewrites the dedup key → nested path (uniqueCount(K) would count the new K);
+  // the unread eval merges away, leaving a count of the dedup rows.
+  {
+    spl: '* | dedup userId | eval userId=lower(userId) | stats count',
+    nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId LIMIT MAX) SELECT count(*) LIMIT MAX',
+    warningFunc: ['dedup_facet_warning', 'dedup_limit_max_cap'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  // Multi-key dedup keeps the nested path until uniqueCount(a, b) is validated.
+  {
+    spl: '* | dedup userId routeName | timechart count span=1m',
+    nrql: 'FROM (FROM Log SELECT latest(timestamp) FACET userId, routeName LIMIT MAX) SELECT count(*) LIMIT MAX TIMESERIES 1 minute',
     warningFunc: [
       'dedup_facet_warning',
       'dedup_limit_max_cap',
       'dedup_timeseries_warning',
     ],
     doc: 'reports-timechart',
-    verified: 'llm',
+    verified: false,
   },
-  // Gap #7 — >5 rex commands: warn about capture() limit
+  // join with a bare subsearch used only as an existence filter: nothing later reads
+  // a subsearch field, so it joins on the key alone, FACETed to one row per key.
+  {
+    spl: 'index=web "failed" | join type=inner requestId [ search index=web "Raising in-doubt" ] | timechart count span=1d',
+    nrql: "FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'web' AND message LIKE '%Raising in-doubt%' FACET requestId LIMIT MAX) ON requestId = requestId SELECT count(*) WHERE index = 'web' AND message LIKE '%failed%' TIMESERIES 1 day",
+    warningFunc: ['join_key_only_subsearch', 'join_cardinality_limit'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web "failed" | dedup requestId | join type=inner requestId [ search index=web "Raising in-doubt" ] | timechart count span=1d',
+    nrql: "FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'web' AND message LIKE '%Raising in-doubt%' FACET requestId LIMIT MAX) ON requestId = requestId SELECT uniqueCount(requestId) AS 'count' WHERE index = 'web' AND message LIKE '%failed%' TIMESERIES 1 day",
+    warningFunc: [
+      'dedup_unique_count',
+      'join_key_only_subsearch',
+      'join_cardinality_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // A later stage reads a non-key field (host may come from the subsearch) → loud.
+  {
+    spl: 'index=web | join requestId [ search index=web "x" ] | stats count by host',
+    unsupportedFunc: ['join_needs_fields'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // Gap #7 — >5 rex commands: New Relic rejects the 6th capture() → unsupported
   {
     spl: '* | rex field=f1 "(?<a>\\w+)" | rex field=f2 "(?<b>\\w+)" | rex field=f3 "(?<c>\\w+)" | rex field=f4 "(?<d>\\w+)" | rex field=f5 "(?<e>\\w+)" | rex field=f6 "(?<f>\\w+)"',
-    nrql: "FROM Log WITH capture(f1, r'.*(?P<a>\\w+).*') AS (a), capture(f2, r'.*(?P<b>\\w+).*') AS (b), capture(f3, r'.*(?P<c>\\w+).*') AS (c), capture(f4, r'.*(?P<d>\\w+).*') AS (d), capture(f5, r'.*(?P<e>\\w+).*') AS (e), capture(f6, r'.*(?P<f>\\w+).*') AS (f) SELECT *",
-    warningFunc: ['rex_capture_limit'],
+    nrql: '',
+    unsupportedFunc: ['rex_capture_limit'],
     doc: 'fields-rex',
-    verified: 'llm',
+    verified: false,
   },
   // Gap #13 — split() multi-char delimiter
   {
@@ -4398,7 +4502,7 @@ const cases = [
   // ── where: bang negation, leading-dot decimals, mvcount ───────────
   {
     spl: 'index=x | where !(match(f,"^SYS"))',
-    nrql: "FROM Log SELECT * WHERE index = 'x' AND f NOT RLIKE r'^SYS'",
+    nrql: "FROM Log SELECT * WHERE index = 'x' AND f NOT RLIKE r'^SYS(?s:.*)'",
     doc: 'where-bang-negation',
     verified: 'llm',
   },
@@ -5212,7 +5316,7 @@ const cases = [
   },
   {
     spl: 'index=web | spath input=r path=body."Some Name{}" output=s',
-    nrql: "FROM Log WITH jparse(r, 'body.Some Name[*]') AS s SELECT * WHERE index = 'web'",
+    nrql: 'FROM Log WITH jparse(r, \'["body"]["Some Name"][*]\') AS s SELECT * WHERE index = \'web\'',
     warningFunc: ['spath_json_only'],
     doc: 'fields-spath',
     verified: false,
@@ -5270,22 +5374,21 @@ const cases = [
   // §7 rex: unquoted regex, max_match=1, sed with a named field/script.
   {
     spl: 'index=web | rex \\"t4\\"\\:\\"(?<T4>.+?)\\"',
-    nrql: 'FROM Log WITH capture(message, r\'.*\\"t4\\"\\:\\"(?P<T4>.+?)\\".*\') AS (T4) SELECT * WHERE index = \'web\'',
+    nrql: 'FROM Log WITH capture(message, r\'(?s:.*?)\\"t4\\"\\:\\"(?P<T4>.+?)\\"(?s:.*)\') AS (T4) SELECT * WHERE index = \'web\'',
     warningFunc: [],
     doc: 'fields-rex',
     verified: false,
   },
   {
     spl: 'index=web | rex max_match=1 "a=(?<a>\\d+)"',
-    nrql: "FROM Log WITH capture(message, r'.*a=(?P<a>\\d+).*') AS (a) SELECT * WHERE index = 'web'",
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)a=(?P<a>\\d+)(?s:.*)') AS (a) SELECT * WHERE index = 'web'",
     warningFunc: [],
     doc: 'fields-rex',
     verified: false,
   },
   {
     spl: 'index=web | rex field=msg mode=sed "s/a/b/g"',
-    nrql: '',
-    unsupportedFunc: ['rex_sed_unsupported'],
+    nrql: "FROM Log WITH replace(msg, 'a', 'b') AS parsed_msg SELECT * WHERE index = 'web'",
     doc: 'fields-rex-sed',
     verified: false,
   },
@@ -5552,6 +5655,629 @@ const cases = [
     nrql: '',
     unsupportedFunc: ['rex_trailing_token'],
     doc: 'fields-rex',
+    verified: false,
+  },
+
+  // ── Gaps report rounds 3–4 (sandbox-validated consumer feedback) ──
+  //
+  // F9: _raw inside eval/where expressions maps to message (bare _raw is a NRQL
+  // syntax error; backticked it matches nothing).
+  {
+    spl: 'index=web | eval l=len(_raw) | stats avg(l)',
+    nrql: "FROM Log WITH length(message) AS l SELECT average(l) WHERE index = 'web'",
+    warningFunc: ['eval_length_warning', 'raw_mapped_to_message'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    // Stays on message: dimensions() also matches attribute names (consumer
+    // round 5 withdrew the dimensions() ask).
+    spl: 'index=web | where like(_raw, "%x%") | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND message LIKE '%x%'",
+    warningFunc: ['raw_mapped_to_message'],
+    doc: 'results-where',
+    verified: false,
+  },
+  // F18: table/fields _raw shows the raw event → SELECT * (a log table), not the
+  // single message attribute.
+  {
+    spl: 'index=web | table _time, _raw',
+    nrql: "FROM Log SELECT * WHERE index = 'web'",
+    warningFunc: ['list_raw_select_all'],
+    doc: 'results-table',
+    verified: false,
+  },
+  // F10: mvappend()/mvsort() are not NRQL functions ("Unknown function").
+  {
+    spl: 'index=web | eval p=mvappend(a, b) | stats count by p',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['eval_func_unsupported'],
+    doc: 'eval-multivalue',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval p=mvsort(a) | table p',
+    nrql: '',
+    unsupportedFunc: ['eval_func_unsupported'],
+    doc: 'eval-multivalue',
+    verified: false,
+  },
+  // F11: tostring() with a format — NRQL string()'s 2nd arg is an int precision.
+  {
+    spl: 'index=web | eval s=tostring(x, "commas") | table s',
+    nrql: "FROM Log WITH string(x, 2) AS s SELECT s WHERE index = 'web'",
+    warningFunc: ['tostring_commas_grouping_lost'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval s=tostring(x) | table s',
+    nrql: "FROM Log WITH string(x) AS s SELECT s WHERE index = 'web'",
+    doc: 'eval-string',
+    verified: false,
+  },
+  // F4: a token inside a search phrase — NR never substitutes {{tok}} inside a
+  // LIKE pattern, so match with position() over concat() (case-insensitive).
+  {
+    spl: 'index=web "brandCode\\":\\"$brand$" | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND position(lower(message), lower(concat('brandCode\":\"', {{brand}}))) >= 0",
+    doc: 'bare-keywords',
+    verified: false,
+  },
+  {
+    spl: 'index=web NOT "code=$c$" | stats count',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND position(lower(message), lower(concat('code=', {{c}}))) IS NULL OR position(lower(message), lower(concat('code=', {{c}}))) < 0",
+    doc: 'bare-keywords',
+    verified: false,
+  },
+  // F8: jparse path keys that aren't plain names must all be bracketed
+  // (dotted form fails to parse; brackets and dots cannot mix).
+  {
+    spl: 'index=web | spath input=j path=csp-report.blocked-uri output=u | table u',
+    nrql: 'FROM Log WITH jparse(j, \'["csp-report"]["blocked-uri"]\') AS u SELECT u WHERE index = \'web\'',
+    warningFunc: ['spath_json_only'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  {
+    spl: 'index=web | spath input=j path=x-region{}.a-b.c output=v | table v',
+    nrql: 'FROM Log WITH jparse(j, \'["x-region"][*]["a-b"]["c"]\') AS v SELECT v WHERE index = \'web\'',
+    warningFunc: ['spath_json_only'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  {
+    spl: 'index=web | spath input=j path=reservations{}.system output=s | table s',
+    nrql: "FROM Log WITH jparse(j, 'reservations[*].system') AS s SELECT s WHERE index = 'web'",
+    warningFunc: ['spath_json_only'],
+    doc: 'fields-spath',
+    verified: false,
+  },
+  // F3: in SPL eval/where, single quotes NAME A FIELD (double quotes make a
+  // string). Emitting 'x' as an NRQL string silently computes on a constant.
+  {
+    spl: "index=web | eval d=round('duration_avg_ms' / 1000, 2) | stats avg(d)",
+    nrql: "FROM Log WITH round(numeric(duration_avg_ms) / 1000, 0.01) AS d SELECT average(d) WHERE index = 'web'",
+    doc: 'eval-math',
+    verified: false,
+  },
+  {
+    spl: "index=web | stats avg(t) AS d | eval r=round('d'/1000, 2)",
+    nrql: "FROM Log SELECT round(average(t) / 1000, 0.01) AS 'r' WHERE index = 'web'",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  {
+    spl: "index=web | stats count(eval(tonumber('response.status')>=500)) as c",
+    nrql: "FROM Log SELECT filter(count(*), WHERE numeric(`response.status`) >= 500) AS 'c' WHERE index = 'web'",
+    doc: 'stats-functions',
+    verified: false,
+  },
+  {
+    spl: "index=web | stats avg(elapsedSec) by h | eval r='avg(elapsedSec)'/60",
+    nrql: "FROM Log SELECT average(elapsedSec) / 60 AS 'r' WHERE index = 'web' FACET h LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  {
+    spl: "index=web | where 'a.b'>5 | stats count",
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND numeric(`a.b`) > 5",
+    doc: 'results-where',
+    verified: false,
+  },
+  // F1: an eval that reads its own target is never dropped — it binds a fresh
+  // name (WITH lower(e) AS e is circular) and later references read it.
+  {
+    spl: 'index=web | eval e=lower(e) | stats count by e',
+    nrql: "FROM Log WITH lower(e) AS parsed_e SELECT count(*) WHERE index = 'web' FACET parsed_e AS 'e'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval e=e+1 | stats sum(e)',
+    nrql: "FROM Log WITH numeric(e) + 1 AS parsed_e SELECT sum(parsed_e) WHERE index = 'web'",
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval x=a | eval x=lower(x) | stats count by x',
+    nrql: "FROM Log WITH a AS x, lower(x) AS parsed_x SELECT count(*) WHERE index = 'web' FACET parsed_x AS 'x'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'compound-eval-eval',
+    verified: false,
+  },
+  // Pipeline order: the base-search term reads the raw attribute, the later
+  // where reads the re-bound one.
+  {
+    spl: 'index=web x=5 | eval x=lower(x) | where x="a" | stats count by x',
+    nrql: "FROM Log WITH lower(x) AS parsed_x SELECT count(*) WHERE index = 'web' AND x = '5' OR numeric(x) = 5 AND parsed_x = 'a' FACET parsed_x AS 'x'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'compound-eval-where',
+    verified: false,
+  },
+  // F2: a rename whose new name a later stage reads.
+  {
+    spl: 'index=web | rename x AS e | stats count by e',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET x AS 'e'",
+    warningFunc: ['rename_keeps_original', 'facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rename x AS e | where e=1 | table e',
+    nrql: "FROM Log SELECT x AS 'e' WHERE index = 'web' AND x = '1' OR numeric(x) = 1",
+    warningFunc: ['rename_keeps_original'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // F6: binding names New Relic rejects — reserved, self-sourced, bound twice,
+  // or a JOIN subquery column.
+  {
+    spl: 'index=web | rex "(?<timestamp>\\S+)\\s+(?<msg>.*)" | stats count by msg',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)(?P<timestamp>\\S+)\\s+(?P<msg>.*)(?s:.*)') AS (parsed_timestamp, msg) SELECT count(*) WHERE index = 'web' FACET msg",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  {
+    spl: 'index=web "REPORT" | rex field=message "\\"message\\":\\"(?<message>.*?)\\"" | stats count by message',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)\\\"message\\\":\\\"(?P<message>.*?)\\\"(?s:.*)') AS (parsed_message) SELECT count(*) WHERE index = 'web' AND message LIKE '%REPORT%' FACET parsed_message AS 'message'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex "(?<m>\\w+)" | rex field=uri "(?<m>\\d+)" | stats count by m',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)(?P<m>\\w+)(?s:.*)') AS (m), capture(uri, r'(?s:.*?)(?P<m>\\d+)(?s:.*)') AS (parsed_m) SELECT count(*) WHERE index = 'web' FACET parsed_m AS 'm'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex "(?<a>\\w+)" | join type=inner a [search index=api | rex "(?<a>\\w+)" | fields a b] | stats count by a',
+    nrql: "FROM Log JOIN (FROM Log WITH capture(message, r'(?s:.*?)(?P<a>\\w+)(?s:.*)') AS (a) SELECT a, b WHERE index = 'api' LIMIT MAX) ON parsed_a = a WITH capture(message, r'(?s:.*?)(?P<a>\\w+)(?s:.*)') AS (parsed_a) SELECT count(*) WHERE index = 'web' FACET parsed_a AS 'a'",
+    warningFunc: [
+      'join_cardinality_limit',
+      'join_max_matches_differ',
+      'facet_default_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // F13: a positive lookbehind at the start / lookahead at the end only asserts
+  // context; capture() returns the named groups, so consume the text instead.
+  {
+    spl: 'index=web | rex "(?<=orderId=)(?<oid>\\d+)" | stats count by oid',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)(?:orderId=)(?P<oid>\\d+)(?s:.*)') AS (oid) SELECT count(*) WHERE index = 'web' FACET oid",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex "(?<code>\\d+)(?=\\s*; Interface code)" | stats count by code',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)(?P<code>\\d+)(?:\\s*; Interface code)(?s:.*)') AS (code) SELECT count(*) WHERE index = 'web' FACET code",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex "a(?=b)(?<a>\\d+)" | stats count by a',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['rex_lookaround'],
+    doc: 'fields-rex-pcre',
+    verified: false,
+  },
+  // F15: rex mode=sed / regex replace() → capture() split + concat() rebuild,
+  // exact cases only (non-global, anchored, or literal → replace()).
+  {
+    spl: 'index=web | rex field=uri mode=sed "s#/v1/booking/[A-Za-z0-9]+#/v1/booking#" | stats count by uri',
+    nrql: "FROM Log WITH capture(uri, r'^(?P<sed1_pre>(?s:.*?))(?P<sed1_m>/v1/booking/[A-Za-z0-9]+)(?P<sed1_post>(?s:.*))$') AS (sed1_pre, sed1_m, sed1_post), if(sed1_m IS NULL, uri, concat(sed1_pre, '/v1/booking', sed1_post)) AS parsed_uri SELECT count(*) WHERE index = 'web' FACET parsed_uri AS 'uri'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex field=host mode=sed "s/^(.+api-)(\\w+)(-[\\w-]+)$/\\2/" | stats count by host',
+    nrql: "FROM Log WITH capture(host, r'^(?P<sed1_m>(?P<sed1_g1>.+api-)(?P<sed1_g2>\\w+)(?P<sed1_g3>-[\\w-]+))$') AS (sed1_m, sed1_g1, sed1_g2, sed1_g3), if(sed1_m IS NULL, host, sed1_g2) AS parsed_host SELECT count(*) WHERE index = 'web' FACET parsed_host AS 'host'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex field=uri mode=sed "s#/v1/booking/[A-Za-z0-9]+#/v1/booking#g" | stats count by uri',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['rex_sed_untranslatable'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex field=m mode=sed "s/a/[&]/" | table m',
+    nrql: '',
+    unsupportedFunc: ['rex_sed_untranslatable'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval u=replace(uri, "\\?.*$", "") | stats count by u',
+    nrql: "FROM Log WITH capture(uri, r'^(?P<repl1_pre>(?s:.*?))(?P<repl1_m>\\?.*)$') AS (repl1_pre, repl1_m), if(repl1_m IS NULL, uri, repl1_pre) AS u SELECT count(*) WHERE index = 'web' FACET u",
+    warningFunc: ['facet_default_limit'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval u=replace(msg, "\\d+", "N") | stats count by u',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['eval_replace_regex'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // F12: filter()'s WHERE rejects attribute-vs-attribute ("must be a constant
+  // in this context"); an unquoted word in SPL eval is a field.
+  {
+    spl: 'index=web | stats count(eval(status=success)) as ok by h',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['filter_field_vs_field'],
+    doc: 'stats-functions',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count(eval(status="success")) as ok by h',
+    nrql: "FROM Log SELECT filter(count(*), WHERE status = 'success') AS 'ok' WHERE index = 'web' FACET h",
+    warningFunc: ['facet_default_limit'],
+    doc: 'stats-functions',
+    verified: false,
+  },
+  // F7: a subsearch projecting only the join key. A one-column JOIN subquery is
+  // rejected ("must select at least 2 values"); FACET K is exact for max=1.
+  {
+    spl: 'index=web | join type=inner requestId [ search index=api | fields requestId ] | stats count',
+    nrql: "FROM Log JOIN (FROM Log SELECT count(*) WHERE index = 'api' FACET requestId LIMIT MAX) ON requestId = requestId SELECT count(*) WHERE index = 'web'",
+    warningFunc: ['join_cardinality_limit'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | join max=0 requestId [ search index=api | fields requestId ] | stats count',
+    nrql: '',
+    unsupportedFunc: ['join_single_column_subsearch'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web "x*$id$" | stats count',
+    nrql: '',
+    unsupportedFunc: ['affixed_token_unsupported'],
+    doc: 'bare-keywords',
+    verified: false,
+  },
+
+  // ── Consumer requests round 5 (sandbox-validated) ──
+  // dedup carries every field a later step reads as latest(f) AS 'f', and the
+  // steps after it run in the level above.
+  {
+    spl: 'index=web | dedup orderId | stats sum(amount) as amount by hour',
+    nrql: "FROM (FROM Log SELECT latest(amount) AS 'amount', latest(hour) AS 'hour' WHERE index = 'web' FACET orderId LIMIT MAX) SELECT sum(amount) AS 'amount' FACET hour LIMIT MAX",
+    warningFunc: ['dedup_latest_per_field', 'dedup_limit_max_cap'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  {
+    spl: 'index=web | dedup orderId | eval region=upper(region) | stats sum(amount) by region',
+    nrql: "FROM (FROM Log SELECT latest(region) AS 'region', latest(amount) AS 'amount' WHERE index = 'web' FACET orderId LIMIT MAX) SELECT sum(amount) FACET upper(region) AS 'region' LIMIT MAX",
+    warningFunc: ['dedup_latest_per_field', 'dedup_limit_max_cap'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  {
+    spl: 'index=web | dedup orderId | where region="au" | stats sum(amount)',
+    nrql: "FROM (FROM Log SELECT latest(region) AS 'region', latest(amount) AS 'amount' WHERE index = 'web' FACET orderId LIMIT MAX) SELECT sum(amount) WHERE region = 'au' LIMIT MAX",
+    warningFunc: ['dedup_latest_per_field', 'dedup_limit_max_cap'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  {
+    spl: 'index=web | dedup orderId | eval h=strftime(_time,"%H") | stats sum(amount) by h',
+    nrql: "FROM (FROM Log SELECT latest(timestamp) AS 'timestamp', latest(amount) AS 'amount' WHERE index = 'web' FACET orderId LIMIT MAX) SELECT sum(amount) FACET toDatetime(timestamp, 'HH') AS 'h' LIMIT MAX",
+    warningFunc: ['dedup_latest_per_field', 'dedup_limit_max_cap'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  // A projection before the dedup: `SELECT a … FACET k` is invalid NRQL.
+  {
+    spl: 'index=web | table a b | dedup k',
+    nrql: "FROM Log SELECT latest(a) AS 'a', latest(b) AS 'b' WHERE index = 'web' FACET k LIMIT MAX",
+    warningFunc: ['dedup_latest_per_field'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  // A foldable eval folds into the dedup level and keeps the carried columns.
+  {
+    spl: 'index=web | dedup k | eval x=amount*2 | stats sum(x) by region',
+    nrql: "FROM (FROM Log SELECT latest(amount) AS 'amount', latest(region) AS 'region', latest(amount) * 2 AS 'x' WHERE index = 'web' FACET k LIMIT MAX) SELECT sum(x) FACET region LIMIT MAX",
+    warningFunc: ['dedup_latest_per_field', 'dedup_limit_max_cap'],
+    doc: 'results-dedup',
+    verified: false,
+  },
+  // A row-wise eval between two aggregations merges into the outer one.
+  {
+    spl: 'index=web | stats count by host | eval h=upper(host) | stats sum(count) by h',
+    nrql: "FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET host LIMIT MAX) SELECT sum(count) FACET upper(host) AS 'h'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'compound-stats-stats',
+    verified: false,
+  },
+  // rename after stats aliases the column in place.
+  {
+    spl: 'index=web | stats count by Task | rename Task AS "Detail"',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET Task AS 'Detail'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count by status | table status count | rename count as Count',
+    nrql: "FROM Log SELECT count(*) AS 'Count' WHERE index = 'web' FACET status",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rename',
+    verified: false,
+  },
+  // fillnull on an aggregate column: a count/sum bucket is already 0.
+  {
+    spl: 'index=web | timechart count(eval(status="ok")) as success | fillnull value=0 success',
+    nrql: "FROM Log SELECT filter(count(*), WHERE status = 'ok') AS 'success' WHERE index = 'web' TIMESERIES AUTO",
+    warningFunc: ['fillnull_aggregate_zero'],
+    doc: 'fields-fillnull',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats avg(x) as a by host | fillnull value=0 a',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['fillnull_aggregate_value'],
+    doc: 'fields-fillnull',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where code == "rex"',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND code = 'rex'",
+    doc: 'results-where',
+    verified: false,
+  },
+  // RLIKE matches the whole value; match() searches.
+  {
+    spl: 'index=web | where match(host, "web")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND host RLIKE r'(?s:.*)web(?s:.*)'",
+    doc: 'results-where',
+    verified: false,
+  },
+  // Over NRQL's 256-char RLIKE limit: ORed RLIKEs of the alternatives.
+  {
+    spl: 'index=web | where match(msg, "(?i)nomatchalt01|nomatchalt02|nomatchalt03|nomatchalt04|nomatchalt05|nomatchalt06|nomatchalt07|nomatchalt08|nomatchalt09|nomatchalt10|nomatchalt11|nomatchalt12|nomatchalt13|nomatchalt14|nomatchalt15|nomatchalt16|nomatchalt17|nomatchalt18|nomatchalt19|nomatchalt20|nomatchalt21|nomatchalt22|nomatchalt23|nomatchalt24|nomatchalt25|handling event")',
+    nrql:
+      "FROM Log SELECT * WHERE index = 'web' AND " +
+      Array.from(
+        { length: 25 },
+        (_, i) =>
+          `msg RLIKE r'(?i)(?s:.*)nomatchalt${String(i + 1).padStart(2, '0')}(?s:.*)'`,
+      ).join(' OR ') +
+      " OR msg RLIKE r'(?i)(?s:.*)handling event(?s:.*)'",
+    doc: 'results-where',
+    verified: false,
+  },
+  // eventstats' subquery re-runs the same events: base search and extractions.
+  {
+    spl: 'index=web | rex "c=(?<cid>\\w+)" | eventstats count as n by cid | stats sum(n)',
+    nrql: "FROM Log JOIN (FROM Log WITH capture(message, r'(?s:.*?)c=(?P<cid>\\w+)(?s:.*)') AS (cid) SELECT count(*) AS 'n' WHERE index = 'web' FACET cid LIMIT MAX) ON parsed_cid = cid WITH capture(message, r'(?s:.*?)c=(?P<cid>\\w+)(?s:.*)') AS (parsed_cid) SELECT sum(n) WHERE index = 'web'",
+    warningFunc: ['join_cardinality_limit'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eventstats avg(x) as a by host | where x > a',
+    nrql: "FROM Log JOIN (FROM Log SELECT average(x) AS 'a' WHERE index = 'web' FACET host LIMIT MAX) ON host = host SELECT * WHERE index = 'web' AND numeric(x) > numeric(a)",
+    warningFunc: ['join_cardinality_limit'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // A values() list can't be a JOIN column: dropped when unread, else refused.
+  {
+    spl: 'index=web | eventstats values(src) as src by cid | timechart count by status',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET status TIMESERIES AUTO",
+    warningFunc: ['eventstats_unread_list_dropped', 'facet_default_limit'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eventstats values(src) as srcs by cid | stats count by srcs',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['eventstats_list_join'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // length() of split()'s array counts its items: no string-length warning.
+  {
+    spl: 'index=web | eval n=mvcount(split(body, ",")) | stats sum(n)',
+    nrql: "FROM Log WITH length(split(body, ',')) AS n SELECT sum(n) WHERE index = 'web'",
+    warningFunc: [],
+    doc: 'eval-multivalue',
+    verified: false,
+  },
+  // split() is unavailable on production accounts: one item is a capture().
+  {
+    spl: 'index=web | eval ID=mvindex(split(s, ":"), 1), L=mvindex(split(s, ","), -1) | table ID L',
+    nrql: "FROM Log WITH capture(s, r'^(?:[^:]*:){1}(?P<item>[^:]*)(?s:.*)$') AS ID, capture(s, r'^(?:(?s:.*),)?(?P<item>[^,]*)(?:,[^,]*){0}$') AS L SELECT ID, L WHERE index = 'web'",
+    doc: 'eval-multivalue',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval s=tostring(x, "hex") | table s',
+    nrql: '',
+    unsupportedFunc: ['tostring_format_unsupported'],
+    doc: 'eval-string',
+    verified: false,
+  },
+  // Past 5 capture() calls, simple (literal-anchored) rex patterns use aparse().
+  {
+    spl: 'index=web | rex "a\\"(?<a>[^\\"]+)\\"" | rex "b\\"(?<b>[^\\"]+)\\"" | rex "c=(?<c>\\d+)" | rex "d=(?<d>\\d+)" | rex "e=(?<e>\\d+)" | rex "f=(?<f>\\d+)" | table a b c d e f',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)a\\\"(?P<a>[^\\\"]+)\\\"(?s:.*)') AS (a), aparse(message, '%b\"*\"%') AS (b), capture(message, r'(?s:.*?)c=(?P<c>\\d+)(?s:.*)') AS (c), capture(message, r'(?s:.*?)d=(?P<d>\\d+)(?s:.*)') AS (d), capture(message, r'(?s:.*?)e=(?P<e>\\d+)(?s:.*)') AS (e), capture(message, r'(?s:.*?)f=(?P<f>\\d+)(?s:.*)') AS (f) SELECT a, b, c, d, e, f WHERE index = 'web'",
+    warningFunc: ['rex_as_aparse'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex "a=(?<a>\\d+)" | rex "b=(?<b>\\d+)" | rex "c=(?<c>\\d+)" | rex "d=(?<d>\\d+)" | rex "e=(?<e>\\d+)" | rex "f=(?<f>\\d+)" | table a b c d e f',
+    nrql: '',
+    unsupportedFunc: ['rex_capture_limit'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // dedup before a join: the dedup level is the JOIN's left subquery, and the
+  // steps after the join run above it (sandbox: bad 1, boom 1 — as Splunk).
+  {
+    spl: 'index=web type="req" | dedup s | table s | join type=left s [ search index=web type="error" | dedup s | table s, detail.message ] | table s, detail.message | rename detail.message AS Err | where isNotNull(Err) | stats count BY Err',
+    nrql: "FROM (FROM Log SELECT latest(timestamp) WHERE index = 'web' AND type = 'req' FACET s LIMIT MAX) LEFT JOIN (FROM Log SELECT latest(`detail.message`) AS 'detail.message' WHERE index = 'web' AND type = 'error' FACET s LIMIT MAX) ON s = s SELECT count(*) WHERE `detail.message` IS NOT NULL FACET `detail.message` AS 'Err' LIMIT MAX",
+    warningFunc: [
+      'dedup_facet_warning',
+      'list_keeps_aggregates',
+      'join_subsearch_warning',
+      'dedup_latest_per_field',
+      'join_cardinality_limit',
+      'rename_keeps_original',
+      'dedup_limit_max_cap',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // A field read after the join that the subsearch doesn't supply is carried
+  // by the dedup (sandbox: S1 boom, S2 null, S3 bad).
+  {
+    spl: 'index=web type="req" | dedup s | join type=left s [search index=web type="error" | dedup s | table s, m] | table s, m, region',
+    nrql: "FROM (FROM Log SELECT latest(region) AS 'region' WHERE index = 'web' AND type = 'req' FACET s LIMIT MAX) LEFT JOIN (FROM Log SELECT latest(m) AS 'm' WHERE index = 'web' AND type = 'error' FACET s LIMIT MAX) ON s = s SELECT s, m, region LIMIT MAX",
+    warningFunc: [
+      'dedup_facet_warning',
+      'join_subsearch_warning',
+      'dedup_latest_per_field',
+      'join_cardinality_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // A field read between the dedup and the join is carried by the dedup itself.
+  {
+    spl: 'index=web | dedup s | table s, region | join s [search index=web | dedup s | table s, m] | stats count by region, m',
+    nrql: "FROM (FROM Log SELECT latest(region) AS 'region' WHERE index = 'web' FACET s LIMIT MAX) JOIN (FROM Log SELECT latest(m) AS 'm' WHERE index = 'web' FACET s LIMIT MAX) ON s = s SELECT count(*) FACET region, m LIMIT MAX",
+    warningFunc: [
+      'dedup_facet_warning',
+      'dedup_latest_per_field',
+      'join_subsearch_warning',
+      'join_cardinality_limit',
+      'dedup_limit_max_cap',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // A dedup over an aggregation is not a per-event dedup level: the
+  // aggregation becomes the JOIN's left subquery but carries nothing extra.
+  {
+    spl: 'index=web | stats count by s | dedup s | join s [search index=web | dedup s | table s, m] | table s, count, m',
+    nrql: "FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET s LIMIT MAX) JOIN (FROM Log SELECT latest(m) AS 'm' WHERE index = 'web' FACET s LIMIT MAX) ON s = s SELECT s, count, m LIMIT MAX",
+    warningFunc: [
+      'dedup_facet_warning',
+      'join_subsearch_warning',
+      'dedup_latest_per_field',
+      'join_cardinality_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // A join after stats: the aggregation is the JOIN's left subquery; later
+  // steps read both sides' columns (sandbox: per-key count, b and r as Splunk).
+  {
+    spl: 'index=web | stats count by host | join type=left host [search index=db | stats sum(bytes) as b by host] | where b > 100 | eval r=b/count | table host, count, b, r',
+    nrql: "FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET host LIMIT MAX) LEFT JOIN (FROM Log SELECT sum(bytes) AS 'b' WHERE index = 'db' FACET host LIMIT MAX) ON host = host WITH numeric(b) / numeric(count) AS r SELECT host, count, b, r WHERE numeric(b) > 100 LIMIT MAX",
+    warningFunc: [
+      'join_subsearch_warning',
+      'facet_default_limit',
+      'join_cardinality_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // The JOIN subquery's column wins a name clash (sandbox), so a key-only
+  // subsearch's synthetic count(*) is renamed off the left side's count.
+  {
+    spl: 'index=web | stats count by host | join host [search index=web error | fields host] | table host, count',
+    nrql: "FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET host LIMIT MAX) JOIN (FROM Log SELECT count(*) AS 'joinMatches' WHERE index = 'web' AND message LIKE '%error%' FACET host LIMIT MAX) ON host = host SELECT host, count LIMIT MAX",
+    warningFunc: ['join_cardinality_limit'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // No left-side count to clash with: the synthetic column keeps its name.
+  {
+    spl: 'index=web | dedup s | join s [search index=web error | fields s] | table s, region',
+    nrql: "FROM (FROM Log SELECT latest(region) AS 'region' WHERE index = 'web' FACET s LIMIT MAX) JOIN (FROM Log SELECT count(*) WHERE index = 'web' AND message LIKE '%error%' FACET s LIMIT MAX) ON s = s SELECT s, region LIMIT MAX",
+    warningFunc: [
+      'dedup_facet_warning',
+      'dedup_latest_per_field',
+      'join_cardinality_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count by host | join host [search index=db | stats sum(bytes) as b by host] | stats sum(b) as total',
+    nrql: "FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET host LIMIT MAX) JOIN (FROM Log SELECT sum(bytes) AS 'b' WHERE index = 'db' FACET host LIMIT MAX) ON host = host SELECT sum(b) AS 'total' LIMIT MAX",
+    warningFunc: [
+      'join_subsearch_warning',
+      'facet_default_limit',
+      'join_cardinality_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | dedup s | join s [search index=web | dedup s | table s, m] | table *',
+    nrql: '',
+    warningFunc: [
+      'dedup_facet_warning',
+      'join_subsearch_warning',
+      'dedup_latest_per_field',
+      'join_cardinality_limit',
+    ],
+    unsupportedFunc: [
+      'join_after_dedup_reads_unknown',
+      'post_agg_field_not_produced',
+    ],
+    doc: 'correlation-join',
     verified: false,
   },
 ];

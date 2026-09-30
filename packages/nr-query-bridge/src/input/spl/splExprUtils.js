@@ -17,6 +17,7 @@ import {
   Func,
   DualCheck,
   RawNrql,
+  Rlike,
   SelectQuery,
 } from '../../ir/nodes.js';
 import { escapeStringWildcardForNrql } from '../../output/nrql/nrqlEncoding.js';
@@ -33,6 +34,97 @@ export function mapFieldName(name) {
   if (name === '_time') return 'timestamp';
   if (name === '_raw') return 'message';
   return name;
+}
+
+// ── Regex match (SPL match() / regex) ───────────────────────
+
+// New Relic rejects an RLIKE regex longer than this (sandbox-verified).
+const MAX_RLIKE_LENGTH = 256;
+
+// A leading inline-flag group, e.g. `(?i)`, which must stay first.
+const LEADING_FLAGS = /^\(\?[a-zA-Z]+\)/;
+
+export function endsWithUnescapedDollar(pattern) {
+  if (!pattern.endsWith('$')) return false;
+  let slashes = 0;
+  for (let i = pattern.length - 2; i >= 0 && pattern[i] === '\\'; i--) {
+    slashes++;
+  }
+  return slashes % 2 === 0;
+}
+
+// The top-level `|` alternatives of `pattern`, or null if there is only one.
+function splitTopLevelAlternatives(pattern) {
+  const parts = [];
+  let depth = 0;
+  let inClass = false;
+  let start = 0;
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '\\') {
+      i++;
+    } else if (inClass) {
+      if (c === ']') inClass = false;
+    } else if (c === '[') {
+      inClass = true;
+      if (pattern[i + 1] === '^') i++;
+      if (pattern[i + 1] === ']') i++;
+    } else if (c === '(') {
+      depth++;
+    } else if (c === ')') {
+      depth--;
+    } else if (c === '|' && depth === 0) {
+      parts.push(pattern.slice(start, i));
+      start = i + 1;
+    }
+  }
+  if (parts.length === 0) return null;
+  parts.push(pattern.slice(start));
+  return parts;
+}
+
+/**
+ * `field` matches the Splunk regex `pattern` anywhere in its value (SPL
+ * match() / regex are searches). NRQL RLIKE must match the WHOLE value
+ * (`RLIKE 'finished'` → 0 rows, sandbox-verified), so the pattern is wrapped:
+ * `(?s:.*)(?:P)(?s:.*)`. `^`/`$` inside P still assert the start/end of the
+ * text, so anchored patterns keep their meaning (a single-branch pattern gets
+ * no group, and no filler on an anchored side). A result over NRQL's 256-char
+ * RLIKE limit is split into ORed RLIKEs of its top-level alternatives.
+ * @param {object} field IR expression
+ * @param {string} pattern
+ * @returns {object} IR node (Rlike, or an OR of Rlikes)
+ */
+export function buildRegexMatch(field, pattern) {
+  const flags = LEADING_FLAGS.exec(pattern)?.[0] ?? '';
+  const body = pattern.slice(flags.length);
+  const wrap = (p) => {
+    if (splitTopLevelAlternatives(p)) return `${flags}(?s:.*)(?:${p})(?s:.*)`;
+    // One branch: no group needed, and no filler on an anchored side.
+    const start = p.startsWith('^');
+    const end = endsWithUnescapedDollar(p);
+    return `${flags}${start ? '' : '(?s:.*)'}${p}${end ? '' : '(?s:.*)'}`;
+  };
+  const whole = wrap(body);
+  const alternatives =
+    whole.length > MAX_RLIKE_LENGTH ? splitTopLevelAlternatives(body) : null;
+  if (!alternatives) return Rlike(field, whole);
+  const [first, ...rest] = alternatives.map((alt) => Rlike(field, wrap(alt)));
+  /** @type {object} */
+  let match = first;
+  for (const r of rest) match = BinOp('OR', match, r);
+  return match;
+}
+
+// The raw event text (SPL `_raw`, bare search terms, rex/spath default input).
+// In New Relic that is the stored `message` attribute. Tagged (non-enumerable)
+// so the binding scope never points it at a later `rex … (?<message>…)` /
+// `eval message=…` binding — those shadow the SPL *field* named message, not
+// the raw event.
+export function rawEventIdentifier() {
+  const id = Identifier('message');
+  Object.defineProperty(id, '_rawEvent', { value: true, enumerable: false });
+  return id;
 }
 
 // ── Time span formatting ────────────────────────────────────

@@ -24,7 +24,12 @@ import { translateAstToIR } from './splToIR.js';
 import * as parser from './splParser.js';
 import { messages } from '../../messages.js';
 
-import { normalizeSubsearch } from './splExprUtils.js';
+import {
+  mapFieldName,
+  normalizeSubsearch,
+  rawEventIdentifier,
+  wrapAsSubquery,
+} from './splExprUtils.js';
 
 export function handleJoin(cmd, ir) {
   const opts = resolveJoinOptions(cmd, ir);
@@ -65,7 +70,30 @@ export function handleJoin(cmd, ir) {
   // Pattern B (aggregated): subsearch has stats → move join key to FACET, wrap in latest()
   let subSelect = subIR.select.length > 0 ? subIR.select : [Wildcard()];
   let subFacet = subIR.facet;
-  if (subFacet.length === 0) {
+  if (isKeyOnlyJoin(cmd, subIR)) {
+    // Existence filter: nothing later reads a subsearch field, so join on the key
+    // alone. FACET gives one row per key — Splunk's max=1, no NRQL JOIN fan-out.
+    subSelect = [Func('count', [])];
+    subFacet = [key];
+    ir.warnings.push(messages.join_key_only_subsearch(cmd.field));
+  } else if (
+    isKeyColumnOnly(subIR, cmd.field) &&
+    opts.maxMatches !== 0 &&
+    !subIR._hasAggregation
+  ) {
+    // `[search … | fields K]`: the subsearch carries only the key. A one-column
+    // JOIN subquery is rejected by New Relic ("Subquery JOIN must select at least
+    // 2 values"); `count(*) … FACET K` is the same key set, one row per key —
+    // exactly Splunk's default max=1.
+    subSelect = [Func('count', [])];
+    subFacet = [key];
+  } else if (subIR.facet.length === 0 && subIR.select.length === 1) {
+    // Any other one-column raw subquery is rejected by New Relic, and with
+    // max=0 the key-only FACET form would collapse the duplicate matches Splunk
+    // multiplies rows by.
+    ir.unsupported.push(messages.join_single_column_subsearch(cmd.field));
+    return;
+  } else if (subFacet.length === 0) {
     // Reject wildcard-only or empty SELECT — need explicit fields
     const hasWildcard = subSelect.some((s) => s.type === 'Wildcard');
     if (subSelect.length === 0 || hasWildcard) {
@@ -89,6 +117,24 @@ export function handleJoin(cmd, ir) {
     // Pattern A (raw): keep SELECT as-is, no FACET — subFacet stays empty
   }
 
+  // An aggregated left side (`stats … by k | join k […]`, `dedup k | join k
+  // […]`) becomes the JOIN's left subquery, and the steps after the join run in
+  // the level above, over its columns and the subsearch's (sandbox-verified:
+  // `FROM (… FACET k LIMIT MAX) JOIN (…) ON k SELECT …`). Attaching the JOIN
+  // to the aggregation itself would drop the subsearch's columns.
+  if (ir._hasAggregation) {
+    // A flat per-event dedup can still carry the fields read after the join.
+    const isFlatDedup =
+      ir._dedupLevel && ir.dataSource?.type !== 'SubquerySource';
+    if (isFlatDedup) carryJoinReads(cmd, ir, subSelect);
+    subSelect = renameSyntheticMatchCount(subSelect, ir);
+    wrapAsSubquery(ir);
+    // Splunk returns every joined row; a raw NRQL SELECT stops at 100.
+    if (ir.limit == null) ir.limit = 'MAX';
+    ir._hasAggregation = false;
+    ir._dedupLevel = false;
+  }
+
   ir.join = JoinClause(
     SelectQuery({
       dataSource: subIR.dataSource,
@@ -108,6 +154,102 @@ export function handleJoin(cmd, ir) {
   if (subFacet.length === 0 && opts.maxMatches !== 0) {
     ir.warnings.push(messages.join_max_matches_differ(opts.maxMatches));
   }
+}
+
+// A dedup before the join carried only the fields read up to the join
+// (collectDownstreamFieldRefs stopAtJoin). Now the subsearch's columns are
+// known: a later read of anything else comes from the left events, so carry it
+// as `latest(f) AS 'f'` too. A later read that can't be enumerated can't be
+// carried → loud.
+function carryJoinReads(cmd, ir, subSelect) {
+  const refs = cmd._downstreamRefs;
+  const fromJoin = new Set([cmd.field]);
+  for (const s of subSelect) {
+    if (s.type === 'Identifier' || s.type === 'Alias') fromJoin.add(s.name);
+  }
+  if (!refs) {
+    ir.unsupported.push(messages.join_after_dedup_reads_unknown(cmd.field));
+    return;
+  }
+  const exposed = new Set(ir.facet.map((f) => f.name));
+  for (const item of ir.select)
+    if (item.type === 'Alias') exposed.add(item.name);
+  for (const name of refs.fields) {
+    const field = mapFieldName(name);
+    if (fromJoin.has(field) || exposed.has(field)) continue;
+    const column = Alias(
+      Func('latest', [
+        field === 'message' ? rawEventIdentifier() : Identifier(field),
+      ]),
+      field,
+    );
+    column.carried = true;
+    ir.select = [...ir.select.filter((s) => !isLatestTimestamp(s)), column];
+    exposed.add(field);
+  }
+  // The dedup's "keeps only its keys" warning no longer holds once it carries.
+  const carried = ir.select.filter((s) => s.carried).map((s) => s.name);
+  const keysOnly = messages.dedup_facet_warning();
+  if (carried.length > 0 && ir.warnings.includes(keysOnly)) {
+    ir.warnings = ir.warnings.filter((m) => m !== keysOnly);
+    ir.warnings.push(messages.dedup_latest_per_field(carried));
+  }
+}
+
+// A key-only subsearch joins as `count(*) … FACET k` — a column Splunk never
+// had. Across a JOIN the subquery's column wins a name clash (sandbox), so a
+// left-side `count` would silently read the match count: give it a free name.
+function renameSyntheticMatchCount(subSelect, ir) {
+  const isSynthetic =
+    subSelect.length === 1 &&
+    subSelect[0].type === 'Function' &&
+    subSelect[0].name === 'count';
+  if (!isSynthetic) return subSelect;
+  const leftNames = new Set(ir.facet.map((f) => f.name));
+  for (const item of ir.select) {
+    if (item.type === 'Alias' || item.type === 'Function') {
+      leftNames.add(item.name);
+    }
+  }
+  if (!leftNames.has('count')) return subSelect;
+  let name = 'joinMatches';
+  for (let i = 2; leftNames.has(name); i++) name = `joinMatches${i}`;
+  return [Alias(subSelect[0], name)];
+}
+
+function isLatestTimestamp(item) {
+  return (
+    item.type === 'Function' &&
+    item.name === 'latest' &&
+    item.args[0]?.type === 'Identifier' &&
+    item.args[0].name === 'timestamp'
+  );
+}
+
+// A bare subsearch (no fields/table, no aggregation) whose join is only an
+// existence filter: later stages reach an aggregation and read no field but the
+// key (splToIR lookahead → cmd._downstreamRefs). Otherwise which fields to carry
+// is unknown and join_needs_fields stays loud.
+function isKeyOnlyJoin(cmd, subIR) {
+  const refs = cmd._downstreamRefs;
+  return (
+    subIR.select.length === 0 &&
+    subIR.facet.length === 0 &&
+    !subIR._hasAggregation &&
+    !!refs &&
+    refs.aggregated &&
+    refs.fields.every((f) => f === cmd.field)
+  );
+}
+
+// The subsearch projects exactly one column, and it is the join key.
+function isKeyColumnOnly(subIR, field) {
+  return (
+    subIR.facet.length === 0 &&
+    subIR.select.length === 1 &&
+    subIR.select[0].type === 'Identifier' &&
+    subIR.select[0].name === field
+  );
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   escapeStringLiteralForNrql,
   escapeStringWildcardForNrql,
   escapeRegexPatternForNrql,
+  formatJsonPathForNrql,
 } from '../../src/output/nrql/nrqlEncoding.js';
 
 describe('escapeAttributeNameForNrql', () => {
@@ -65,5 +66,42 @@ describe('escapeRegexPatternForNrql', () => {
   });
   it('returns a non-string value unchanged', () => {
     expect(escapeRegexPatternForNrql(42)).toBe(42);
+  });
+});
+
+describe('formatJsonPathForNrql', () => {
+  it('leaves a dotted path of plain keys unchanged', () => {
+    expect(formatJsonPathForNrql('meta.responseTime')).toBe(
+      'meta.responseTime',
+    );
+  });
+  it('leaves plain keys with array indexes unchanged', () => {
+    expect(formatJsonPathForNrql('reservations[*].system')).toBe(
+      'reservations[*].system',
+    );
+  });
+  it('brackets every key when one key contains a hyphen', () => {
+    expect(formatJsonPathForNrql('csp-report.blocked-uri')).toBe(
+      '["csp-report"]["blocked-uri"]',
+    );
+  });
+  it('brackets plain keys too when any key is not plain (no mixing)', () => {
+    expect(formatJsonPathForNrql('x-region[*].a-b.c')).toBe(
+      '["x-region"][*]["a-b"]["c"]',
+    );
+  });
+  it('keeps a numeric index in the bracketed form', () => {
+    expect(formatJsonPathForNrql('x-region[0].c')).toBe('["x-region"][0]["c"]');
+  });
+  it('brackets a key containing a space', () => {
+    expect(formatJsonPathForNrql('body.Some Name[*]')).toBe(
+      '["body"]["Some Name"][*]',
+    );
+  });
+  it('escapes a double quote inside a bracketed key', () => {
+    expect(formatJsonPathForNrql('a-"b')).toBe('["a-\\"b"]');
+  });
+  it('leaves an already-bracketed path unchanged', () => {
+    expect(formatJsonPathForNrql('["a.b"]')).toBe('["a.b"]');
   });
 });

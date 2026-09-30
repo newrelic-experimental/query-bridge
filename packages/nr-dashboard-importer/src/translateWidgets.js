@@ -52,6 +52,19 @@ function escapeRegExp(s) {
 function rewriteMultiSelectComparisons(nrql, multiSelectTokens) {
   let out = nrql;
   for (const tok of multiSelectTokens) {
+    // The translator compares a search-term token case-insensitively as
+    // `lower(string(f)) = lower(string({{tok}}))`; lower() can't take a list,
+    // so a multiselect compares the values as given.
+    const folded = new RegExp(
+      'lower\\(string\\((`[^`]+`|[A-Za-z_][\\w.]*)\\)\\)\\s*(!?=)\\s*' +
+        'lower\\(string\\(\\{\\{' +
+        escapeRegExp(tok) +
+        '\\}\\}\\)\\)',
+      'g',
+    );
+    out = out.replace(folded, (_m, field, op) =>
+      op === '!=' ? `${field} NOT IN ({{${tok}}})` : `${field} IN ({{${tok}}})`,
+    );
     const re = new RegExp(
       '(`[^`]+`|[A-Za-z_][\\w.]*)\\s*=\\s*\\{\\{' +
         escapeRegExp(tok) +

@@ -15,10 +15,14 @@ export const messages = {
   // ── extractionHandlers ────────────────────────────────────────────
 
   // SPL: `* | rex mode=sed field=msg "s/foo/bar/g"`
-  // Structured: names the field and sed script so tooling can route it to an
-  // ingest-time parsing rule (NRQL replace() is literal-only).
+  // Structured: names the field and sed script so tooling can triage it.
+  // (Not "use a parsing rule": New Relic parsing rules extract, they don't substitute.)
   rex_sed_unsupported: (field, script) =>
-    `rex mode=sed has no NRQL equivalent (field=${field}, sed script '${script}'); NRQL replace() is literal-only — apply this rewrite at ingest time with a parsing rule`,
+    `rex mode=sed has no exact NRQL equivalent (field=${field}, sed script '${script}'); NRQL replace() is literal-only and capture() can rebuild only a single anchored or non-global match`,
+
+  // SPL: `* | rex field=uri mode=sed "s/[0-9]+/N/g"` — global, unanchored regex.
+  rex_sed_untranslatable: (field, script, reason) =>
+    `rex mode=sed on ${field} (sed script '${script}') cannot be translated exactly: ${reason}. NRQL replace() is literal-only; capture() can rebuild one anchored or non-global substitution`,
 
   // SPL: `* | rex` / `* | rex "(?<a>x)"\"` (stray characters after the regex)
   rex_parse_failed: (rawText) =>
@@ -43,7 +47,8 @@ export const messages = {
   rex_max_match: (n) =>
     `rex max_match=${n} not supported; NRQL capture() returns only the first match per event`,
 
-  // SPL: `* | rex "(?<=prefix)(?<a>\\w+)"`
+  // SPL: `* | rex "(?<!prefix)(?<a>\\w+)"` (a leading positive lookbehind /
+  // trailing positive lookahead translates — it only asserts context)
   rex_lookaround: () =>
     'rex pattern uses lookahead/lookbehind assertions which NRQL capture() does not support; rewrite the regex without lookaround',
 
@@ -73,7 +78,11 @@ export const messages = {
 
   // SPL: `* | rex "(?<a>\\w+)" | rex "(?<b>\\w+)" | ... (6+ rex commands)`
   rex_capture_limit: (count) =>
-    `query uses ${count} rex extractions but NRQL capture() is limited to 5 per query; consider using aparse() for anchor-based patterns`,
+    `query uses ${count} capture() extractions that cannot be rewritten as aparse() (only literal-anchored patterns can), but NRQL allows 5 capture() calls per query`,
+
+  // SPL: six `rex "\"id\":\"(?<id>[^\"]+)\""`-style extractions in one query
+  rex_as_aparse: (names) =>
+    `rex extraction(s) ${names.join(', ')} translated as aparse() to stay within NRQL's 5 capture() calls; aparse matches the anchor text case-insensitively, where Splunk's rex is case-sensitive`,
 
   // SPL: `* | spath input=message`
   spath_no_path: () =>
@@ -138,6 +147,10 @@ export const messages = {
   list_wildcard_field: (command, field) =>
     `${command} wildcard field '${field}' has no NRQL equivalent; NRQL SELECT cannot match attributes by name pattern — list the fields explicitly`,
 
+  // SPL: `* | table _time _raw` — show the raw events.
+  list_raw_select_all: (command) =>
+    `${command} _raw shows the whole raw event; translated as SELECT * (every attribute of the event — display it as a log table), which may include more columns than the other fields listed`,
+
   // SPL: `* | table a, max(b)` with no stats before it
   list_stats_column_without_stats: (command, field) =>
     `${command} field '${field}' names a stats output column, but no stats/chart/timechart precedes it`,
@@ -162,11 +175,19 @@ export const messages = {
   dedup_facet_warning: () =>
     'dedup translated to FACET; add latest(field) for each field you want to keep',
 
-  // SPL: `* | dedup userId | stats count by routeName`
+  // SPL: `* | dedup orderId | stats sum(amount) by region`
+  dedup_latest_per_field: (fields) =>
+    `dedup translated to FACET with latest() of ${fields.join(', ')}: each field is read from the newest event that has it, while Splunk reads every field from the newest event (they differ only when that event lacks the field)`,
+
+  // SPL: `* | dedup userId | where status>=500 | stats count by host`
+  dedup_unique_count: (key) =>
+    `dedup ${key} followed by count translated to uniqueCount(${key}) (no nesting, no 5,000-key cap). Differences: uniqueCount is approximate at high cardinality; a ${key} value seen in several groups or time buckets counts once in each (dedup keeps one row); a filter after dedup tests every event with that value, not only the one dedup kept. Exact when duplicate events are copies of one event`,
+
+  // SPL: `* | dedup userId | stats avg(duration) by userId`
   dedup_limit_max_cap: () =>
     'dedup translated as nested FACET with LIMIT MAX; NRQL caps at 5,000 facets which may sample high-cardinality fields',
 
-  // SPL: `* | dedup userId | timechart count span=1m`
+  // SPL: `* | dedup userId | timechart avg(duration) span=1m`
   dedup_timeseries_warning: () =>
     'dedup with timechart: TIMESERIES on a nested subquery only populates the first time bucket; remaining buckets return null. Consider using uniqueCount() per time bucket instead of nested dedup.',
 
@@ -244,6 +265,14 @@ export const messages = {
   fillnull_no_fields: () =>
     'fillnull without field list not supported — NRQL requires explicit field names',
 
+  // SPL: `* | timechart count as n | fillnull value=0 n`
+  fillnull_aggregate_zero: (field) =>
+    `fillnull on '${field}' dropped: it is a count/sum column, and New Relic already reports an empty bucket as 0`,
+
+  // SPL: `* | stats avg(x) as a by host | fillnull value=0 a`
+  fillnull_aggregate_value: (field) =>
+    `fillnull on aggregate column '${field}' has no NRQL equivalent: NRQL cannot re-read an aggregate column in the same query, and only count/sum report an empty bucket as 0`,
+
   // SPL: `* | convert badcmd(x)`
   convert_parse_failed: (rawText) =>
     `convert command could not be fully parsed: ${rawText}`,
@@ -297,7 +326,7 @@ export const messages = {
 
   // SPL: `* | eval x = replace(msg, "\\d+", "N")`
   eval_replace_regex: (pattern) =>
-    `replace() with regex pattern '${pattern}' not supported — NRQL replace() is literal-only`,
+    `replace() with regex pattern '${pattern}' not supported — NRQL replace() is literal-only, and SPL replace() is global, so only an anchored (^…/…$) pattern can be rebuilt exactly with capture()`,
 
   // SPL: `* | eval x = mvjoin(tags, ",")`
   eval_mvjoin_unsupported: () =>
@@ -322,6 +351,14 @@ export const messages = {
   // SPL: `* | eval x = typeof(field)`
   eval_func_unsupported: (name) =>
     `eval function ${name}() has no NRQL equivalent`,
+
+  // SPL: `* | eval s = tostring(bytes, "commas")`
+  tostring_format_unsupported: (format) =>
+    `tostring() format "${format}" has no NRQL equivalent; NRQL string() takes only a numeric precision`,
+
+  // SPL: `* | eval s = tostring(total, "commas")`
+  tostring_commas_grouping_lost: () =>
+    'tostring(x, "commas") translated as string(x, 2): rounded to 2 decimal places like Splunk, but without the thousands separators',
 
   // SPL: `* | where searchmatch("error")`
   searchmatch_raw_event: () =>
@@ -383,9 +420,21 @@ export const messages = {
   // SPL: (subsearch unsupported forwarded through join)
   join_subsearch_unsupported: (u) => `join subsearch: ${u}`,
 
+  // SPL: `* | join type=inner requestId [search "retry"] | timechart count`
+  join_key_only_subsearch: (key) =>
+    `join subsearch names no fields and nothing later reads one, so it joins on ${key} alone as an existence filter; subsearch fields Splunk would overwrite (_time, host, …) are not carried`,
+
+  // SPL: `* | join max=0 id [search index=other | fields id]`
+  join_single_column_subsearch: (key) =>
+    `join on ${key}: the subsearch returns a single column, but a NRQL JOIN subquery must select at least 2 values; with max=0 (or a non-key column) there is no faithful key-only form — add another field to the subsearch's fields/table`,
+
   // SPL: `* | join host [search *]`
   join_needs_fields: () =>
     'Subsearch joins require explicit fields. Add a table or fields command to specify which fields to bring over',
+
+  // SPL: `* | dedup id | join id [search index=other | table id, x] | foo`
+  join_after_dedup_reads_unknown: (key) =>
+    `join on ${key} after a dedup: the fields read after the join can't be enumerated, so the dedup can't carry the ones the subsearch doesn't supply`,
 
   // SPL: `* | join host [search * | stats avg(duration) by host]`
   join_cardinality_limit: () =>
@@ -507,6 +556,10 @@ export const messages = {
   perc_precision: (variant, n) =>
     `SPL ${variant}${n}() mapped to NRQL percentile(); precision may differ`,
 
+  // SPL: `* | stats count(eval(status=success))` — `success` is a FIELD in SPL eval.
+  filter_field_vs_field: (left, right) =>
+    `count(eval(…)) compares two fields (${left} with ${right}); NRQL filter() needs a constant on one side of each comparison. In SPL eval an unquoted word is a field name — if '${right}' was meant as text, quote it ("${right}")`,
+
   // SPL: `* | stats mode(status) by host`
   no_equiv_func: (name) => `SPL ${name}`,
 
@@ -536,6 +589,14 @@ export const messages = {
   eventstats_scalar_subquery: () =>
     'eventstats without BY translated as scalar subquery in SELECT; ' +
     'for percentage calculations, use the subquery result in downstream eval',
+
+  // SPL: `* | eventstats values(src) as srcs by id | stats count by srcs`
+  eventstats_list_join: (names) =>
+    `eventstats values()/list() column(s) ${names.join(', ')} cannot be translated: the value is a list, and New Relic cannot carry a list through a JOIN`,
+
+  // SPL: `* | eventstats values(src) as srcs by id | stats count` (srcs never read)
+  eventstats_unread_list_dropped: (names) =>
+    `eventstats values()/list() column(s) ${names.join(', ')} dropped: nothing later reads them, and New Relic cannot carry a list through a JOIN`,
 
   // SPL: `* | eventstats count by host, status`
   eventstats_multi_by: (fields) =>
@@ -616,6 +677,10 @@ export const messages = {
   // SPL: `_raw=*error*`
   raw_mapped_to_message: () =>
     '_raw is not a valid NRQL field; mapped to message',
+
+  // SPL: `_raw=*error*` — a search across the whole raw event. (`like(_raw, …)` stays on message.)
+  raw_search_dimensions: () =>
+    '_raw search translated as dimensions() LIKE, which matches across all attribute values of the event (the closest NRQL form of a raw-event search); match counts can differ where Splunk tokenizes the raw text differently',
 
   // SPL: `` `my_macro` ``
   macro_translated: (name, nrqlMacro) =>

@@ -16,7 +16,6 @@ import {
   Not,
   Func,
   Regex,
-  Rlike,
   Binding,
 } from '../../ir/nodes.js';
 import { messages } from '../../messages.js';
@@ -26,7 +25,16 @@ import {
 } from './re2Compat.js';
 // Circular import — safe because translateSearchExpr is only called at runtime
 import { translateSearchExpr } from './splToIR.js';
-import { wrapAsSubquery } from './splExprUtils.js';
+import {
+  buildRegexMatch,
+  rawEventIdentifier,
+  wrapAsSubquery,
+} from './splExprUtils.js';
+import {
+  buildRegexReplace,
+  nextReplaceBase,
+  parseSedScript,
+} from './regexReplace.js';
 
 // Options before the regex (`field=x max_match=1 `), a complete quoted regex.
 const REX_LEAD = String.raw`^(?:[a-z_]+=\S+\s+)*"(?:[^"\\]|\\.)*"`;
@@ -48,10 +56,7 @@ function describeRexFailure(rawText) {
 
 export function handleRex(cmd, ir) {
   if (cmd.mode === 'sed') {
-    // No NRQL equivalent (replace() is literal-only). Name the field and script so
-    // migration tooling can route it to an ingest-time parsing rule.
-    const field = !cmd.field || cmd.field === '_raw' ? 'message' : cmd.field;
-    ir.unsupported.push(messages.rex_sed_unsupported(field, cmd.pattern || ''));
+    handleRexSed(cmd, ir);
     return;
   }
   if (cmd.mode !== 'extract' || !cmd.pattern) {
@@ -78,8 +83,15 @@ export function handleRex(cmd, ir) {
     ir.unsupported.push(messages.rex_max_match(cmd.maxMatch));
   }
 
+  // A positive lookbehind at the very start / lookahead at the very end of the
+  // pattern only asserts context around the extraction. capture() returns just
+  // the named groups, so consuming that context instead is the same extraction:
+  // `(?<=orderId=)(?<oid>\d+)` ≡ `(?:orderId=)(?<oid>\d+)`. Only assertions with
+  // no nested group qualify; anything else stays refused below.
+  const pattern = consumeEdgeLookaround(cmd.pattern);
+
   // Detect PCRE lookbehind/lookahead — NRQL capture() rejects these
-  if (/\(\?<=|\(\?<!|\(\?=|\(\?!/.test(cmd.pattern)) {
+  if (/\(\?<=|\(\?<!|\(\?=|\(\?!/.test(pattern)) {
     ir.unsupported.push(messages.rex_lookaround());
     return;
   }
@@ -88,13 +100,16 @@ export function handleRex(cmd, ir) {
   const field = cmd.field === '_raw' ? 'message' : cmd.field;
   // Convert (?<name>) to (?P<name>) — NRQL capture() uses Python regex syntax
   // Only convert named groups ((?<identifier>)), not lookbehind (?<=) or lookahead (?=)
-  const normalizedPattern = cmd.pattern.replace(
-    /\(\?<([a-zA-Z_]\w*)>/g,
-    '(?P<$1>',
-  );
-  // Avoid redundant .* when pattern already anchors with .* or .+
-  const prefix = /^\.[*+]/.test(normalizedPattern) ? '' : '.*';
-  const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '.*';
+  const normalizedPattern = pattern.replace(/\(\?<([a-zA-Z_]\w*)>/g, '(?P<$1>');
+  // capture() matches the WHOLE value, so the pattern is wrapped in context.
+  // The prefix must be LAZY: a greedy `.*` would consume as much as it can and
+  // bind the LAST match (`.*(?P<a>\w+).*` on "hello world" → "d"), where Splunk
+  // rex takes the first. `(?s:…)` lets the context span newlines (a multi-line
+  // message otherwise fails to match at all) while the pattern's own `.` keeps
+  // its Splunk meaning. Avoid the wrap when the pattern already starts/ends
+  // with .* or .+.
+  const prefix = /^\.[*+]/.test(normalizedPattern) ? '' : '(?s:.*?)';
+  const suffix = /\.[*+]$/.test(normalizedPattern) ? '' : '(?s:.*)';
   const fullPattern = `${prefix}${normalizedPattern}${suffix}`;
 
   // RE2-compatibility gate: capture() is backed by RE2/J, which rejects
@@ -116,9 +131,68 @@ export function handleRex(cmd, ir) {
 
   // Single capture() call with tuple destructuring for multiple groups:
   // WITH capture(field, r'...(?P<a>...)...(?P<b>...)...') AS (a, b)
-  const captureExpr = Func('capture', [Identifier(field), Regex(fullPattern)]);
+  const source =
+    cmd.field === '_raw' ? rawEventIdentifier() : Identifier(field);
+  const captureExpr = Func('capture', [source, Regex(fullPattern)]);
+  // Past 5 capture() calls, splToIR rewrites simple patterns as aparse().
+  Object.defineProperty(captureExpr, '_rexPattern', {
+    value: pattern,
+    enumerable: false,
+  });
   const tupleName = `(${names.join(', ')})`;
   ir.bindings.push(Binding(tupleName, captureExpr));
+}
+
+// `rex mode=sed "s/A/B/[g]"` on a field → a capture() split + concat() rebuild
+// bound back to the field (regexReplace.js). Refused (loud, naming the script):
+// sed on _raw (later raw-event searches would still read the unmodified
+// message), after an aggregation, or any substitution that isn't exact.
+function handleRexSed(cmd, ir) {
+  const script = cmd.pattern || '';
+  const isRaw = !cmd.field || cmd.field === '_raw';
+  const field = isRaw ? 'message' : cmd.field;
+  if (isRaw || ir._hasAggregation) {
+    ir.unsupported.push(messages.rex_sed_unsupported(field, script));
+    return;
+  }
+  const sed = parseSedScript(script);
+  if (!sed) {
+    ir.unsupported.push(messages.rex_sed_unsupported(field, script));
+    return;
+  }
+  const result = buildRegexReplace({
+    source: Identifier(field),
+    pattern: sed.pattern,
+    replacement: sed.replacement,
+    global: sed.global,
+    isSed: true,
+    base: nextReplaceBase(ir, 'sed'),
+  });
+  if ('error' in result) {
+    ir.unsupported.push(
+      messages.rex_sed_untranslatable(field, script, result.error),
+    );
+    return;
+  }
+  ir.bindings.push(...result.bindings, Binding(field, result.expr));
+}
+
+// The body of a lookaround with no nested group (escapes allowed).
+const LOOKAROUND_BODY = String.raw`((?:\\.|[^()\\])*)`;
+const LEADING_LOOKBEHIND = new RegExp(
+  String.raw`^\(\?<=` + LOOKAROUND_BODY + String.raw`\)`,
+);
+const TRAILING_LOOKAHEAD = new RegExp(
+  String.raw`\(\?=` + LOOKAROUND_BODY + String.raw`\)$`,
+);
+
+// Rewrite a leading positive lookbehind / trailing positive lookahead as a
+// non-capturing group that consumes the same text. Any other lookaround is left
+// in place (the caller refuses it).
+function consumeEdgeLookaround(pattern) {
+  return pattern
+    .replace(LEADING_LOOKBEHIND, '(?:$1)')
+    .replace(TRAILING_LOOKAHEAD, '(?:$1)');
 }
 
 export function handleSpath(cmd, ir) {
@@ -132,23 +206,21 @@ export function handleSpath(cmd, ir) {
       ir.unsupported.push(messages.spath_no_path());
       return;
     }
-    const autoInput = cmd.input || 'message';
-    const autoSource = autoInput === '_raw' ? 'message' : autoInput;
+    const autoInput = cmd.input || '_raw';
     for (const f of fields) {
       // Splunk array notation → jparse path: a{}.b → a[*].b, a{2}.b → a[2].b
       const jpath = f.replace(/\{(\d*)\}/g, (_, n) => (n ? `[${n}]` : '[*]'));
       ir.bindings.push(
         Binding(
           f,
-          Func('jparse', [Identifier(autoSource), Literal(jpath, 'string')]),
+          Func('jparse', [spathSource(autoInput), Literal(jpath, 'string')]),
         ),
       );
     }
     ir.warnings.push(messages.spath_auto_extract(fields.join(', ')));
     return;
   }
-  const rawInput = cmd.input || 'message';
-  const input = rawInput === '_raw' ? 'message' : rawInput;
+  const input = cmd.input || '_raw';
   // Default output name is last segment of path (SPL convention)
   const output =
     cmd.output ||
@@ -160,10 +232,17 @@ export function handleSpath(cmd, ir) {
   ir.bindings.push(
     Binding(
       output,
-      Func('jparse', [Identifier(input), Literal(jsonPath, 'string')]),
+      Func('jparse', [spathSource(input), Literal(jsonPath, 'string')]),
     ),
   );
   ir.warnings.push(messages.spath_json_only());
+}
+
+// spath reads _raw by default. An explicit `input=message` is the SPL field
+// named message (which an earlier rex/spath may have re-bound); `_raw` is the
+// raw event text, stored in New Relic as `message`.
+function spathSource(input) {
+  return input === '_raw' ? rawEventIdentifier() : Identifier(input);
 }
 
 export function handleRegex(cmd, ir) {
@@ -175,12 +254,9 @@ export function handleRegex(cmd, ir) {
     return;
   }
   const field = cmd.field || '_raw';
-  const fieldId = field === '_raw' ? Identifier('message') : Identifier(field);
-  if (cmd.negate) {
-    ir.where.push(Not(Rlike(fieldId, cmd.pattern)));
-  } else {
-    ir.where.push(Rlike(fieldId, cmd.pattern));
-  }
+  const fieldId = field === '_raw' ? rawEventIdentifier() : Identifier(field);
+  const match = buildRegexMatch(fieldId, cmd.pattern);
+  ir.where.push(cmd.negate ? Not(match) : match);
 }
 
 // True when a search expression is built only from comparisons on the current

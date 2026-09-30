@@ -370,17 +370,19 @@ function foldEvalLayer(outer, inner, warnings, droppedAcc) {
     Alias(inlineExposed(s.expr, exposed), s.name),
   );
   // Additive: keep the inner's eval-derived columns; drop its bare raw aggregates.
+  // A dedup's carried `latest(f) AS f` is a row value, not an aggregate: kept.
+  const isDroppable = (item) => isBareAggregateEntry(item) && !item.carried;
   const keptInner = inner.select.filter(
-    (item) => item.type === 'Alias' && !isBareAggregateEntry(item),
+    (item) => item.type === 'Alias' && !isDroppable(item),
   );
   const dropped = inner.select
-    .filter(isBareAggregateEntry)
+    .filter(isDroppable)
     .map(exposedNameOf)
     .filter(Boolean);
   // Helper columns the translator added itself (e.g. mvcount → uniqueCount) were
   // never in Splunk's output, so they are not reported as dropped.
   const reported = inner.select
-    .filter((item) => isBareAggregateEntry(item) && !item._synthetic)
+    .filter((item) => isDroppable(item) && !item._synthetic)
     .map(exposedNameOf)
     .filter(Boolean);
   if (dropped.length > 0) {
@@ -406,6 +408,53 @@ function foldEvalLayer(outer, inner, warnings, droppedAcc) {
     // default 10. An explicit outer limit (rare) wins.
     limit: outer.limit ?? inner.limit,
     timeseries: outer.timeseries ?? inner.timeseries,
+  };
+}
+
+// Merge a row-wise layer (eval columns / where / WITH) into the aggregation that
+// reads it (`… | eval r=upper(region) | stats sum(amount) by r`): the aggregation
+// then reads the row-wise layer's source directly, with each eval column
+// inlined — `SELECT sum(amount) FACET upper(region) AS 'r'` over the same inner, and
+// the layer's WHERE moved onto it (sandbox-verified over a dedup subquery). A
+// row-wise inner under an aggregation is otherwise illegal nested NRQL. Returns
+// null when the layer carries something that can't move (ORDER BY/LIMIT, a
+// column that is neither an eval nor a plain projection).
+function mergeRowwiseIntoAggregation(outer, row) {
+  // (LIMIT MAX, inherited from the aggregation below, drops no rows.)
+  const hasLimit = row.limit != null && row.limit !== 'MAX';
+  if (row.orderBy || hasLimit || row.timeseries) return null;
+  const defs = new Map();
+  const inline = (expr) =>
+    rewriteExpr(expr, (node) =>
+      node.type === 'Identifier' && defs.has(node.name)
+        ? defs.get(node.name)
+        : null,
+    );
+  for (const item of row.select) {
+    if (item.type === 'Alias') defs.set(item.name, inline(item.expr));
+    else if (item.type !== 'Identifier' && item.type !== 'Wildcard') {
+      return null;
+    }
+  }
+  const bindings = row.bindings ?? [];
+  for (const b of bindings) {
+    // A WITH binding at the row layer reads the same source rows after the merge.
+    if (defs.has(b.name)) return null;
+  }
+  return {
+    ...outer,
+    dataSource: row.dataSource,
+    bindings: [
+      ...bindings.map((b) => ({ ...b, expr: inline(b.expr) })),
+      ...(outer.bindings ?? []).map((b) => ({ ...b, expr: inline(b.expr) })),
+    ],
+    select: outer.select.map(inline),
+    where: [...row.where.map(inline), ...outer.where.map(inline)],
+    facet: outer.facet.map((f) =>
+      f.type === 'Identifier' && defs.has(f.name)
+        ? Alias(defs.get(f.name), f.name)
+        : inline(f),
+    ),
   };
 }
 
@@ -443,7 +492,16 @@ export function foldPostAggregation(ir, warnings, dropped, rootUnsupported) {
   }
   const inner = ds.query;
   // Recurse first so nested chains collapse innermost-outward.
-  const collapsedInner = foldPostAggregation(inner, w, d, u);
+  let collapsedInner = foldPostAggregation(inner, w, d, u);
+  // A level that carries a JOIN (`dedup k | join k […] | …`, handleJoin) is a
+  // boundary: merging it with a neighbour would drop or misplace the JOIN, so it
+  // stays its own level. The post-pass guards still check what it reads.
+  if (ir.join || collapsedInner.join) {
+    return {
+      ...ir,
+      dataSource: { type: 'SubquerySource', query: collapsedInner },
+    };
+  }
   // Merge a row-wise where-only layer sitting on another row-wise where-only layer
   // into one: concatenate the WHERE arrays (joined by AND at emit) and keep the
   // inner's dataSource. The merged single where-layer then sits over whatever the
@@ -550,6 +608,19 @@ export function foldPostAggregation(ir, warnings, dropped, rootUnsupported) {
     const merged = foldEvalLayer(ir, collapsedInner, w, d);
     if (merged) return foldPostAggregation(merged, w, d, u);
   }
+  // An aggregation over row-wise layer(s) over an aggregation: merge each row-wise
+  // layer up into the aggregation (mergeRowwiseIntoAggregation), leaving a legal
+  // agg-over-agg for the regroup guard below.
+  while (
+    classifyLayer(ir) === 'aggregating' &&
+    classifyLayer(collapsedInner) === 'rowwise' &&
+    collapsedInner.dataSource?.type === 'SubquerySource'
+  ) {
+    const merged = mergeRowwiseIntoAggregation(ir, collapsedInner);
+    if (!merged) break;
+    ir = merged;
+    collapsedInner = collapsedInner.dataSource.query;
+  }
   // Trailing re-aggregation regroup guard. An aggregating outer over an aggregating
   // inner (`stats … | stats … by X`, including the eval-led `stats | eval | stats`
   // once the eval has folded into the inner) is legal NRQL agg-over-agg ONLY when the
@@ -606,12 +677,20 @@ export function foldPostAggregation(ir, warnings, dropped, rootUnsupported) {
     const innerHasTimeseries = Boolean(collapsedInner.timeseries);
     const isTimeBucketField = (name) =>
       name === '_time' || name === 'timestamp' || timeAliases.has(name);
-    const missing = ir.facet.find(
-      (f) =>
-        f.type === 'Identifier' &&
-        !names.has(f.name) &&
-        !(innerHasTimeseries && isTimeBucketField(f.name)),
-    );
+    // Every field a FACET key reads (a merged eval key reads several:
+    // `FACET upper(region) AS 'r'`).
+    const isUnexposed = (name) =>
+      !names.has(name) && !(innerHasTimeseries && isTimeBucketField(name));
+    let missing = null;
+    for (const f of ir.facet) {
+      const refs = new Set();
+      collectIdentifiers(f.type === 'Alias' ? f.expr : f, refs);
+      const name = [...refs].find(isUnexposed);
+      if (name) {
+        missing = { name };
+        break;
+      }
+    }
     if (missing) {
       // Push onto the ROOT unsupported (threaded) so the diagnosis surfaces even when
       // this aggregating layer is itself nested under a later step (`stats|stats|where`
@@ -673,6 +752,12 @@ function unexposedReference(query) {
   const ds = query.dataSource;
   if (!ds || ds.type !== 'SubquerySource') return null;
   const exposed = new Set(exposedInnerColumns(ds.query).keys());
+  // A JOIN on this level adds its subquery's columns.
+  if (query.join) {
+    for (const name of exposedInnerColumns(query.join.subquery).keys()) {
+      exposed.add(name);
+    }
+  }
   // This layer's own WITH bindings introduce names usable in its SELECT/WHERE (e.g.
   // a getField extraction `WITH getField(md,'50') AS md50`). Treat them as available,
   // but FIRST verify each binding's OWN expression only references exposed columns —

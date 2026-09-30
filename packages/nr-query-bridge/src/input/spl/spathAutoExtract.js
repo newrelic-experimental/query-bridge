@@ -27,7 +27,33 @@
  * @returns {string[] | null}
  */
 export function collectAutoExtractFields(downstream) {
-  if (!downstream || downstream.length === 0) return null;
+  const refs = collectDownstreamFieldRefs(downstream);
+  if (!refs) return null;
+  const fields = refs.fields.filter((f) => !DEFAULT_FIELDS.has(f));
+  return fields.length > 0 ? fields : null;
+}
+
+/**
+ * The fields the commands after a stage reference, scanning up to and including
+ * the first aggregation (past it, references are aggregated columns). Names an
+ * earlier `eval`/`rename` defined are excluded; Splunk default fields are kept.
+ * `aggregated` says whether the scan reached an aggregation.
+ *
+ * With `stopAtJoin`, the scan also stops at a `join` (after its key): which
+ * later fields the join supplies is known only once its subsearch is
+ * translated, so `joined` tells the caller (handleDedup) to leave them to
+ * handleJoin.
+ *
+ * null when the references are not safely enumerable: any command type not
+ * listed, a wildcard/`*` reference, or an expression node the walker doesn't
+ * understand.
+ *
+ * @param {Array<object>} downstream  commands after the stage
+ * @param {{ stopAtJoin?: boolean }} [options]
+ * @returns {{ fields: string[], aggregated: boolean, joined?: boolean } | null}
+ */
+export function collectDownstreamFieldRefs(downstream, options = {}) {
+  if (!downstream) return null;
   const fields = [];
   const defined = new Set();
   let ok = true;
@@ -37,9 +63,10 @@ export function collectAutoExtractFields(downstream) {
       ok = false; // a wildcard / stats-column form is not enumerable
       return;
     }
-    if (DEFAULT_FIELDS.has(name) || defined.has(name)) return;
+    if (defined.has(name)) return;
     if (!fields.includes(name)) fields.push(name);
   };
+  const done = (aggregated) => (ok ? { fields, aggregated } : null);
   const addExpr = (node) => {
     if (!collectExprFields(node, add)) ok = false;
   };
@@ -56,7 +83,7 @@ export function collectAutoExtractFields(downstream) {
         }
         for (const f of cmd.groupBy || []) add(f);
         // Past an aggregation, references are aggregated columns — stop.
-        return ok && fields.length > 0 ? fields : null;
+        return done(true);
       }
       case 'WhereCommand':
         if (!collectWhereFields(cmd.expression || cmd.expr, add, addExpr)) {
@@ -84,11 +111,11 @@ export function collectAutoExtractFields(downstream) {
         for (const f of cmd.fields || []) add(f);
         for (const f of cmd.groupBy || []) add(f);
         // top is an aggregation — stop.
-        return ok && fields.length > 0 ? fields : null;
+        return done(true);
       case 'RareCommand':
         add(cmd.field);
         for (const f of cmd.groupBy || []) add(f);
-        return ok && fields.length > 0 ? fields : null;
+        return done(true);
       case 'SortCommand':
         for (const f of cmd.fields || []) add(f.field);
         break;
@@ -102,13 +129,17 @@ export function collectAutoExtractFields(downstream) {
       case 'TailCommand':
       case 'ReverseCommand':
         break;
+      case 'JoinCommand':
+        if (!options.stopAtJoin || !cmd.field) return null;
+        add(cmd.field);
+        return ok ? { fields, aggregated: false, joined: true } : null;
       default:
         // Any command we do not confidently enumerate → not safely enumerable.
         return null;
     }
     if (!ok) return null;
   }
-  return ok && fields.length > 0 ? fields : null;
+  return done(false);
 }
 
 // Splunk default/metadata fields — never JSON properties of the spath input.
@@ -144,6 +175,9 @@ function collectExprFields(node, add) {
   if (typeof node !== 'object') return false;
   switch (node.type) {
     case 'StringLiteral':
+      return true;
+    case 'QuotedField':
+      add(node.name);
       return true;
     case 'EvalFunc':
     case 'FunctionCall':

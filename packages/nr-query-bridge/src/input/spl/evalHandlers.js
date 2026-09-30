@@ -18,15 +18,16 @@ import {
   Func,
   IsNull,
   Like,
-  Rlike,
   Regex,
   Binding,
   Alias,
   DualCheck,
 } from '../../ir/nodes.js';
 import {
+  buildRegexMatch,
   looksLikeNumber,
   exprReferencesField,
+  rawEventIdentifier,
   wrapAsSubquery,
 } from './splExprUtils.js';
 // Circular import — safe because translateSearchExpr is only called at runtime, not at module load time
@@ -34,6 +35,7 @@ import { translateSearchExpr } from './splToIR.js';
 import * as parser from './splParser.js';
 import { messages } from '../../messages.js';
 import { splFormatToJava } from './splFormatCodes.js';
+import { buildRegexReplace, nextReplaceBase } from './regexReplace.js';
 
 // ── Command handlers ────────────────────────────────────────
 
@@ -49,7 +51,7 @@ export function handleWhere(cmd, ir) {
 
   // The PEG grammar uses `expression` not `expr`
   const whereNode = cmd.expression || cmd.expr;
-  const expr = translateWhereExpr(whereNode, ir);
+  const expr = translateWhereExpr(whereNode, ir, { isCaseSensitive: true });
   if (expr) {
     ir.where.push(expr);
   } else if (unwrap) {
@@ -89,7 +91,10 @@ export function handleEval(cmd, ir) {
     // mvcount(<values/uniques column>) is the number of distinct values — an
     // aggregate (uniqueCount) computed inside the stats step, not a row-wise
     // length() over the list (which is null across the subquery boundary).
-    const evalCmd = rewriteMvcountOfUniques(cmd, ir.dataSource.query);
+    const evalCmd = rewriteSplColumnNames(
+      rewriteMvcountOfUniques(cmd, ir.dataSource.query),
+      ir.dataSource.query,
+    );
     // Non-scalar: an eval referencing a median/percentile/uniques column (a
     // keyed object/list across the subquery boundary) cannot be used in
     // row-wise arithmetic — numeric() of it is null.
@@ -151,9 +156,38 @@ function rewriteMvcountOfUniques(cmd, inner) {
   };
 }
 
+// Splunk names an unaliased stats column after the call as written
+// (`avg(elapsedSec)`), and an eval reads it as `'avg(elapsedSec)'`. The inner
+// subquery exposes that aggregate under its NRQL function name (`average`), so
+// rewrite such references to the exposed name. Returns a new eval command.
+function rewriteSplColumnNames(cmd, inner) {
+  if (!cmd.assignments) return cmd;
+  const exposedBySplName = new Map();
+  for (const e of inner.select) {
+    if (e.type === 'Function' && e._splName && e._splName !== e.name) {
+      exposedBySplName.set(e._splName, e.name);
+    }
+  }
+  if (exposedBySplName.size === 0) return cmd;
+  const visit = (node) => {
+    if (typeof node === 'string') return exposedBySplName.get(node) ?? node;
+    if (!node || typeof node !== 'object') return node;
+    if (node.type === 'QuotedField' && exposedBySplName.has(node.name)) {
+      return exposedBySplName.get(node.name);
+    }
+    const copy = Array.isArray(node) ? [] : {};
+    for (const [k, v] of Object.entries(node)) copy[k] = visit(v);
+    return copy;
+  };
+  return {
+    ...cmd,
+    assignments: cmd.assignments.map((a) => ({ ...a, expr: visit(a.expr) })),
+  };
+}
+
 // ── Expression translators ──────────────────────────────────
 
-export function translateWhereExpr(expr, ir) {
+export function translateWhereExpr(expr, ir, options = {}) {
   if (!expr) return null;
   // The where pipe uses the same AST format as search expressions
   // (BooleanOp, Comparison, etc.), not eval expressions (EvalFunc, etc.)
@@ -167,7 +201,7 @@ export function translateWhereExpr(expr, ir) {
     until,
     consumedTime,
     folded,
-  } = translateSearchExpr(expr, ir);
+  } = translateSearchExpr(expr, ir, options);
   ir.warnings.push(...warnings);
   ir.unsupported.push(...unsupported);
   // A `where _time ...` constraint becomes a SINCE/UNTIL clause, not a WHERE
@@ -225,11 +259,10 @@ function translateEvalExpr(
             continue;
           }
           ir.select.push(Alias(expr, assignment.field));
-        } else if (exprReferencesField(expr, assignment.field)) {
-          // NRQL WITH clause can't alias to a field that the expression references
-          // (circular dependency). In that case, inline into SELECT instead.
-          ir.select.push(expr);
         } else {
+          // A self-reference (`eval e=lower(e)`) is circular as `WITH … AS e`;
+          // the pipeline's binding scope (bindingScope.js) renames it to a fresh
+          // binding and points every LATER reference at it. Never drop it.
           ir.bindings.push(Binding(assignment.field, expr));
         }
       }
@@ -259,6 +292,13 @@ export function walkEvalExpr(node, ir) {
   if (typeof node === 'string') {
     if (looksLikeNumber(node)) return Literal(Number(node), 'number');
     if (node === '_time') return Identifier('timestamp');
+    if (node === '_raw') {
+      // _raw is not a NRQL attribute (bare it is a syntax error; backticked it
+      // matches nothing) — the raw event text lives in `message`.
+      const warning = messages.raw_mapped_to_message();
+      if (!ir.warnings.includes(warning)) ir.warnings.push(warning);
+      return rawEventIdentifier();
+    }
     return Identifier(node);
   }
 
@@ -268,6 +308,14 @@ export function walkEvalExpr(node, ir) {
 
     case 'StringLiteral':
       return Literal(node.value, 'string');
+
+    case 'QuotedField':
+      // SPL `'name'` in eval/where names a field (never a string). Resolve it
+      // exactly like a bare field name, but never as a number.
+      if (node.name === '_time' || node.name === '_raw') {
+        return walkEvalExpr(node.name, ir);
+      }
+      return Identifier(node.name);
 
     case 'EvalComparison': {
       const left = walkEvalExpr(node.left, ir);
@@ -344,6 +392,54 @@ export function walkEvalExpr(node, ir) {
 }
 
 // ── Eval function dispatcher ────────────────────────────────
+
+// An integer literal from the eval ladder (`1`, or unary minus `-1` = 0 - 1).
+function getIntegerLiteral(node) {
+  if (typeof node === 'string' && /^\d+$/.test(node)) return Number(node);
+  if (
+    node?.type === 'EvalArith' &&
+    node.op === '-' &&
+    node.left === '0' &&
+    typeof node.right === 'string' &&
+    /^\d+$/.test(node.right)
+  ) {
+    return -Number(node.right);
+  }
+  return null;
+}
+
+// `mvindex(split(s, "D"), n)` — item n of s split on a one-character D — as a
+// capture(), since NRQL split() is unavailable on production accounts (an
+// "Unknown function", sandbox-verified). Exact: each item is a run of non-D
+// characters, and an index past the end gives null, as in Splunk:
+//   n >= 0: ^(?:[^D]*D){n}(?P<item>[^D]*)(?s:.*)$
+//   n <  0: ^(?:(?s:.*)D)?(?P<item>[^D]*)(?:D[^D]*){|n|-1}$
+// null when the call isn't that shape (the caller keeps getField(split())).
+function buildSplitItem(args, ir) {
+  const [list, indexArg] = args;
+  if (list?.type !== 'EvalFunc' || list.name.toLowerCase() !== 'split') {
+    return null;
+  }
+  const [source, delim] = list.args || [];
+  const index = getIntegerLiteral(indexArg);
+  if (
+    args.length !== 2 ||
+    list.args.length !== 2 ||
+    delim?.type !== 'StringLiteral' ||
+    delim.value.length !== 1 ||
+    index === null
+  ) {
+    return null;
+  }
+  const value = walkEvalExpr(source, ir);
+  if (!value) return null;
+  const d = delim.value.replace(/[\\^$.|?*+()[\]{}-]/g, '\\$&');
+  const pattern =
+    index >= 0
+      ? `^(?:[^${d}]*${d}){${index}}(?P<item>[^${d}]*)(?s:.*)$`
+      : `^(?:(?s:.*)${d})?(?P<item>[^${d}]*)(?:${d}[^${d}]*){${-index - 1}}$`;
+  return Func('capture', [value, Regex(pattern)]);
+}
 
 function walkEvalFunc(node, ir) {
   const name = node.name.toLowerCase();
@@ -449,11 +545,15 @@ function walkEvalFunc(node, ir) {
     case 'len':
     case 'length':
     case 'mvcount': {
-      ir.warnings.push(messages.eval_length_warning());
-      return Func(
-        'length',
-        args.map((a) => walkEvalExpr(a, ir)).filter(Boolean),
-      );
+      const translated = args.map((a) => walkEvalExpr(a, ir)).filter(Boolean);
+      // length() of split()'s array counts its items (sandbox-verified on a
+      // jparse array); of a plain string it counts characters.
+      const isArray =
+        translated.length === 1 &&
+        translated[0].type === 'Function' &&
+        translated[0].name === 'split';
+      if (!isArray) ir.warnings.push(messages.eval_length_warning());
+      return Func('length', translated);
     }
 
     case 'substr': {
@@ -512,7 +612,31 @@ function walkEvalFunc(node, ir) {
           regexCoreRe.test(pattern) ||
           (!isUrlOrPath && wordQuantifierRe.test(pattern))
         ) {
+          // Splunk replace() is regex and global. An anchored pattern matches
+          // once, so a capture() split + concat() rebuild is exact
+          // (regexReplace.js); anything else stays loud.
+          const replacementArg = args[2];
+          const result =
+            !ir._hasAggregation &&
+            translated.length === 3 &&
+            replacementArg &&
+            typeof replacementArg === 'object' &&
+            replacementArg.type === 'StringLiteral'
+              ? buildRegexReplace({
+                  source: translated[0],
+                  pattern,
+                  replacement: replacementArg.value,
+                  global: true,
+                  isSed: false,
+                  base: nextReplaceBase(ir, 'repl'),
+                })
+              : null;
+          if (result && !('error' in result)) {
+            ir.bindings.push(...result.bindings);
+            return result.expr;
+          }
           ir.unsupported.push(messages.eval_replace_regex(pattern));
+          return null;
         }
       }
       return Func('replace', translated);
@@ -534,6 +658,8 @@ function walkEvalFunc(node, ir) {
     }
 
     case 'like': {
+      // like(_raw, …) stays on message (via walkEvalExpr): dimensions() also
+      // matches attribute NAMES, so a short pattern hits nearly every event.
       const field = walkEvalExpr(args[0], ir);
       // Pattern arg may be a raw string (from where-pipe FunctionCall)
       const rawPat = args[1];
@@ -588,7 +714,7 @@ function walkEvalFunc(node, ir) {
             ? rawPattern.value
             : (walkEvalExpr(rawPattern, ir)?.value ?? String(rawPattern));
       if (field && patternStr) {
-        return Rlike(field, patternStr);
+        return buildRegexMatch(field, patternStr);
       }
       return null;
     }
@@ -614,22 +740,19 @@ function walkEvalFunc(node, ir) {
       return walkEvalExpr(args[0], ir);
 
     case 'mvappend':
-      return Func(
-        'mvappend',
-        args.map((a) => walkEvalExpr(a, ir)).filter(Boolean),
-      );
-
     case 'mvsort':
-      return Func(
-        'mvsort',
-        args.map((a) => walkEvalExpr(a, ir)).filter(Boolean),
-      );
+      // Not NRQL functions — emitting them verbatim is "Unknown function" on
+      // New Relic (sandbox-verified for mvappend).
+      ir.unsupported.push(messages.eval_func_unsupported(name));
+      return null;
 
     case 'mvindex': {
       if (args.length < 2) {
         ir.warnings.push(messages.eval_mvindex_args());
         return walkEvalExpr(args[0], ir);
       }
+      const item = buildSplitItem(args, ir);
+      if (item) return item;
       return Func(
         'getField',
         args.map((a) => walkEvalExpr(a, ir)).filter(Boolean),
@@ -673,6 +796,26 @@ function walkEvalFunc(node, ir) {
       return Func('log2', args.map((a) => walkEvalExpr(a, ir)).filter(Boolean));
 
     case 'tostring':
+      // SPL tostring(x, "hex"|"commas"|"duration") formats the value; NRQL
+      // string()'s second argument is an integer precision, so passing the
+      // format through is an argument error on New Relic.
+      if (args.length > 1) {
+        const format = args[1];
+        const text =
+          format && typeof format === 'object' && 'value' in format
+            ? format.value
+            : String(format);
+        const value = args.length === 2 ? walkEvalExpr(args[0], ir) : null;
+        if (text === 'commas' && value) {
+          // "commas" rounds to 2 decimals and groups thousands. string(x, 2)
+          // rounds the same way (15921 → "15921", 15921.034 → "15921.03",
+          // sandbox-verified); only the grouping is lost.
+          ir.warnings.push(messages.tostring_commas_grouping_lost());
+          return Func('string', [value, Literal(2, 'number')]);
+        }
+        ir.unsupported.push(messages.tostring_format_unsupported(text));
+        return null;
+      }
       // SPL tostring() → NRQL string()
       return Func(
         'string',

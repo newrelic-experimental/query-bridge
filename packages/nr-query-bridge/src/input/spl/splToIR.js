@@ -16,6 +16,7 @@ import {
   BinOp,
   Not,
   Func,
+  IsNull,
   Like,
   In,
   RawNrql,
@@ -28,11 +29,18 @@ import {
   escapeWildcard,
   isNumeric,
   normalizeSubsearch,
+  rawEventIdentifier,
   stripTimeBucketFacets,
 } from './splExprUtils.js';
 import * as parser from './splParser.js';
 import { messages } from '../../messages.js';
-import { collectAutoExtractFields } from './spathAutoExtract.js';
+import {
+  collectAutoExtractFields,
+  collectDownstreamFieldRefs,
+} from './spathAutoExtract.js';
+import { isDedupCountDistinct } from './dedupCountDistinct.js';
+import { createBindingScope } from './bindingScope.js';
+import { formatRexAsAparse } from './rexAparse.js';
 import { applyWildcardRenames } from './wildcardRename.js';
 import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
 import {
@@ -129,10 +137,74 @@ function isEnvToken(name) {
   return name.startsWith('env:');
 }
 
+// `field=$tok$` in a search: Splunk compares search-term values
+// case-insensitively, NRQL's `=` doesn't. lower() alone is wrong for numbers —
+// lower(100) is NULL and NULL = NULL is true in NRQL, so it matched every event
+// (sandbox) — hence string() first, which also compares a number variable
+// against a number attribute ('100' = '100'). `index` stays plain: the consumer
+// maps an index token to its own source. Ordering ops, and `where` (which
+// Splunk compares case-sensitively), stay plain too.
+function buildTokenComparison(op, field, name, isCaseSensitive) {
+  const token = Identifier(`{{${name}}}`);
+  if (isCaseSensitive || field === 'index' || (op !== '=' && op !== '!=')) {
+    return BinOp(op, Identifier(field), token);
+  }
+  const folded = (node) => Func('lower', [Func('string', [node])]);
+  return BinOp(op, folded(Identifier(field)), folded(token));
+}
+
 // A token NAME containing ':' or '-' cannot tokenize inside an NRQL {{…}} variable
 // (a hard NRDB parse error — verified acct 1). Emitted as {{name}} it would not run.
 function hasUntranslatableTokenChar(name) {
   return name.includes(':') || name.includes('-');
+}
+
+// A dashboard token anywhere inside free search text (`"brandCode\":\"$brand$"`).
+const TOKEN_IN_TEXT = /\$[A-Za-z0-9_.:-]+\$/;
+
+// A search phrase containing a dashboard token. New Relic never substitutes
+// {{tok}} inside a LIKE pattern, and LIKE accepts only a literal (LIKE concat(…)
+// is a syntax error), so the phrase becomes a substring test built from concat():
+//   position(lower(message), lower(concat('brandCode":"', {{brand}}))) >= 0
+// lower() on both sides keeps Splunk's case-insensitive term match (position()
+// is case-sensitive). Sandbox-verified by the consumer (same count as the LIKE,
+// and substituted on a rendered dashboard). The position() call is attached as
+// `_phrasePosition` so a surrounding NOT can emit a null-safe negation.
+function buildPhraseTokenMatch(value, unsupported) {
+  if (value.includes('*')) {
+    // A wildcard can't be expressed in a position() substring test.
+    unsupported.push(messages.affixed_token_unsupported('message', value));
+    return null;
+  }
+  const parts = value.split(/\$([A-Za-z0-9_.:-]+)\$/);
+  const args = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) {
+      if (parts[i]) args.push(Literal(parts[i], 'string'));
+      continue;
+    }
+    const name = parts[i];
+    if (isEnvToken(name)) {
+      unsupported.push(messages.splunk_env_token(name));
+      return null;
+    }
+    if (hasUntranslatableTokenChar(name)) {
+      unsupported.push(messages.token_name_unsupported(name));
+      return null;
+    }
+    args.push(Identifier(`{{${name}}}`));
+  }
+  const needle = args.length === 1 ? args[0] : Func('concat', args);
+  const pos = Func('position', [
+    Func('lower', [rawEventIdentifier()]),
+    Func('lower', [needle]),
+  ]);
+  const match = BinOp('>=', pos, Literal(0, 'number'));
+  Object.defineProperty(match, '_phrasePosition', {
+    value: pos,
+    enumerable: false,
+  });
+  return match;
 }
 
 export function translateAstToIR(ast) {
@@ -169,11 +241,34 @@ export function translateAstToIR(ast) {
   }
 
   // Pipeline: each command transforms the IR
+  const scope = createBindingScope();
+  scope.seed(ir);
   let sawDedup = false;
   let mvexpandCount = 0;
   for (let i = 0; i < ast.commands.length; i++) {
     const cmd = ast.commands[i];
-    if (cmd.type === 'DedupCommand') sawDedup = true;
+    if (cmd.type === 'DedupCommand') {
+      // `dedup K … | stats count …` counts distinct K: translate flat as
+      // uniqueCount(K) (handleStats) instead of a nested FACET K subquery.
+      cmd._countDistinct =
+        !ir._hasAggregation &&
+        isDedupCountDistinct(cmd, ast.commands.slice(i + 1));
+      if (!cmd._countDistinct) sawDedup = true;
+    }
+    // join / eventstats: which fields later stages read decides whether a bare
+    // subsearch can join on its key alone, whether an eventstats list column
+    // (values/list) can be dropped, and which fields a dedup must carry
+    // (handleJoin, handleEventstats, handleDedup).
+    if (
+      cmd.type === 'JoinCommand' ||
+      cmd.type === 'EventstatsCommand' ||
+      cmd.type === 'DedupCommand'
+    ) {
+      cmd._downstreamRefs = collectDownstreamFieldRefs(
+        ast.commands.slice(i + 1),
+        { stopAtJoin: cmd.type === 'DedupCommand' },
+      );
+    }
     if (cmd.type === 'MvexpandCommand') mvexpandCount++;
     // Gap #2, #9: warn when dedup precedes aggregation
     if (
@@ -195,8 +290,14 @@ export function translateAstToIR(ast) {
         ast.commands.slice(i + 1),
       );
     }
+    // Binding names: rename colliding WITH bindings and point later references
+    // at them, in pipeline order (bindingScope.js).
+    const wasAggregated = ir._hasAggregation;
+    scope.beforeCommand(cmd);
     applyCommand(cmd, ir);
+    scope.afterCommand(cmd, ir, wasAggregated);
   }
+  scope.finish(ir);
 
   // Wildcard rename (`rename <prefix>.* as *`): register the prefix rewrite for
   // eligible downstream references, or emit a loud guard / drop-warning. Runs
@@ -215,12 +316,28 @@ export function translateAstToIR(ast) {
     ir.warnings.push(messages.facet_default_limit());
   }
 
-  // Gap #7: NRQL limits capture() to 5 calls per query.
-  const captureCount = ir.bindings.filter(
+  // Gap #7: NRQL limits capture() to 5 calls per query. New Relic rejects the
+  // 6th ("RegexCapture supports a maximum of 5 capture function calls"), so this
+  // is unsupported, not a warning over NRQL that cannot run.
+  // aparse() doesn't count toward it, so simple rex patterns (literal anchors
+  // around the groups) become aparse(), latest rex first, until 5 remain.
+  const captures = ir.bindings.filter(
     (b) => b.expr.type === 'Function' && b.expr.name === 'capture',
-  ).length;
+  );
+  let captureCount = captures.length;
+  const asAparse = [];
+  for (let i = captures.length - 1; i >= 0 && captureCount > 5; i--) {
+    const b = captures[i];
+    const aparse = b.expr._rexPattern && formatRexAsAparse(b.expr._rexPattern);
+    if (!aparse) continue;
+    b.expr = Func('aparse', [b.expr.args[0], Literal(aparse, 'string')]);
+    asAparse.unshift(b.name.replace(/^\(|\)$/g, ''));
+    captureCount--;
+  }
   if (captureCount > 5) {
-    ir.warnings.push(messages.rex_capture_limit(captureCount));
+    ir.unsupported.push(messages.rex_capture_limit(captureCount));
+  } else if (asAparse.length > 0) {
+    ir.warnings.push(messages.rex_as_aparse(asAparse));
   }
 
   // Remove _time from FACET when TIMESERIES is present (TIMESERIES already groups by time)
@@ -235,7 +352,10 @@ export function translateAstToIR(ast) {
 
 // ── Search expression → IR expression tree ───────────────────
 
-export function translateSearchExpr(node, ir) {
+// `options.isCaseSensitive`: the `where` command compares values
+// case-sensitively; a search (and `search`) doesn't.
+export function translateSearchExpr(node, ir, options = {}) {
+  const isCaseSensitive = options.isCaseSensitive === true;
   const warnings = [];
   const unsupported = [];
   let since = null;
@@ -284,6 +404,16 @@ export function translateSearchExpr(node, ir) {
         const inner = walk(node.operand);
         if (!inner) return null;
         if (inner.type === 'Const') return Const(!inner.value);
+        // position() may be null when the text is absent, and NOT null is null
+        // — which would drop exactly the events `NOT "phrase"` keeps.
+        if (inner._phrasePosition) {
+          const pos = inner._phrasePosition;
+          return BinOp(
+            'OR',
+            IsNull(pos),
+            BinOp('<', pos, Literal(0, 'number')),
+          );
+        }
         return Not(inner);
       }
 
@@ -442,7 +572,7 @@ export function translateSearchExpr(node, ir) {
             unsupported.push(messages.token_name_unsupported(value.name));
             return null;
           }
-          return BinOp(op, Identifier(field), Identifier(`{{${value.name}}}`));
+          return buildTokenComparison(op, field, value.name, isCaseSensitive);
         }
 
         // A fully-quoted standalone token, e.g. `index="$env$"` — the grammar
@@ -462,10 +592,11 @@ export function translateSearchExpr(node, ir) {
               unsupported.push(messages.token_name_unsupported(tokenOnly[1]));
               return null;
             }
-            return BinOp(
+            return buildTokenComparison(
               op,
-              Identifier(field),
-              Identifier(`{{${tokenOnly[1]}}}`),
+              field,
+              tokenOnly[1],
+              isCaseSensitive,
             );
           }
         }
@@ -513,6 +644,22 @@ export function translateSearchExpr(node, ir) {
             return BinOp(op, numLit, fieldId);
           }
           return BinOp(op, numLit, Func('numeric', [fieldId]));
+        }
+
+        // SPL `_raw=*text*` searches the whole event. `message` is only one
+        // attribute (and is gone entirely when the Log API flattened a JSON-only
+        // message into attributes), so a wildcard search on _raw matches across
+        // every attribute value with dimensions().
+        if (
+          field === '_raw' &&
+          typeof value === 'string' &&
+          value.includes('*') &&
+          !value.includes(',') && // dimensions() escapes `,` as `\,`
+          (op === '=' || op === '!=')
+        ) {
+          warnings.push(messages.raw_search_dimensions());
+          const like = Like(Func('dimensions', []), escapeWildcard(value));
+          return op === '!=' ? Not(like) : like;
         }
 
         // SPL metadata field _raw → NRQL message
@@ -633,8 +780,11 @@ export function translateSearchExpr(node, ir) {
           return null;
         }
         if (!value || value === '*') return null;
+        if (TOKEN_IN_TEXT.test(value)) {
+          return buildPhraseTokenMatch(value, unsupported);
+        }
         const escaped = escapeWildcard(value);
-        return Like(Identifier('message'), `%${escaped}%`);
+        return Like(rawEventIdentifier(), `%${escaped}%`);
       }
 
       case 'TimeConstraint': {

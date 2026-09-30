@@ -122,7 +122,21 @@ describe('translateWidgets — multiselect comparison rewrite', () => {
       }),
     ];
     const out = translateWidgets(widgets, { multiSelectTokens: new Set() });
-    expect(out[0].nrql).toContain('host = {{h}}');
+    expect(out[0].nrql).toContain('lower(string(host)) = lower(string({{h}}))');
+  });
+
+  it('rewrites a negated multiselect token comparison to NOT IN', () => {
+    const widgets = [
+      createWidget({
+        title: 'N',
+        vizType: 'table',
+        rawSpl: 'index=app host!=$hosts$ | stats count',
+      }),
+    ];
+    const out = translateWidgets(widgets, {
+      multiSelectTokens: new Set(['hosts']),
+    });
+    expect(out[0].nrql).toContain('host NOT IN ({{hosts}})');
   });
 });
 
