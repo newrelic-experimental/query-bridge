@@ -31,7 +31,10 @@ import {
   Regex,
 } from '../../ir/nodes.js';
 import { getRe2Compatibility } from './re2Compat.js';
-import { endsWithUnescapedDollar } from './splExprUtils.js';
+import {
+  endsWithUnescapedDollar,
+  splitTopLevelAlternatives,
+} from './splExprUtils.js';
 
 const REGEX_META = /[.[\](){}*+?|^$\\]/;
 
@@ -189,8 +192,11 @@ export function buildRegexReplace({
     };
   }
   let body = pattern;
-  const anchoredStart = body.startsWith('^');
-  const anchoredEnd = endsWithUnescapedDollar(body);
+  // `^a|b$` anchors each alternative, not the pattern: keep the anchors inside
+  // the match group (RE2 `^`/`$` still mean the text's start/end there).
+  const isAlternation = splitTopLevelAlternatives(body) !== null;
+  const anchoredStart = !isAlternation && body.startsWith('^');
+  const anchoredEnd = !isAlternation && endsWithUnescapedDollar(body);
   if (anchoredStart) body = body.slice(1);
   if (anchoredEnd) body = body.slice(0, -1);
   if (global && !anchoredStart && !anchoredEnd) {

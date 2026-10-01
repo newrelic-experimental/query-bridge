@@ -4881,16 +4881,11 @@ const cases = [
   },
 
   // ── EvalArith: eval nested in stats arg (Task 7) ──
-  // FIXME: the inner if(cond, 1, 0) should unwrap to just `cond` for the filter
-  // WHERE — i.e. `filter(count(*), WHERE numeric(status) >= 400)`. Today the
-  // walker emits the whole if() as the predicate (`WHERE if(..., 1, 0)`), which
-  // is dubious NRQL. Unwrapping `if(cond, 1, 0)`/`if(cond, 1, null)` in the
-  // evalFilter consumer (aggregationHandlers.js) is out of scope for the grammar
-  // wiring task; tracked as follow-up. Asserting ACTUAL output so the test guards
-  // against further drift. verified:false — NOT correct, do not promote.
+  // sum(eval(expr)) sums expr per event (was `filter(count(*), WHERE if(…))`,
+  // which New Relic rejects: "Unknown filter if()"). Round 6, needs re-review.
   {
     spl: '* | stats sum(eval(if(status>=400,1,0)))',
-    nrql: 'FROM Log SELECT filter(count(*), WHERE if(numeric(status) >= 400, 1, 0))',
+    nrql: 'FROM Log SELECT sum(if(numeric(status) >= 400, 1, 0))',
     doc: 'stats-agg',
     verified: false,
   },
@@ -6278,6 +6273,362 @@ const cases = [
       'post_agg_field_not_produced',
     ],
     doc: 'correlation-join',
+    verified: false,
+  },
+  // ── Round 6 ──
+  // A rex value is a string: sum() of it is 0, average()/max() null (sandbox).
+  {
+    spl: 'index=web | rex "m=(?<price>\\d+)" | stats sum(price) as total',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\\d+)(?s:.*)') AS (price) SELECT sum(numeric(price)) AS 'total' WHERE index = 'web'",
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // ...also through an eval alias of the capture.
+  {
+    spl: 'index=web | rex "m=(?<price>\\d+)" | eval p=price | timechart avg(p)',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\\d+)(?s:.*)') AS (price), price AS p SELECT average(numeric(p)) WHERE index = 'web' TIMESERIES AUTO",
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // ...and through a case() (nested if()) that passes it on.
+  {
+    spl: 'index=web | rex "m=(?<price>\\d+)" | eval p=case(a=1, price, a=2, 0) | stats avg(p)',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\\d+)(?s:.*)') AS (price), if(a = '1' OR numeric(a) = 1, price, if(a = '2' OR numeric(a) = 2, 0, NULL)) AS p SELECT average(numeric(p)) WHERE index = 'web'",
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // ...and in an if() branch; a non-numeric aggregate or an event attribute stays bare.
+  {
+    spl: 'index=web | rex "m=(?<price>\\d+)" | stats sum(eval(if(ok="y", price, 0))) as s latest(price) sum(bytes)',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\\d+)(?s:.*)') AS (price) SELECT sum(if(ok = 'y', numeric(price), 0)) AS 's', latest(price), sum(bytes) WHERE index = 'web'",
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // The 5-capture limit is per query level: captures wrapped into a subquery
+  // still get the aparse() rewrite.
+  {
+    spl: 'index=web | rex "\\"a\\":\\"(?<a>[^\\"]+)\\"" | rex "\\"b\\":\\"(?<b>[^\\"]+)\\"" | rex "\\"c\\":\\"(?<c>[^\\"]+)\\"" | rex "\\"d\\":\\"(?<d>[^\\"]+)\\"" | rex "\\"e\\":\\"(?<e>[^\\"]+)\\"" | rex "\\"f\\":\\"(?<f>[^\\"]+)\\"" | stats count by a, b | where count > 1',
+    nrql: 'FROM (FROM Log WITH capture(message, r\'(?s:.*?)\\"a\\":\\"(?P<a>[^\\"]+)\\"(?s:.*)\') AS (a), capture(message, r\'(?s:.*?)\\"b\\":\\"(?P<b>[^\\"]+)\\"(?s:.*)\') AS (b), capture(message, r\'(?s:.*?)\\"c\\":\\"(?P<c>[^\\"]+)\\"(?s:.*)\') AS (c), capture(message, r\'(?s:.*?)\\"d\\":\\"(?P<d>[^\\"]+)\\"(?s:.*)\') AS (d), capture(message, r\'(?s:.*?)\\"e\\":\\"(?P<e>[^\\"]+)\\"(?s:.*)\') AS (e), aparse(message, \'%"f":"*"%\') AS (f) SELECT count(*) WHERE index = \'web\' FACET a, b LIMIT MAX) SELECT * WHERE numeric(count) > 1',
+    warningFunc: ['rex_as_aparse'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex "a=(?<a>\\d+)" | rex "b=(?<b>\\d+)" | rex "c=(?<c>\\d+)" | rex "d=(?<d>\\d+)" | rex "e=(?<e>\\d+)" | rex "f=(?<f>\\d+)" | stats count by a, b | where count > 1',
+    nrql: '',
+    unsupportedFunc: ['rex_capture_limit'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // A binding named `message` would read itself ("Circular dependency") and
+  // shadow every raw-text search, so it gets a fresh name.
+  {
+    spl: 'index=web | rex "msg=(?<message>[^,]+)" | stats count by message',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)msg=(?P<message>[^,]+)(?s:.*)') AS (parsed_message) SELECT count(*) WHERE index = 'web' FACET parsed_message AS 'message'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval message="x" | search foo | stats count by message',
+    nrql: "FROM Log WITH 'x' AS parsed_message SELECT count(*) WHERE index = 'web' AND message LIKE '%foo%' FACET parsed_message AS 'message'",
+    warningFunc: ['facet_default_limit'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // eventstats without BY, read later: a WITH-bound scalar subquery carrying
+  // the level's bindings (sandbox: avg 2.25 → the right rows).
+  {
+    spl: 'index=web | rex "m=(?<price>\\d+)" | rex "u=(?<user>\\w+)" | eventstats avg(price) as avgp | where price > avgp | stats count by user',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\\d+)(?s:.*)') AS (price), capture(message, r'(?s:.*?)u=(?P<user>\\w+)(?s:.*)') AS (user), (FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\\d+)(?s:.*)') AS (price), capture(message, r'(?s:.*?)u=(?P<user>\\w+)(?s:.*)') AS (user) SELECT average(numeric(price)) WHERE index = 'web') AS avgp SELECT count(*) WHERE index = 'web' AND numeric(price) > numeric(avgp) FACET user",
+    warningFunc: ['eventstats_scalar_subquery', 'facet_default_limit'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // ...its aggregate reads a renamed binding by its NRQL name.
+  {
+    spl: 'index=web | eval e=lower(e) | eventstats dc(e) as n | where n > 1',
+    nrql: "FROM Log WITH lower(e) AS parsed_e, (FROM Log WITH lower(e) AS parsed_e SELECT uniqueCount(parsed_e) WHERE index = 'web') AS n SELECT *, n WHERE index = 'web' AND numeric(n) > 1",
+    warningFunc: ['eventstats_scalar_subquery'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // An unnamed column (`avg(d)` falls back to `d`) is never bound over the field.
+  {
+    spl: 'index=web | eventstats avg(d) | where d > 1',
+    nrql: "FROM Log SELECT *, (FROM Log SELECT average(d) WHERE index = 'web') AS 'd' WHERE index = 'web' AND numeric(d) > 1",
+    warningFunc: ['eventstats_scalar_subquery'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // One aggregate per scalar subquery (New Relic allows a single result).
+  {
+    spl: 'index=web | stats count sum(x) as T by r | eventstats sum(count) as tc sum(T) as tt',
+    nrql: "FROM Log SELECT count(*), sum(x) AS 'T', (FROM (FROM Log SELECT count(*), sum(x) AS 'T' WHERE index = 'web' FACET r LIMIT MAX) SELECT sum(count)) AS 'tc', (FROM (FROM Log SELECT count(*), sum(x) AS 'T' WHERE index = 'web' FACET r LIMIT MAX) SELECT sum(T)) AS 'tt' WHERE index = 'web' FACET r",
+    warningFunc: ['eventstats_scalar_subquery', 'facet_default_limit'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // The aggregated level's subquery keeps the rex its FACET key reads.
+  {
+    spl: 'index=web | rex "m=(?<price>\\d+)" | stats count by price | eventstats sum(count) as tc',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\\d+)(?s:.*)') AS (price) SELECT count(*), (FROM (FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\\d+)(?s:.*)') AS (price) SELECT count(*) WHERE index = 'web' FACET price LIMIT MAX) SELECT sum(count)) AS 'tc' WHERE index = 'web' FACET price",
+    warningFunc: ['eventstats_scalar_subquery', 'facet_default_limit'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // fn(eval(expr)) aggregates expr per event; NRQL skips NULL like Splunk.
+  {
+    spl: 'index=web | stats dc(eval(if(status="ok", user, null()))) as okUsers',
+    nrql: "FROM Log SELECT uniqueCount(if(status = 'ok', user, NULL)) AS 'okUsers' WHERE index = 'web'",
+    doc: 'stats-agg',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats count(eval(if(status="ok", 1, null()))) as okCount avg(eval(x*2)) as a2',
+    nrql: "FROM Log SELECT count(if(status = 'ok', 1, NULL)) AS 'okCount', average(numeric(x) * 2) AS 'a2' WHERE index = 'web'",
+    doc: 'stats-agg',
+    verified: false,
+  },
+  // Splunk's condition is true-or-null; NRQL's true-or-false would count false.
+  {
+    spl: 'index=web | stats dc(eval(status="ok")) as d',
+    nrql: '',
+    unsupportedFunc: ['stats_eval_condition_unsupported'],
+    doc: 'stats-agg',
+    verified: false,
+  },
+  // count of a condition stays a filter.
+  {
+    spl: 'index=web | stats count(eval(like(u, "a%"))) as c',
+    nrql: "FROM Log SELECT filter(count(*), WHERE u LIKE 'a%') AS 'c' WHERE index = 'web'",
+    doc: 'stats-agg',
+    verified: false,
+  },
+  // ── Branch review ──
+  // A rex alternation sits in one group, or the context attaches to the first
+  // and last alternatives only (sandbox: the second never extracted).
+  {
+    spl: 'index=web | rex "k=(?<a>\\d+)|v=(?<b>\\d+)" | table a b',
+    nrql: "FROM Log WITH capture(message, r'(?s:.*?)(?:k=(?P<a>\\d+)|v=(?P<b>\\d+))(?s:.*)') AS (a, b) SELECT a, b WHERE index = 'web'",
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // `^a|b$` anchors each alternative: the anchors stay inside the match group
+  // (sandbox: only a trailing `1` replaced)...
+  {
+    spl: 'index=web | rex field=u mode=sed "s/^a|b$/x/" | table u',
+    nrql: "FROM Log WITH capture(u, r'^(?P<sed1_pre>(?s:.*?))(?P<sed1_m>^a|b$)(?P<sed1_post>(?s:.*))$') AS (sed1_pre, sed1_m, sed1_post), if(sed1_m IS NULL, u, concat(sed1_pre, 'x', sed1_post)) AS parsed_u SELECT parsed_u AS 'u' WHERE index = 'web'",
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  // ...and with `g` it can match twice, so it is refused.
+  {
+    spl: 'index=web | rex field=u mode=sed "s/^a|b$/x/g" | table u',
+    nrql: '',
+    unsupportedFunc: ['rex_sed_untranslatable'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  // After a JOIN, a column it brings reads the JOIN's value (Splunk overwrites),
+  // not the renamed left binding.
+  {
+    spl: 'index=web | rex "u=(?<s>\\w+)" | eval t=s | join s [search index=b | stats max(t) as t by s] | table s t',
+    nrql: "FROM Log JOIN (FROM Log SELECT max(t) AS 't' WHERE index = 'b' FACET s LIMIT MAX) ON parsed_s = s WITH capture(message, r'(?s:.*?)u=(?P<s>\\w+)(?s:.*)') AS (parsed_s), parsed_s AS parsed_t SELECT parsed_s AS 's', t WHERE index = 'web'",
+    warningFunc: [
+      'join_subsearch_warning',
+      'facet_default_limit',
+      'join_cardinality_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval t=lower(t) | eventstats max(d) as t by h | table t',
+    nrql: "FROM Log JOIN (FROM Log WITH lower(t) AS parsed_t SELECT max(d) AS 't' WHERE index = 'web' FACET h LIMIT MAX) ON h = h WITH lower(t) AS parsed_t SELECT t WHERE index = 'web'",
+    warningFunc: ['join_cardinality_limit'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // rex after an aggregation would read raw events, not the aggregated rows.
+  {
+    spl: 'index=web | stats count by m | rex field=m "(?<y>\\d)" | table m y count',
+    nrql: '',
+    warningFunc: ['list_column_not_produced', 'facet_default_limit'],
+    unsupportedFunc: ['rex_after_aggregation'],
+    doc: 'fields-rex',
+    verified: false,
+  },
+  // searchmatch() failures name their reason once (no generic duplicate).
+  {
+    spl: 'index=web | where searchmatch(x)',
+    nrql: '',
+    unsupportedFunc: ['searchmatch_nonliteral'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | where searchmatch("foo | stats count")',
+    nrql: '',
+    unsupportedFunc: ['searchmatch_unparsed'],
+    doc: 'results-where',
+    verified: false,
+  },
+  // mvcount() of a values() column inside an expression; the helper column
+  // avoids an existing name.
+  {
+    spl: 'index=web | stats values(x) as v, dc(x) as v_count by h | eval n=mvcount(v)*2',
+    nrql: "FROM Log SELECT uniqueCount(x) * 2 AS 'n' WHERE index = 'web' FACET h LIMIT MAX",
+    warningFunc: ['eval_after_agg_drops_source'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eval t=sum(x)',
+    nrql: '',
+    unsupportedFunc: ['eval_func_unsupported'],
+    doc: 'compound-eval-stats',
+    verified: false,
+  },
+  // Scalar functions over aggregates: log() is base 10, ceiling() is ceil().
+  {
+    spl: 'index=web | stats eval(log(sum(b))) as l eval(ceiling(avg(b))) as c',
+    nrql: "FROM Log SELECT log10(sum(b)) AS 'l', ceil(average(b)) AS 'c' WHERE index = 'web'",
+    doc: 'stats-agg',
+    verified: false,
+  },
+  {
+    spl: 'index=web | stats eval(avg(b) . "ms") as s',
+    nrql: '',
+    unsupportedFunc: ['agg_expr_unsupported'],
+    doc: 'stats-agg',
+    verified: false,
+  },
+  // A field-vs-field comparison nested under NOT/OR is still refused.
+  {
+    spl: 'index=web | stats count(eval(NOT a=b OR c=1)) as n',
+    nrql: '',
+    unsupportedFunc: ['filter_field_vs_field'],
+    doc: 'stats-agg',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart span=0h count',
+    nrql: '',
+    unsupportedFunc: ['span_unrecognized'],
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | timechart limit=bottom5 count by h',
+    nrql: '',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['agg_option_unsupported'],
+    doc: 'reports-timechart',
+    verified: false,
+  },
+  {
+    spl: 'index=web | join max=x h [search index=b | stats count by h]',
+    nrql: '',
+    unsupportedFunc: ['agg_option_unsupported'],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // sed: a named group is \1 by position; two seds get distinct binding names;
+  // an escaped replacement character is literal.
+  {
+    spl: 'index=web | rex field=u mode=sed "s/(?<x>a)/[\\1]/" | rex field=v mode=sed "s/b/\\./" | table u v',
+    nrql: "FROM Log WITH capture(u, r'^(?P<sed1_pre>(?s:.*?))(?P<sed1_m>(?P<sed1_g1>a))(?P<sed1_post>(?s:.*))$') AS (sed1_pre, sed1_m, sed1_g1, sed1_post), if(sed1_m IS NULL, u, concat(sed1_pre, '[', sed1_g1, ']', sed1_post)) AS parsed_u, capture(v, r'^(?P<sed2_pre>(?s:.*?))(?P<sed2_m>b)(?P<sed2_post>(?s:.*))$') AS (sed2_pre, sed2_m, sed2_post), if(sed2_m IS NULL, v, concat(sed2_pre, '.', sed2_post)) AS parsed_v SELECT parsed_u AS 'u', parsed_v AS 'v' WHERE index = 'web'",
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex field=u mode=sed "s/(a)/\\3/" | table u',
+    nrql: '',
+    unsupportedFunc: ['rex_sed_untranslatable'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex field=u mode=sed "s/a(?=b)/x/" | table u',
+    nrql: '',
+    unsupportedFunc: ['rex_sed_untranslatable'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  // sed on _raw (later raw searches would read the unmodified message), and a
+  // non-`s` script.
+  {
+    spl: 'index=web | rex mode=sed "s/a/b/"',
+    nrql: '',
+    unsupportedFunc: ['rex_sed_unsupported'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  {
+    spl: 'index=web | rex field=u mode=sed "y/abc/xyz/"',
+    nrql: '',
+    unsupportedFunc: ['rex_sed_unsupported'],
+    doc: 'fields-rex-sed',
+    verified: false,
+  },
+  // A search on group-by keys only selects whole groups: pushed below the stats.
+  {
+    spl: 'index=web | stats count by host | search host=web* NOT host=web2',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' AND host LIKE 'web%' AND NOT (host = 'web2') FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-search',
+    verified: false,
+  },
+  // Nothing to filter: no empty outer wrapper.
+  {
+    spl: 'index=web | stats count by host | search *',
+    nrql: "FROM Log SELECT count(*) WHERE index = 'web' FACET host",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-search',
+    verified: false,
+  },
+  {
+    spl: 'index=web "error $env:user$ here"',
+    nrql: '',
+    unsupportedFunc: ['splunk_env_token'],
+    doc: 'results-search',
+    verified: false,
+  },
+  // The all-values guard folds false: `false OR x` → x.
+  {
+    spl: 'index=web | where ("$t$"="*" OR h="x")',
+    nrql: "FROM Log SELECT * WHERE index = 'web' AND h = 'x'",
+    warningFunc: ['where_token_all_guard_dropped'],
+    doc: 'results-where',
+    verified: false,
+  },
+  {
+    spl: 'index=web | eventstats mode(x) as m',
+    nrql: '',
+    unsupportedFunc: ['no_equiv_func'],
+    doc: 'reports-eventstats',
+    verified: false,
+  },
+  // The synthetic match count steps past every name the left side exposes.
+  {
+    spl: 'index=web | stats count as joinMatches, count by h | join h [search index=b | stats count by h | table h]',
+    nrql: "FROM (FROM Log SELECT count(*) AS 'joinMatches', count(*) WHERE index = 'web' FACET h LIMIT MAX) JOIN (FROM Log SELECT count(*) AS 'joinMatches2' WHERE index = 'b' FACET h LIMIT MAX) ON h = h SELECT * LIMIT MAX",
+    warningFunc: [
+      'list_keeps_aggregates',
+      'join_subsearch_warning',
+      'facet_default_limit',
+      'join_cardinality_limit',
+    ],
+    doc: 'correlation-join',
+    verified: false,
+  },
+  // A table glob after stats keeps only the matching aggregate columns.
+  {
+    spl: 'index=web | stats count, max(b) as mb by h | table h m*',
+    nrql: "FROM Log SELECT max(b) AS 'mb' WHERE index = 'web' FACET h",
+    warningFunc: ['facet_default_limit'],
+    doc: 'results-table',
     verified: false,
   },
 ];

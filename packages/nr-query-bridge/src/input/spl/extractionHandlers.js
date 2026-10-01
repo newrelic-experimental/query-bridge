@@ -28,6 +28,7 @@ import { translateSearchExpr } from './splToIR.js';
 import {
   buildRegexMatch,
   rawEventIdentifier,
+  splitTopLevelAlternatives,
   wrapAsSubquery,
 } from './splExprUtils.js';
 import {
@@ -100,7 +101,12 @@ export function handleRex(cmd, ir) {
   const field = cmd.field === '_raw' ? 'message' : cmd.field;
   // Convert (?<name>) to (?P<name>) — NRQL capture() uses Python regex syntax
   // Only convert named groups ((?<identifier>)), not lookbehind (?<=) or lookahead (?=)
-  const normalizedPattern = pattern.replace(/\(\?<([a-zA-Z_]\w*)>/g, '(?P<$1>');
+  let normalizedPattern = pattern.replace(/\(\?<([a-zA-Z_]\w*)>/g, '(?P<$1>');
+  // `a|b` must sit in one group, or the context below attaches to the first
+  // and last alternatives only (sandbox: `x|(?P<b>…)` never extracted b).
+  if (splitTopLevelAlternatives(normalizedPattern)) {
+    normalizedPattern = `(?:${normalizedPattern})`;
+  }
   // capture() matches the WHOLE value, so the pattern is wrapped in context.
   // The prefix must be LAZY: a greedy `.*` would consume as much as it can and
   // bind the LAST match (`.*(?P<a>\w+).*` on "hello world" → "d"), where Splunk
@@ -139,6 +145,13 @@ export function handleRex(cmd, ir) {
     value: pattern,
     enumerable: false,
   });
+  // After an aggregation (stats, dedup, …) rex reads the aggregated rows; a
+  // WITH here would read the raw events instead, and later steps can't see it
+  // (a `table` silently dropped the extracted column).
+  if (ir._hasAggregation) {
+    ir.unsupported.push(messages.rex_after_aggregation(names));
+    return;
+  }
   const tupleName = `(${names.join(', ')})`;
   ir.bindings.push(Binding(tupleName, captureExpr));
 }

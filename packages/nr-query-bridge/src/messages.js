@@ -43,6 +43,10 @@ export const messages = {
   rex_no_groups: () =>
     'rex pattern has no named capture groups; nothing to extract',
 
+  // SPL: `* | stats count by m | rex field=m "(?<y>\d)"`
+  rex_after_aggregation: (names) =>
+    `rex extracting ${names.join(', ')} after an aggregation (stats, dedup, …) cannot be translated: it would read the raw events, not the aggregated rows. Move the rex before the aggregation`,
+
   // SPL: `* | rex max_match=0 "(?<a>\\w+)"` (max_match=1 is the default and translates)
   rex_max_match: (n) =>
     `rex max_match=${n} not supported; NRQL capture() returns only the first match per event`,
@@ -559,6 +563,10 @@ export const messages = {
   // SPL: `* | stats count(eval(status=success))` — `success` is a FIELD in SPL eval.
   filter_field_vs_field: (left, right) =>
     `count(eval(…)) compares two fields (${left} with ${right}); NRQL filter() needs a constant on one side of each comparison. In SPL eval an unquoted word is a field name — if '${right}' was meant as text, quote it ("${right}")`,
+
+  // SPL: `* | stats dc(eval(status="ok"))`
+  stats_eval_condition_unsupported: (fn) =>
+    `${fn}(eval(<condition>)) cannot be translated: Splunk's condition is true or null, a NRQL condition is true or false, so ${fn}() would count false too. Use count(eval(<condition>)), or ${fn}(eval(if(<condition>, <value>, null())))`,
 
   // SPL: `* | stats mode(status) by host`
   no_equiv_func: (name) => `SPL ${name}`,

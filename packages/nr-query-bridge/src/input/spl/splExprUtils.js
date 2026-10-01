@@ -54,7 +54,7 @@ export function endsWithUnescapedDollar(pattern) {
 }
 
 // The top-level `|` alternatives of `pattern`, or null if there is only one.
-function splitTopLevelAlternatives(pattern) {
+export function splitTopLevelAlternatives(pattern) {
   const parts = [];
   let depth = 0;
   let inClass = false;
@@ -201,7 +201,17 @@ const NO_EQUIV_FUNCS = {
   rate_sum: 'rate_sum() is Splunk metrics-specific; no NRQL equivalent',
 };
 
+// Arguments the caller already walked to IR (with its own warning lists).
+const translatedArgs = new WeakSet();
+
+/** Mark an IR node as an already-translated aggregate argument for mapFunction. */
+export function asTranslatedArg(node) {
+  translatedArgs.add(node);
+  return node;
+}
+
 export function mapFunctionArg(a) {
+  if (a && typeof a === 'object' && translatedArgs.has(a)) return a;
   // Typed node from the unified ladder → walk to IR.
   if (a && typeof a === 'object') {
     return walkEvalExpr(a, { warnings: [], unsupported: [], errors: [] });

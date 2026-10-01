@@ -321,7 +321,57 @@ export function translateAstToIR(ast) {
   // is unsupported, not a warning over NRQL that cannot run.
   // aparse() doesn't count toward it, so simple rex patterns (literal anchors
   // around the groups) become aparse(), latest rex first, until 5 remain.
-  const captures = ir.bindings.filter(
+  // The limit is per query level (sandbox: 6 in a subquery are rejected, 3 in
+  // a subquery plus 3 outside run), so every level is checked on its own.
+  forEachQueryLevel(ir, (level) => rewriteCapturesOverLimit(level, ir));
+
+  // A rex value is a string: sum() of it is 0 and average()/max() are null
+  // (sandbox), where Splunk reads "12" as 12. Numeric aggregates over one get
+  // numeric() (row-wise arithmetic and comparisons already do).
+  forEachQueryLevel(ir, wrapStringAggregateArgs);
+
+  // Remove _time from FACET when TIMESERIES is present (TIMESERIES already groups by time)
+  ir.facet = stripTimeBucketFacets(
+    ir.facet,
+    ir.timeseries,
+    ir._timeBucketAliases,
+  );
+
+  return ir;
+}
+
+// Call `visit` on a query and on every query nested in it: a subquery FROM, a
+// JOIN subquery, and a scalar subquery in an expression. Each is its own NRQL
+// query level.
+function forEachQueryLevel(query, visit) {
+  visit(query);
+  if (query.dataSource?.type === 'SubquerySource') {
+    forEachQueryLevel(query.dataSource.query, visit);
+  }
+  if (query.join) forEachQueryLevel(query.join.subquery, visit);
+  const exprs = [
+    ...query.select,
+    ...query.where,
+    ...query.facet,
+    ...query.bindings.map((b) => b.expr),
+  ];
+  for (const sub of findScalarSubqueries(exprs)) forEachQueryLevel(sub, visit);
+}
+
+function findScalarSubqueries(node, found = []) {
+  if (!node || typeof node !== 'object') return found;
+  if (node.type === 'SubqueryExpr') {
+    found.push(node.query);
+    return found;
+  }
+  for (const value of Object.values(node)) findScalarSubqueries(value, found);
+  return found;
+}
+
+// Past 5 capture() bindings at one level, rewrite simple ones as aparse(),
+// latest first; still over → unsupported. Messages go to the root query.
+function rewriteCapturesOverLimit(level, ir) {
+  const captures = level.bindings.filter(
     (b) => b.expr.type === 'Function' && b.expr.name === 'capture',
   );
   let captureCount = captures.length;
@@ -339,15 +389,74 @@ export function translateAstToIR(ast) {
   } else if (asAparse.length > 0) {
     ir.warnings.push(messages.rex_as_aparse(asAparse));
   }
+}
 
-  // Remove _time from FACET when TIMESERIES is present (TIMESERIES already groups by time)
-  ir.facet = stripTimeBucketFacets(
-    ir.facet,
-    ir.timeseries,
-    ir._timeBucketAliases,
-  );
+const NUMERIC_AGGREGATES = new Set([
+  'sum',
+  'average',
+  'min',
+  'max',
+  'median',
+  'stddev',
+  'percentile',
+]);
+const STRING_SOURCES = new Set(['capture', 'aparse']);
 
-  return ir;
+// The value branches of an `if(cond, a, b)` (SPL `case()` arrives as nested ifs).
+function getIfBranches(expr) {
+  return expr.type === 'Function' && expr.name === 'if'
+    ? expr.args.slice(1)
+    : [];
+}
+
+// The names bound at this level to a rex value (capture()/aparse()), or to a
+// binding that passes one through (`eval p=price`, `if(…, price, …)`).
+function getStringBindingNames(level) {
+  const names = new Set();
+  const isString = (expr) => {
+    if (expr.type === 'Identifier') return names.has(expr.name);
+    if (expr.type === 'Function' && STRING_SOURCES.has(expr.name)) return true;
+    return getIfBranches(expr).some(isString);
+  };
+  for (const b of level.bindings) {
+    if (!isString(b.expr)) continue;
+    for (const n of b.name.replace(/^\(|\)$/g, '').split(/\s*,\s*/)) {
+      names.add(n);
+    }
+  }
+  return names;
+}
+
+function wrapStringAggregateArgs(level) {
+  const names = getStringBindingNames(level);
+  if (names.size === 0) return;
+  // numeric() around a rex value, also inside if() branches
+  // (`sum(if(ok = 'y', price, 0))`).
+  const toNumeric = (expr) => {
+    if (expr.type === 'Identifier' && names.has(expr.name)) {
+      return Func('numeric', [expr]);
+    }
+    if (getIfBranches(expr).length === 0) return expr;
+    return Func('if', [expr.args[0], ...expr.args.slice(1).map(toNumeric)]);
+  };
+  const wrap = (node) => {
+    if (!node || typeof node !== 'object' || node.type === 'SubqueryExpr') {
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach(wrap);
+      return;
+    }
+    if (
+      node.type === 'Function' &&
+      NUMERIC_AGGREGATES.has(node.name) &&
+      node.args.length > 0
+    ) {
+      node.args[0] = toNumeric(node.args[0]);
+    }
+    for (const value of Object.values(node)) wrap(value);
+  };
+  wrap(level.select);
 }
 
 // ── Search expression → IR expression tree ───────────────────
@@ -718,9 +827,13 @@ export function translateSearchExpr(node, ir, options = {}) {
 
       // Function call on the left of a comparison: mvcount(f) > 1.
       case 'FuncComparison': {
+        const reported = ir.unsupported.length;
         const left = walkEvalExpr(node.left, ir);
         if (!left) {
-          unsupported.push(messages.search_func_unsupported(node.left.name));
+          // Only when the walker didn't already say why.
+          if (ir.unsupported.length === reported) {
+            unsupported.push(messages.search_func_unsupported(node.left.name));
+          }
           return null;
         }
         const { value, operator: op } = node;
@@ -885,9 +998,13 @@ export function translateSearchExpr(node, ir, options = {}) {
       // FunctionCall nodes from the where expression grammar (like(), match(),
       // isnotnull(), cidrmatch(), etc.) — delegate to walkEvalExpr
       case 'FunctionCall': {
+        const reported = ir.unsupported.length;
         const ret = walkEvalExpr(node, ir);
         if (ret === null) {
-          unsupported.push(messages.search_func_unsupported(node.name));
+          // Only when the walker didn't already say why.
+          if (ir.unsupported.length === reported) {
+            unsupported.push(messages.search_func_unsupported(node.name));
+          }
           return null;
         }
         return ret;

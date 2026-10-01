@@ -802,6 +802,51 @@ NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET status TIMESERIES AUTO
 ```
 
 ```
+❓ Not confirmed
+SPL:  index=web | rex "m=(?<price>\d+)" | rex "u=(?<user>\w+)" | eventstats avg(price) as avgp | where price > avgp | stats count by user
+NRQL: FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\d+)(?s:.*)') AS (price), capture(message, r'(?s:.*?)u=(?P<user>\w+)(?s:.*)') AS (user), (FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\d+)(?s:.*)') AS (price), capture(message, r'(?s:.*?)u=(?P<user>\w+)(?s:.*)') AS (user) SELECT average(numeric(price)) WHERE index = 'web') AS avgp SELECT count(*) WHERE index = 'web' AND numeric(price) > numeric(avgp) FACET user
+🟡 `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | eval e=lower(e) | eventstats dc(e) as n | where n > 1
+NRQL: FROM Log WITH lower(e) AS parsed_e, (FROM Log WITH lower(e) AS parsed_e SELECT uniqueCount(parsed_e) WHERE index = 'web') AS n SELECT *, n WHERE index = 'web' AND numeric(n) > 1
+🟡 `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | eventstats avg(d) | where d > 1
+NRQL: FROM Log SELECT *, (FROM Log SELECT average(d) WHERE index = 'web') AS 'd' WHERE index = 'web' AND numeric(d) > 1
+🟡 `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count sum(x) as T by r | eventstats sum(count) as tc sum(T) as tt
+NRQL: FROM Log SELECT count(*), sum(x) AS 'T', (FROM (FROM Log SELECT count(*), sum(x) AS 'T' WHERE index = 'web' FACET r LIMIT MAX) SELECT sum(count)) AS 'tc', (FROM (FROM Log SELECT count(*), sum(x) AS 'T' WHERE index = 'web' FACET r LIMIT MAX) SELECT sum(T)) AS 'tt' WHERE index = 'web' FACET r
+🟡 `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "m=(?<price>\d+)" | stats count by price | eventstats sum(count) as tc
+NRQL: FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\d+)(?s:.*)') AS (price) SELECT count(*), (FROM (FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\d+)(?s:.*)') AS (price) SELECT count(*) WHERE index = 'web' FACET price LIMIT MAX) SELECT sum(count)) AS 'tc' WHERE index = 'web' FACET price
+🟡 `eventstats` without BY translated as scalar subquery in SELECT; for percentage calculations, use the subquery result in downstream eval
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | eval t=lower(t) | eventstats max(d) as t by h | table t
+NRQL: FROM Log JOIN (FROM Log WITH lower(t) AS parsed_t SELECT max(d) AS 't' WHERE index = 'web' FACET h LIMIT MAX) ON h = h WITH lower(t) AS parsed_t SELECT t WHERE index = 'web'
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | eventstats sum(bytes) AS total BY host, status
 🔴 `eventstats` with multiple BY fields (host, status) cannot be translated; NRQL subquery JOIN only supports a single ON key
@@ -812,6 +857,12 @@ SPL:  * | eventstats sum(bytes) AS total BY host, status
 SPL:  index=web | eventstats values(src) as srcs by cid | stats count by srcs
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `eventstats` values()/list() column(s) srcs cannot be translated: the value is a list, and New Relic cannot carry a list through a JOIN
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | eventstats mode(x) as m
+🔴 SPL mode() (most common value) has no NRQL aggregate equivalent; use a separate query with FACET field LIMIT 1
 ```
 <!-- /spl-cases -->
 
@@ -931,6 +982,13 @@ NRQL: FROM (FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a LIMIT MA
 SPL:  index=web | table _time, _raw
 NRQL: FROM Log SELECT * WHERE index = 'web'
 🟡 `table` _raw shows the whole raw event; translated as SELECT * (every attribute of the event — display it as a log table), which may include more columns than the other fields listed
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count, max(b) as mb by h | table h m*
+NRQL: FROM Log SELECT max(b) AS 'mb' WHERE index = 'web' FACET h
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 ```
 
 ```
@@ -1254,6 +1312,23 @@ NRQL: FROM (FROM Log SELECT count(*) WHERE index = 'web' FACET host LIMIT MAX) J
 ```
 
 ```
+❓ Not confirmed
+SPL:  index=web | rex "u=(?<s>\w+)" | eval t=s | join s [search index=b | stats max(t) as t by s] | table s t
+NRQL: FROM Log JOIN (FROM Log SELECT max(t) AS 't' WHERE index = 'b' FACET s LIMIT MAX) ON parsed_s = s WITH capture(message, r'(?s:.*?)u=(?P<s>\w+)(?s:.*)') AS (parsed_s), parsed_s AS parsed_t SELECT parsed_s AS 's', t WHERE index = 'web'
+🟡 `join` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count as joinMatches, count by h | join h [search index=b | stats count by h | table h]
+NRQL: FROM (FROM Log SELECT count(*) AS 'joinMatches', count(*) WHERE index = 'web' FACET h LIMIT MAX) JOIN (FROM Log SELECT count(*) AS 'joinMatches2' WHERE index = 'b' FACET h LIMIT MAX) ON h = h SELECT * LIMIT MAX
+🟡 `join` subsearch: table lists no aggregate column, but NRQL needs at least one alongside FACET; the aggregate column(s) are still returned
+🟡 `join` subsearch: NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | join type=outer host [search * | stats count by host]
 🔴 NRQL does not support full outer join; only INNER and LEFT joins are available
@@ -1304,6 +1379,12 @@ SPL:  index=web | dedup s | join s [search index=web | dedup s | table s, m] | t
 🟡 NRQL subquery JOIN has a 5,000-row limit and 1:100 cardinality limit
 🔴 `join` on s after a dedup: the fields read after the join can't be enumerated, so the dedup can't carry the ones the subsearch doesn't supply
 🔴 Post-aggregation step references '*', which the aggregation does not output (only its BY fields and aggregate columns survive stats)
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | join max=x h [search index=b | stats count by h]
+🔴 `join` option max=x has no NRQL equivalent
 ```
 <!-- /spl-cases -->
 
@@ -1785,6 +1866,50 @@ NRQL: FROM Log WITH capture(message, r'(?s:.*?)a\"(?P<a>[^\"]+)\"(?s:.*)') AS (a
 ```
 
 ```
+❓ Not confirmed
+SPL:  index=web | rex "m=(?<price>\d+)" | stats sum(price) as total
+NRQL: FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\d+)(?s:.*)') AS (price) SELECT sum(numeric(price)) AS 'total' WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "m=(?<price>\d+)" | eval p=price | timechart avg(p)
+NRQL: FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\d+)(?s:.*)') AS (price), price AS p SELECT average(numeric(p)) WHERE index = 'web' TIMESERIES AUTO
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "m=(?<price>\d+)" | eval p=case(a=1, price, a=2, 0) | stats avg(p)
+NRQL: FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\d+)(?s:.*)') AS (price), if(a = '1' OR numeric(a) = 1, price, if(a = '2' OR numeric(a) = 2, 0, NULL)) AS p SELECT average(numeric(p)) WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "m=(?<price>\d+)" | stats sum(eval(if(ok="y", price, 0))) as s latest(price) sum(bytes)
+NRQL: FROM Log WITH capture(message, r'(?s:.*?)m=(?P<price>\d+)(?s:.*)') AS (price) SELECT sum(if(ok = 'y', numeric(price), 0)) AS 's', latest(price), sum(bytes) WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "\"a\":\"(?<a>[^\"]+)\"" | rex "\"b\":\"(?<b>[^\"]+)\"" | rex "\"c\":\"(?<c>[^\"]+)\"" | rex "\"d\":\"(?<d>[^\"]+)\"" | rex "\"e\":\"(?<e>[^\"]+)\"" | rex "\"f\":\"(?<f>[^\"]+)\"" | stats count by a, b | where count > 1
+NRQL: FROM (FROM Log WITH capture(message, r'(?s:.*?)\"a\":\"(?P<a>[^\"]+)\"(?s:.*)') AS (a), capture(message, r'(?s:.*?)\"b\":\"(?P<b>[^\"]+)\"(?s:.*)') AS (b), capture(message, r'(?s:.*?)\"c\":\"(?P<c>[^\"]+)\"(?s:.*)') AS (c), capture(message, r'(?s:.*?)\"d\":\"(?P<d>[^\"]+)\"(?s:.*)') AS (d), capture(message, r'(?s:.*?)\"e\":\"(?P<e>[^\"]+)\"(?s:.*)') AS (e), aparse(message, '%"f":"*"%') AS (f) SELECT count(*) WHERE index = 'web' FACET a, b LIMIT MAX) SELECT * WHERE numeric(count) > 1
+🟡 `rex` extraction(s) f translated as aparse() to stay within NRQL's 5 capture() calls; aparse matches the anchor text case-insensitively, where Splunk's rex is case-sensitive
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "msg=(?<message>[^,]+)" | stats count by message
+NRQL: FROM Log WITH capture(message, r'(?s:.*?)msg=(?P<message>[^,]+)(?s:.*)') AS (parsed_message) SELECT count(*) WHERE index = 'web' FACET parsed_message AS 'message'
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "k=(?<a>\d+)|v=(?<b>\d+)" | table a b
+NRQL: FROM Log WITH capture(message, r'(?s:.*?)(?:k=(?P<a>\d+)|v=(?P<b>\d+))(?s:.*)') AS (a, b) SELECT a, b WHERE index = 'web'
+```
+
+```
 ✅ Confirmed by human
 SPL:  * | rex field=message "\d+"
 🔴 `rex` pattern has no named capture groups; nothing to extract
@@ -1818,6 +1943,20 @@ SPL:  index=web | rex field=_raw "a=(?<a>\w+)" $extraFilter$
 ❓ Not confirmed
 SPL:  index=web | rex "a=(?<a>\d+)" | rex "b=(?<b>\d+)" | rex "c=(?<c>\d+)" | rex "d=(?<d>\d+)" | rex "e=(?<e>\d+)" | rex "f=(?<f>\d+)" | table a b c d e f
 🔴 `query` uses 6 capture() extractions that cannot be rewritten as aparse() (only literal-anchored patterns can), but NRQL allows 5 capture() calls per query
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex "a=(?<a>\d+)" | rex "b=(?<b>\d+)" | rex "c=(?<c>\d+)" | rex "d=(?<d>\d+)" | rex "e=(?<e>\d+)" | rex "f=(?<f>\d+)" | stats count by a, b | where count > 1
+🔴 `query` uses 6 capture() extractions that cannot be rewritten as aparse() (only literal-anchored patterns can), but NRQL allows 5 capture() calls per query
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count by m | rex field=m "(?<y>\d)" | table m y count
+🟡 `table` column(s) y are not produced by the preceding aggregation (Splunk shows them empty); skipped
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 `rex` extracting y after an aggregation (stats, dedup, …) cannot be translated: it would read the raw events, not the aggregated rows. Move the rex before the aggregation
 ```
 <!-- /spl-cases -->
 
@@ -1854,6 +1993,18 @@ NRQL: FROM Log WITH capture(host, r'^(?P<sed1_m>(?P<sed1_g1>.+api-)(?P<sed1_g2>\
 
 ```
 ❓ Not confirmed
+SPL:  index=web | rex field=u mode=sed "s/^a|b$/x/" | table u
+NRQL: FROM Log WITH capture(u, r'^(?P<sed1_pre>(?s:.*?))(?P<sed1_m>^a|b$)(?P<sed1_post>(?s:.*))$') AS (sed1_pre, sed1_m, sed1_post), if(sed1_m IS NULL, u, concat(sed1_pre, 'x', sed1_post)) AS parsed_u SELECT parsed_u AS 'u' WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex field=u mode=sed "s/(?<x>a)/[\1]/" | rex field=v mode=sed "s/b/\./" | table u v
+NRQL: FROM Log WITH capture(u, r'^(?P<sed1_pre>(?s:.*?))(?P<sed1_m>(?P<sed1_g1>a))(?P<sed1_post>(?s:.*))$') AS (sed1_pre, sed1_m, sed1_g1, sed1_post), if(sed1_m IS NULL, u, concat(sed1_pre, '[', sed1_g1, ']', sed1_post)) AS parsed_u, capture(v, r'^(?P<sed2_pre>(?s:.*?))(?P<sed2_m>b)(?P<sed2_post>(?s:.*))$') AS (sed2_pre, sed2_m, sed2_post), if(sed2_m IS NULL, v, concat(sed2_pre, '.', sed2_post)) AS parsed_v SELECT parsed_u AS 'u', parsed_v AS 'v' WHERE index = 'web'
+```
+
+```
+❓ Not confirmed
 SPL:  index=web | rex field=uri mode=sed "s#/v1/booking/[A-Za-z0-9]+#/v1/booking#g" | stats count by uri
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `rex` mode=sed on uri (sed script 's#/v1/booking/[A-Za-z0-9]+#/v1/booking#g') cannot be translated exactly: the substitution is global and the pattern can match more than once; capture() rebuilds only the first match. NRQL replace() is literal-only; capture() can rebuild one anchored or non-global substitution
@@ -1863,6 +2014,36 @@ SPL:  index=web | rex field=uri mode=sed "s#/v1/booking/[A-Za-z0-9]+#/v1/booking
 ❓ Not confirmed
 SPL:  index=web | rex field=m mode=sed "s/a/[&]/" | table m
 🔴 `rex` mode=sed on m (sed script 's/a/[&]/') cannot be translated exactly: & (the whole match) in the replacement. NRQL replace() is literal-only; capture() can rebuild one anchored or non-global substitution
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex field=u mode=sed "s/^a|b$/x/g" | table u
+🔴 `rex` mode=sed on u (sed script 's/^a|b$/x/g') cannot be translated exactly: the substitution is global and the pattern can match more than once; capture() rebuilds only the first match. NRQL replace() is literal-only; capture() can rebuild one anchored or non-global substitution
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex field=u mode=sed "s/(a)/\3/" | table u
+🔴 `rex` mode=sed on u (sed script 's/(a)/\3/') cannot be translated exactly: \3 names no capture group in the pattern. NRQL replace() is literal-only; capture() can rebuild one anchored or non-global substitution
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex field=u mode=sed "s/a(?=b)/x/" | table u
+🔴 `rex` mode=sed on u (sed script 's/a(?=b)/x/') cannot be translated exactly: lookaround in the pattern. NRQL replace() is literal-only; capture() can rebuild one anchored or non-global substitution
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex mode=sed "s/a/b/"
+🔴 `rex` mode=sed has no exact NRQL equivalent (field=message, sed script 's/a/b/'); NRQL replace() is literal-only and capture() can rebuild only a single anchored or non-global match
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | rex field=u mode=sed "y/abc/xyz/"
+🔴 `rex` mode=sed has no exact NRQL equivalent (field=u, sed script 'y/abc/xyz/'); NRQL replace() is literal-only and capture() can rebuild only a single anchored or non-global match
 ```
 <!-- /spl-cases -->
 
@@ -2006,6 +2187,26 @@ NRQL: FROM (FROM Log SELECT count(*) AS 'c' WHERE index = 'web' FACET a LIMIT MA
 SPL:  index=web | stats count as c by a | search a=x
 NRQL: FROM Log SELECT count(*) AS 'c' WHERE index = 'web' AND a = 'x' FACET a
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count by host | search host=web* NOT host=web2
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' AND host LIKE 'web%' AND NOT (host = 'web2') FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | stats count by host | search *
+NRQL: FROM Log SELECT count(*) WHERE index = 'web' FACET host
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+```
+
+```
+❓ Not confirmed
+SPL:  index=web "error $env:user$ here"
+🔴 $env:user$ is a Splunk runtime-context token (the $env:…$ namespace — current app/page/user/locale). New Relic dashboards have no equivalent runtime-context variable, and the colon cannot appear in an NRQL {{…}} template variable, so this filter cannot be translated. Remove the env-scoped filter or re-scope the widget with a New Relic template variable.
 ```
 <!-- /spl-cases -->
 
@@ -2548,6 +2749,19 @@ NRQL: FROM Log SELECT round(average(dur), 0.01) AS 'avgDur' WHERE index = 'web' 
 SPL:  index=web | timechart span=90ms count
 🔴 Span=90ms is not a time span NRQL TIMESERIES can express (use s, m, h, d, w, mon, q, or y units)
 ```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart span=0h count
+🔴 Span=0h is not a time span NRQL TIMESERIES can express (use s, m, h, d, w, mon, q, or y units)
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | timechart limit=bottom5 count by h
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 `timechart` option limit=bottom5 has no NRQL equivalent
+```
 <!-- /spl-cases -->
 
 ## `timewrap` — Not supported
@@ -2930,6 +3144,13 @@ NRQL: FROM Log SELECT * WHERE index = 'web' AND msg RLIKE r'(?i)(?s:.*)nomatchal
 
 ```
 ❓ Not confirmed
+SPL:  index=web | where ("$t$"="*" OR h="x")
+NRQL: FROM Log SELECT * WHERE index = 'web' AND h = 'x'
+🟡 `where` "$t$"="*" (the dashboard "all values" guard) was dropped: New Relic substitutes {{t}} directly into the field comparison, so a literal * would match nothing. To offer "all values", enable the New Relic variable's multi-value / include-all option instead of a * choice.
+```
+
+```
+❓ Not confirmed
 SPL:  index=web | where "a"="b"
 🔴 `where` condition is always false (a comparison between two different literals), so the query would return no rows; remove or fix the condition
 ```
@@ -2950,6 +3171,18 @@ SPL:  index=web | where "1"=1
 ❓ Not confirmed
 SPL:  index=web | where Grp!="A" Grp!="B"
 🔴 `where`: implicit AND is not valid in where (it is search syntax); join the conditions with AND — this is a defect in the source query
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where searchmatch(x)
+🔴 `searchmatch()` needs a single quoted search string; a field or expression argument cannot be translated
+```
+
+```
+❓ Not confirmed
+SPL:  index=web | where searchmatch("foo | stats count")
+🔴 `searchmatch("foo | stats count")` contains search syntax that could not be translated
 ```
 <!-- /spl-cases -->
 

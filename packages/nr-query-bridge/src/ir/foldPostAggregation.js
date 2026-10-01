@@ -445,7 +445,9 @@ function mergeRowwiseIntoAggregation(outer, row) {
     ...outer,
     dataSource: row.dataSource,
     bindings: [
-      ...bindings.map((b) => ({ ...b, expr: inline(b.expr) })),
+      // The layer's own WITH runs before its SELECT: it reads the source, not
+      // the eval columns, so it moves unchanged.
+      ...bindings,
       ...(outer.bindings ?? []).map((b) => ({ ...b, expr: inline(b.expr) })),
     ],
     select: outer.select.map(inline),

@@ -26,8 +26,11 @@
 import { Alias, Identifier } from '../../ir/nodes.js';
 import { mapFieldName } from './splExprUtils.js';
 
-// Reserved as WITH binding names (case is ignored) — sandbox-verified.
-const RESERVED_BINDING_NAMES = new Set(['timestamp', 'eventtype']);
+// Reserved as WITH binding names (case is ignored) — sandbox-verified. A
+// `message` binding is legal NRQL, but every raw-text search reads `message`:
+// bound, it would read the binding (and `capture(message, …) AS (message)` is
+// a "Circular dependency").
+const RESERVED_BINDING_NAMES = new Set(['timestamp', 'eventtype', 'message']);
 
 const TUPLE = /^\((.*)\)$/;
 
@@ -172,6 +175,8 @@ export function createBindingScope() {
   // the ON key are emitted after the JOIN).
   function handleNewJoin(ir) {
     joinCols = joinColumns(ir.join);
+    const keyName =
+      ir.join.onKey?.type === 'Identifier' ? ir.join.onKey.name : null;
     for (const b of ir.bindings) {
       const wasTuple = TUPLE.test(b.name);
       const names = bindingNames(b.name);
@@ -196,6 +201,11 @@ export function createBindingScope() {
         return fresh;
       });
       b.name = formatBindingNames(renamedNames, wasTuple);
+    }
+    // Steps after the JOIN read its columns (they overwrite, as in Splunk) —
+    // except the ON key, which may keep reading the binding (same value).
+    for (const col of joinCols) {
+      if (col !== keyName) map.delete(col);
     }
     const key = ir.join.onKey;
     if (key && key.type === 'Identifier' && map.has(key.name)) {
@@ -244,6 +254,17 @@ export function createBindingScope() {
 
     /** Rename what `cmd` added to `ir`, in pipeline order. */
     afterCommand(cmd, ir, wasAggregated) {
+      // eventstats' scalar subqueries re-run this level (same bindings), so
+      // their aggregate arguments read the binding names too.
+      if (cmd.type === 'EventstatsCommand' && !wasAggregated) {
+        const subqueries = [...ir.select, ...ir.bindings.map((b) => b.expr)]
+          .map((e) => (e.type === 'Alias' ? e.expr : e))
+          .filter((e) => e.type === 'SubqueryExpr' && !processed.has(e));
+        for (const e of subqueries) {
+          e.query.select = e.query.select.map((s) => renameRefs(s, map));
+          processed.add(e);
+        }
+      }
       // New bindings (only before an aggregation — after it, eval projects
       // `expr AS name` columns on the outer query instead).
       if (!wasAggregated) {

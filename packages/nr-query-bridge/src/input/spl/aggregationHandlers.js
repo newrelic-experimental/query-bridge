@@ -20,8 +20,10 @@ import {
   OrderBy,
   JoinClause,
   Binding,
+  SubqueryExpr,
 } from '../../ir/nodes.js';
 import {
+  asTranslatedArg,
   mapFunction,
   mapAggregateExpression,
   isAggregateExpression,
@@ -58,14 +60,26 @@ export function handleStats(cmd, ir) {
   ir._dedupCountKey = null;
 
   for (const fn of cmd.functions) {
+    // `fn(eval(expr))` aggregates expr's per-event value. Only a count of a
+    // condition is a filter; anything else (`dc(eval(if(c, user, null())))`,
+    // `avg(eval(x*2))`) is fn over the expression — Splunk skips null values
+    // and so do NRQL aggregates (sandbox: uniqueCount/count/average of if(…, NULL)).
+    let evalArg = null;
     if (fn.evalFilter) {
-      // count(eval(expr)) → filter(count(*), WHERE expr)
-      const filterCondition = walkEvalExpr(fn.evalFilter, ir);
-      if (!filterCondition) {
+      evalArg = walkEvalExpr(fn.evalFilter, ir);
+      if (!evalArg) {
         // The walker already reported why; a condition-less filter() would
         // silently count every event.
         continue;
       }
+      if (!isCountName(fn.name) && isCondition(evalArg)) {
+        ir.unsupported.push(messages.stats_eval_condition_unsupported(fn.name));
+        continue;
+      }
+    }
+    if (evalArg && isCondition(evalArg)) {
+      // count(eval(cond)) → filter(count(*), WHERE cond)
+      const filterCondition = evalArg;
       // filter()'s WHERE needs a constant on one side of each comparison — New
       // Relic rejects `WHERE a = b` there ("must be a constant in this context").
       const pair = findFieldVsFieldComparison(filterCondition);
@@ -90,11 +104,13 @@ export function handleStats(cmd, ir) {
     }
     // `round(avg(x), 2)` / `eval(<expr over aggregates>)` → one NRQL expression.
     /** @type {{ expr: any, warning?: string|null, warnings?: string[], unsupported?: string|string[] }} */
-    const mapped = isAggregateExpression(fn)
-      ? mapAggregateExpression(fn)
-      : dedupKey
-        ? { expr: Func('uniqueCount', [Identifier(dedupKey)]) }
-        : mapFunction(fn.name, fn.args);
+    const mapped = evalArg
+      ? mapFunction(fn.name, [asTranslatedArg(evalArg)])
+      : isAggregateExpression(fn)
+        ? mapAggregateExpression(fn)
+        : dedupKey
+          ? { expr: Func('uniqueCount', [Identifier(dedupKey)]) }
+          : mapFunction(fn.name, fn.args);
     for (const w of [mapped.warnings || [], mapped.warning || []].flat()) {
       ir.warnings.push(w);
     }
@@ -168,10 +184,31 @@ function findFieldVsFieldComparison(node) {
   );
 }
 
+function isCountName(name) {
+  return name.toLowerCase() === 'count' || name.toLowerCase() === 'c';
+}
+
+const CONDITION_OPS = new Set([...COMPARISON_OPS, 'AND', 'OR']);
+const CONDITION_TYPES = new Set([
+  'Not',
+  'IsNull',
+  'Like',
+  'In',
+  'Rlike',
+  'DualCheck',
+]);
+
+// An IR expression that is true/false per event (a WHERE condition).
+function isCondition(node) {
+  if (CONDITION_TYPES.has(node.type)) return true;
+  return node.type === 'BinOp' && CONDITION_OPS.has(node.op.toUpperCase());
+}
+
 // Splunk's output column name for an unaliased stats function: `count` for a
 // bare/`count(*)` count, else `fn(arg, …)` as written. null when an argument is
 // an expression we can't render back to text.
 function splColumnName(fn) {
+  if (fn.evalFilter) return null;
   const args = fn.args || [];
   if (args.length === 0 || (args.length === 1 && args[0] === '*')) {
     return fn.name;
@@ -378,6 +415,9 @@ export function handleRare(cmd, ir) {
 
 export function handleEventstats(cmd, ir) {
   const subSelect = [];
+  // Columns named by `as`. An unnamed one falls back to its argument's name
+  // (`avg(price)` → `price`), which must not become a binding over the field.
+  const aliased = new Set(cmd.functions.map((fn) => fn.alias).filter(Boolean));
   for (const fn of cmd.functions) {
     const mapped = mapFunction(fn.name, fn.args);
     if (mapped.warning) ir.warnings.push(mapped.warning);
@@ -391,32 +431,48 @@ export function handleEventstats(cmd, ir) {
   if (subSelect.length === 0) return;
 
   if (cmd.groupBy.length === 0) {
-    // eventstats without BY → scalar subquery in SELECT
-    let subquery;
-    if (ir._hasAggregation) {
-      const innerQuery = SelectQuery({
-        dataSource: { ...ir.dataSource },
-        select: [...ir.select],
-        where: [...ir.where],
-        facet: [...ir.facet],
-        limit: 'MAX',
-      });
-      subquery = SelectQuery({
-        dataSource: { type: 'SubquerySource', query: innerQuery },
-        select: subSelect.map((s) => s.expr),
-      });
-    } else {
-      subquery = SelectQuery({
-        dataSource: { ...ir.dataSource },
-        select: subSelect.map((s) => s.expr),
-        where: [...ir.where],
-      });
-    }
+    // eventstats without BY → one scalar subquery per column (New Relic allows
+    // a single result there), re-running this level with its WITH bindings.
+    const levelSelect = [...ir.select];
+    const scalarOf = (expr) =>
+      SubqueryExpr(
+        ir._hasAggregation
+          ? SelectQuery({
+              dataSource: {
+                type: 'SubquerySource',
+                query: SelectQuery({
+                  dataSource: { ...ir.dataSource },
+                  bindings: copyBindings(ir.bindings),
+                  select: [...levelSelect],
+                  where: [...ir.where],
+                  facet: [...ir.facet],
+                  limit: 'MAX',
+                }),
+              },
+              select: [expr],
+            })
+          : SelectQuery({
+              dataSource: { ...ir.dataSource },
+              bindings: copyBindings(ir.bindings),
+              select: [expr],
+              where: [...ir.where],
+            }),
+      );
+    // Over events, a column a later step reads is a WITH binding, so `where`,
+    // `eval` and `stats … by` see it (a SELECT column is gone by then).
+    const refs = cmd._downstreamRefs;
+    const isReadLater = (name) =>
+      aliased.has(name) && (!refs || refs.fields.includes(name));
     if (ir.select.length === 0) {
       ir.select.push(Wildcard());
     }
     for (const s of subSelect) {
-      ir.select.push(Alias({ type: 'SubqueryExpr', query: subquery }, s.name));
+      if (!ir._hasAggregation && isReadLater(s.name)) {
+        ir.bindings.push(Binding(s.name, scalarOf(s.expr)));
+        ir.select.push(Identifier(s.name));
+      } else {
+        ir.select.push(Alias(scalarOf(s.expr), s.name));
+      }
     }
     ir.warnings.push(messages.eventstats_scalar_subquery());
     return;
@@ -452,7 +508,7 @@ export function handleEventstats(cmd, ir) {
   const subquery = SelectQuery({
     dataSource: ir.dataSource,
     // Own copies: a JOIN-column clash renames the OUTER binding only.
-    bindings: ir.bindings.map((b) => Binding(b.name, b.expr)),
+    bindings: copyBindings(ir.bindings),
     select: subSelect,
     where: [...ir.where],
     facet: [onKey],
@@ -461,4 +517,10 @@ export function handleEventstats(cmd, ir) {
 
   ir.join = JoinClause(subquery, onKey);
   ir.warnings.push(messages.join_cardinality_limit());
+}
+
+// A subquery re-running this level needs its WITH bindings — own copies, so a
+// later rename of an outer binding (JOIN-column clash) leaves them alone.
+function copyBindings(bindings) {
+  return bindings.map((b) => Binding(b.name, b.expr));
 }
