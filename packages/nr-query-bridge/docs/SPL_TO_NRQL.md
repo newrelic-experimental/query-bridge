@@ -614,12 +614,6 @@ NRQL: FROM Log WITH (msg OR message) AS combined SELECT *
 ```
 
 ```
-❓ Not confirmed
-SPL:  * | eval last = mvindex(result, -1)
-NRQL: FROM Log WITH getField(result, -1) AS last SELECT *
-```
-
-```
 🤖 Confirmed by LLM
 SPL:  * | eval hi = status >= 400
 NRQL: FROM Log WITH numeric(status) >= 400 AS hi SELECT *
@@ -677,6 +671,24 @@ SPL:  * | eval parts = split(field, "},{")
 🤖 Confirmed by LLM
 SPL:  * | eval paired = mvzip(nodes, skus)
 🔴 `mvzip()` has no NRQL equivalent; cannot zip two arrays element-wise into paired tuples
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | eval last = mvindex(result, -1)
+🔴 `mvindex` with a negative or computed index is not supported; NRQL getField() indexes from 0 only and has no negative (from-the-end) form, so there is no faithful last-element translation
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | eval last = mvindex(result, mvcount(result)-1)
+🔴 `mvindex` with a negative or computed index is not supported; NRQL getField() indexes from 0 only and has no negative (from-the-end) form, so there is no faithful last-element translation
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | eval sub = mvindex(result, 0, 2)
+🔴 `mvindex` with a start and end index returns a sublist; NRQL getField() takes one index and has no range form
 ```
 <!-- /spl-cases -->
 

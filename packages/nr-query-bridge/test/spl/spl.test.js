@@ -4581,16 +4581,35 @@ const cases = [
     verified: false,
   },
 
-  // Gap #14 — FIXME: mvindex last-element workaround
-  // SPL mvindex(result, -1) natively supports negative indexes.
-  // NRQL workaround: nested if() with length check for each possible array size.
-  // See customer doc for 14-level nested if() example.
+  // Gap #14 — a negative mvindex index has no NRQL form. SPL counts from the
+  // end; NRQL getField() indexes from 0 only, so this stays loud rather than
+  // emitting `getField(result, -1)`, which returns null.
+  // AI-DEV: AI **MUST NOT** relax these three mvindex cases to a warning-and-emit.
+  // Mutation-verified: disabling the negative/computed guard fails exactly the
+  // first two, disabling the range guard fails exactly the third. Each one
+  // previously emitted compiling-but-null NRQL (`getField(result, -1)`), which
+  // is the silent-wrong outcome the loud-failure rule exists to prevent.
   {
-    skip: true,
     spl: '* | eval last = mvindex(result, -1)',
     unsupportedFunc: ['mvindex_last_element'],
     doc: 'fields-eval-arithmetic',
-    verified: false,
+    verified: 'llm',
+  },
+
+  // The computed-index idiom for "last element" — same reason, same guard.
+  {
+    spl: '* | eval last = mvindex(result, mvcount(result)-1)',
+    unsupportedFunc: ['mvindex_last_element'],
+    doc: 'fields-eval-arithmetic',
+    verified: 'llm',
+  },
+
+  // SPL's 3-argument form returns a sublist; getField() has no range form.
+  {
+    spl: '* | eval sub = mvindex(result, 0, 2)',
+    unsupportedFunc: ['mvindex_range_unsupported'],
+    doc: 'fields-eval-arithmetic',
+    verified: 'llm',
   },
 
   // ── timechart by-clause options (limit/useother/usenull) ──────────

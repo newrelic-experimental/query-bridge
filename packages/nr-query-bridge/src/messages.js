@@ -312,10 +312,6 @@ export const messages = {
   mvexpand_cascading: () =>
     'cascading mvexpand (expand-then-expand) not directly supported; use nested FROM with EXPAND at each level as a workaround',
 
-  // SPL: `* | mvexpand validations | mvexpand items | where val_sku=sku_data_sku`
-  mvexpand_cross_field: () =>
-    'expanding and matching across two different arrays in the same event is not supported in NRQL; split into separate queries',
-
   // SPL: `* | eval parts = split(tags, ",") | mvexpand parts`
   expand_truncation_cap: () =>
     'EXPAND fans out at most 100 elements per event and truncates the rest SILENTLY (the query still runs), so an event whose list is longer than 100 contributes only its first 100 elements',
@@ -388,9 +384,13 @@ export const messages = {
   mvzip_unsupported: () =>
     'mvzip() has no NRQL equivalent; cannot zip two arrays element-wise into paired tuples',
 
-  // SPL: `* | eval last = mvindex(result, mvcount(result)-1)`
+  // SPL: `* | eval last = mvindex(result, -1)` / `mvindex(result, mvcount(result)-1)`
   mvindex_last_element: () =>
-    'mvindex with computed index (e.g., mvcount-1 for last element) not supported; NRQL jparse() does not support negative array indexing',
+    'mvindex with a negative or computed index is not supported; NRQL getField() indexes from 0 only and has no negative (from-the-end) form, so there is no faithful last-element translation',
+
+  // SPL: `* | eval sub = mvindex(result, 0, 2)`
+  mvindex_range_unsupported: () =>
+    'mvindex with a start and end index returns a sublist; NRQL getField() takes one index and has no range form',
 
   // SPL: `* | eval x = typeof(field)`
   eval_func_unsupported: (name) =>

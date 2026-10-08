@@ -964,8 +964,28 @@ function walkEvalFunc(node, ir) {
         ir.warnings.push(messages.eval_mvindex_args());
         return walkEvalExpr(args[0], ir);
       }
+      // `mvindex(split(s, "D"), n)` has an exact capture() form for a negative
+      // n too, so try it before the guards below reject one.
       const item = buildSplitItem(args, ir);
       if (item) return item;
+      // AI-DEV: A negative or computed index MUST be `unsupported`, never
+      // emitted. NRQL `getField()` indexes from 0 and has no from-the-end
+      // form, so `getField(f, -1)` and `getField(f, length(f) - 1)` return
+      // null where Splunk returns the last element — silent-wrong, which the
+      // loud-failure rule forbids. A bare field index (`mvindex(f, i)`) is
+      // left alone: it is correct whenever i >= 0 at runtime.
+      const index = getIntegerLiteral(args[1]);
+      if (index !== null ? index < 0 : args[1]?.type === 'EvalArith') {
+        ir.unsupported.push(messages.mvindex_last_element());
+        return null;
+      }
+      // SPL's 3-argument form returns the sublist between two indexes; NRQL
+      // getField() takes exactly one index, so `getField(f, 0, 2)` does not
+      // compile.
+      if (args.length > 2) {
+        ir.unsupported.push(messages.mvindex_range_unsupported());
+        return null;
+      }
       return Func(
         'getField',
         args.map((a) => walkEvalExpr(a, ir)).filter(Boolean),
