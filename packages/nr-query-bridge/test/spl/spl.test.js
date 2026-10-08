@@ -4451,6 +4451,32 @@ const cases = [
     doc: 'unsupported-mvexpand',
     verified: 'llm',
   },
+  // Two INDEPENDENT collections cascade flat: one EXPAND clause each at the
+  // same level, gated on `preview.expand`.
+  {
+    spl: '* | eval a=split(x,",") | mvexpand a | eval b=split(y,",") | mvexpand b | stats count by a,b',
+    options: { preview: { expand: true, split: true } },
+    nrql: "FROM Log WITH split(x, ',') AS a, split(y, ',') AS b EXPAND a AS a_expanded EXPAND b AS b_expanded SELECT count(*) FACET a_expanded AS 'a', b_expanded AS 'b'",
+    warningFunc: [
+      'split_element_cap',
+      'expand_truncation_cap',
+      'expand_cascading_unverified',
+      'facet_default_limit',
+    ],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // A DEPENDENT cascade stays unsupported even with the gate on: the second
+  // collection is parsed out of the first one's elements, and a WITH binding
+  // cannot read an EXPAND alias defined later in the clause order.
+  {
+    spl: '* | spath input=body path=Items{} output=items | mvexpand items | spath input=items path=Channels{} output=channels | mvexpand channels',
+    options: { preview: { expand: true } },
+    warningFunc: ['spath_json_only', 'expand_truncation_cap'],
+    unsupportedFunc: ['mvexpand_cascading'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
   // Gap #5 — mvzip unsupported
   {
     spl: '* | eval paired = mvzip(nodes, skus)',

@@ -571,6 +571,18 @@ export function handleMvexpand(cmd, ir) {
     return;
   }
 
+  // AI-DEV: A DEPENDENT cascade — this collection is derived from an earlier
+  // EXPAND's per-element alias (`spath path=Items{} | mvexpand items | spath
+  // input=items …`) — MUST stay unsupported. The clause order is
+  // `FROM … WITH … EXPAND … SELECT`, so a WITH binding reading an EXPAND alias
+  // is a forward reference, and expressing it needs a nested FROM per level
+  // (the workaround `mvexpand_cascading` names) which is not built yet. Two
+  // INDEPENDENT collections are fine flat and fall through.
+  if (readsExpandAlias(source.expr, ir)) {
+    ir.unsupported.push(messages.mvexpand_cascading());
+    return;
+  }
+
   // AI-DEV: EXPAND combined with JOIN is a known Limited Preview defect. Stay
   // loud until it is re-verified against a flag-enabled account rather than
   // emitting a query whose row multiplication is undefined.
@@ -600,6 +612,26 @@ export function handleMvexpand(cmd, ir) {
   if (cmd.limit != null) {
     ir.warnings.push(messages.expand_limit_ignored(cmd.limit));
   }
+}
+
+// Does this collection expression read the per-element alias of an EXPAND
+// already on this level? Deny-by-default: every own property is walked, so a
+// new node shape cannot smuggle a reference past the check.
+function readsExpandAlias(expr, ir) {
+  if (ir.expand.length === 0) return false;
+  // Both the per-element alias AND the expanded collection's own binding name:
+  // `_fieldReplacements` has not run yet at this point in the pipeline, so a
+  // later `spath input=items` still reads the raw name `items` and only becomes
+  // `items_expanded` in optimize(). Checking only the alias misses every
+  // dependent cascade.
+  const aliases = new Set(ir.expand.flatMap((e) => [e.alias, e.source?.name]));
+  const seen = (node) => {
+    if (!node || typeof node !== 'object') return false;
+    if (Array.isArray(node)) return node.some(seen);
+    if (node.type === 'Identifier' && aliases.has(node.name)) return true;
+    return Object.values(node).some(seen);
+  };
+  return seen(expr);
 }
 
 // A per-element binding name that collides with no existing binding, select

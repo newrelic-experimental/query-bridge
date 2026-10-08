@@ -315,9 +315,27 @@ export function translateAstToIR(ast, preview = {}) {
   // before optimize()'s applyFieldReplacements substitutes the registered map.
   applyWildcardRenames(ir);
 
-  // Gap #3: cascading mvexpand detection
+  // Gap #3: cascading mvexpand. Each mvexpand that resolved to a provable
+  // collection pushed its own ExpandClause (handleMvexpand), and the emitter
+  // renders one EXPAND per clause at this level — so a fully-resolved cascade
+  // needs no bail. Any mvexpand that did NOT resolve already pushed
+  // `mvexpand_unsupported`; the cascade is additionally unsupported because the
+  // nested-FROM workaround the message names cannot be built from a half-
+  // resolved chain.
+  //
+  // AI-DEV: Two EXPAND clauses at one query level are emitted on the
+  // assumption that NRQL fans them out as a CARTESIAN product, matching
+  // Splunk's cascading mvexpand. That assumption is NOT verified against a
+  // flag-enabled account (probe V-7). Do NOT remove
+  // `expand_cascading_unverified` until it is — a zip or sequential fan-out
+  // would silently undercount, and the warning is the only thing telling the
+  // user to check.
   if (mvexpandCount > 1) {
-    ir.unsupported.push(messages.mvexpand_cascading());
+    if (ir.expand.length === mvexpandCount) {
+      ir.warnings.push(messages.expand_cascading_unverified(mvexpandCount));
+    } else {
+      ir.unsupported.push(messages.mvexpand_cascading());
+    }
   }
 
   // Gap #12: Splunk computes all groups by default; NRQL FACET defaults to 10.

@@ -312,6 +312,9 @@ export const messages = {
   mvexpand_cascading: () =>
     'cascading mvexpand (expand-then-expand) not directly supported; use nested FROM with EXPAND at each level as a workaround',
 
+  // SPL: `* | eval a=split(x,",") | mvexpand a | eval b=split(y,",") | mvexpand b`
+  expand_cascading_unverified: (count) =>
+    `cascading mvexpand emitted as ${count} EXPAND clauses at one query level; this assumes NRQL fans them out as a cartesian product like Splunk, which is NOT yet verified against a flag-enabled account — check the row counts before relying on the result`,
   // SPL: `* | eval parts = split(tags, ",") | mvexpand parts`
   expand_truncation_cap: () =>
     'EXPAND fans out at most 100 elements per event and truncates the rest SILENTLY (the query still runs), so an event whose list is longer than 100 contributes only its first 100 elements',
