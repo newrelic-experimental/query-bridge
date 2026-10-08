@@ -316,6 +316,18 @@ export const messages = {
   mvexpand_cross_field: () =>
     'expanding and matching across two different arrays in the same event is not supported in NRQL; split into separate queries',
 
+  // SPL: `* | eval parts = split(tags, ",") | mvexpand parts`
+  expand_truncation_cap: () =>
+    'EXPAND fans out at most 100 elements per event and truncates the rest SILENTLY (the query still runs), so an event whose list is longer than 100 contributes only its first 100 elements',
+
+  // SPL: `* | eval parts = split(tags, ",") | mvexpand parts limit=5`
+  expand_limit_ignored: (limit) =>
+    `mvexpand limit=${limit} was ignored; NRQL EXPAND has no per-event element limit, only a fixed 100-element cap`,
+
+  // SPL: `* | eval parts = split(tags, ",") | mvexpand parts | join host [...]`
+  expand_with_join_unsupported: () =>
+    'EXPAND combined with JOIN is not supported; both multiply rows and their interaction is undefined in the current NRQL preview',
+
   // SPL: `* | uniq`
   uniq_unsupported: () => 'uniq has no direct NRQL equivalent',
 
@@ -342,7 +354,35 @@ export const messages = {
 
   // SPL: `* | eval parts = split(field, "},{")`
   split_multi_char_delimiter: (delimiter) =>
-    `split() with multi-character delimiter '${delimiter}' not supported; NRQL split() accepts single characters only`,
+    `split() with multi-character delimiter '${delimiter}' has no NRQL equivalent; NRQL split() rejects a delimiter that is not exactly one character ("split delimiter must be one character")`,
+
+  // SPL: `* | eval parts = split(field, "")`
+  split_empty_delimiter: () =>
+    'split() with an empty delimiter splits into single characters in Splunk; NRQL split() requires a delimiter of exactly one character',
+
+  // SPL: `* | eval parts = split(field, sepField)`
+  split_dynamic_delimiter: () =>
+    'split() with a non-literal delimiter cannot be translated; NRQL split() requires a delimiter of exactly one character, which a runtime value cannot be proven to be',
+
+  // SPL: `* | bin duration span=100 | stats count by duration`
+  bin_facet_expression: (field, width) =>
+    `bin ${field} span=${width} translated as FACET floor(numeric(${field})/${width})*${width}; the group label is the bucket's lower bound, matching Splunk`,
+
+  // SPL: `* | eval parts = split(field, ",")`
+  split_element_cap: () =>
+    'split() returns at most 256 elements in NRQL; a longer delimited value is silently truncated past the 256th item',
+
+  // SPL: `* | eval x = ltrim(code, "0")`
+  trim_charset_unsupported: (func) =>
+    `${func}() with a character-set argument has no NRQL equivalent; SPL strips every character in that set, while NRQL trim() only strips whitespace`,
+
+  // SPL: `* | eval big = mvfilter(someAttr > 5)`
+  mv_lambda_source_unknown: () =>
+    'multivalue function could not be translated: NRQL map()/filter() need a collection that exists within one event (a split(), a jparse() array, or an array literal). A plain attribute or a cross-event values()/uniques() list is rejected',
+
+  // SPL: `* | eval parts = split(x, ",") | eval t = mvmap(parts, sum(parts))`
+  map_rejects_aggregator: () =>
+    'mvmap() with an aggregate in its body has no NRQL equivalent; NRQL map() takes a one-to-one row-wise transform and rejects an aggregator, which only reduce() accepts',
 
   // SPL: `* | eval paired = mvzip(nodes, skus)`
   mvzip_unsupported: () =>

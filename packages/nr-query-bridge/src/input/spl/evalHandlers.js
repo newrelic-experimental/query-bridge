@@ -22,6 +22,8 @@ import {
   Binding,
   Alias,
   DualCheck,
+  Lambda,
+  ArrayLiteral,
 } from '../../ir/nodes.js';
 import {
   buildRegexMatch,
@@ -29,12 +31,15 @@ import {
   exprReferencesField,
   rawEventIdentifier,
   wrapAsSubquery,
+  collectionBindingOf,
 } from './splExprUtils.js';
 // Circular import — safe because translateSearchExpr is only called at runtime, not at module load time
 import { translateSearchExpr } from './splToIR.js';
 import * as parser from './splParser.js';
 import { messages } from '../../messages.js';
 import { splFormatToJava } from './splFormatCodes.js';
+import { getPreview } from '../../previewFlags.js';
+import { transformTree } from '../../ir/transform.js';
 import { buildRegexReplace, nextReplaceBase } from './regexReplace.js';
 
 // ── Command handlers ────────────────────────────────────────
@@ -441,6 +446,163 @@ function buildSplitItem(args, ir) {
   return Func('capture', [value, Regex(pattern)]);
 }
 
+// NRQL aggregators. `reduce` accepts an aggregator body; `map` and `filter`
+// REJECT one, bare or in-body ("Unknown function sum()" — validated). SPL's
+// eval-context `sum()`/`max()` are per-event multivalue reducers, so a user can
+// legitimately write one inside mvmap; it just has no `map` translation.
+const NRQL_AGGREGATOR_NAMES = new Set([
+  'count',
+  'sum',
+  'average',
+  'avg',
+  'min',
+  'max',
+  'median',
+  'percentile',
+  'percentage',
+  'uniquecount',
+  'uniques',
+  'stddev',
+  'latest',
+  'earliest',
+]);
+
+function containsAggregator(node) {
+  if (!node || typeof node !== 'object') return false;
+  if (node.type === 'Function' && NRQL_AGGREGATOR_NAMES.has(node.name)) {
+    return true;
+  }
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) {
+      if (value.some(containsAggregator)) return true;
+    } else if (value && typeof value === 'object') {
+      if (containsAggregator(value)) return true;
+    }
+  }
+  return false;
+}
+
+// Replace every reference to `field` with the lambda parameter.
+function substituteLambdaParam(node, field, param) {
+  return transformTree(node, (n) =>
+    n.type === 'Identifier' && n.name === field ? Identifier(param) : n,
+  );
+}
+
+/**
+ * Build an NRQL higher-order collection call — `filter(<coll>, p -> (…))` or
+ * `map(<coll>, p -> (…))` — from an SPL multivalue-function call.
+ *
+ * @param {'filter'|'map'} fn - The NRQL collection function.
+ * @param {object|null} collArg - The SPL collection argument, or null to infer
+ *   it from the body (SPL `mvfilter` names the field only inside its predicate).
+ * @param {object} bodyArg - The SPL body/predicate expression.
+ * @param {object} ir
+ * @returns {object|null}
+ */
+function buildCollectionLambdaCall(fn, collArg, bodyArg, ir) {
+  if (!getPreview(ir).lambdas) {
+    ir.unsupported.push(
+      messages.eval_func_unsupported(fn === 'filter' ? 'mvfilter' : 'mvmap'),
+    );
+    return null;
+  }
+
+  // Which SPL field is the collection? Explicit for mvmap; for mvfilter, the
+  // single provable collection referenced in the predicate.
+  let field = null;
+  if (collArg) {
+    // In the eval AST a bare field name is a plain STRING; `'name'` is a
+    // QuotedField node.
+    if (typeof collArg === 'string') field = collArg;
+    else if (collArg.type === 'QuotedField') field = collArg.name;
+  } else {
+    const candidates = [...collectEvalFieldNames(bodyArg)].filter((n) =>
+      collectionBindingOf(n, ir),
+    );
+    // Two collections in one predicate is ambiguous — which one is iterated
+    // changes the result, so refuse rather than pick.
+    if (candidates.length === 1) field = candidates[0];
+  }
+
+  if (!field || !collectionBindingOf(field, ir)) {
+    // AI-DEV: Without a provable within-event collection this MUST stay
+    // unsupported. A cross-event uniques()/values() list is rejected by NRQL in
+    // every form, and over a scalar the collection functions silently treat the
+    // value as a one-element list. Do NOT fall back to emitting the call.
+    ir.unsupported.push(messages.mv_lambda_source_unknown());
+    return null;
+  }
+
+  const body = walkEvalExpr(bodyArg, ir);
+  if (!body) return null;
+
+  if (fn === 'map' && containsAggregator(body)) {
+    ir.unsupported.push(messages.map_rejects_aggregator());
+    return null;
+  }
+
+  const param = pickLambdaParam(field, body);
+  return Func(fn, [
+    Identifier(field),
+    Lambda([param], substituteLambdaParam(body, field, param)),
+  ]);
+}
+
+// Every field name referenced in an SPL eval AST subtree. A bare field arrives
+// as a plain string (numeric tokens excluded); `'name'` as a QuotedField.
+function collectEvalFieldNames(node, acc = new Set()) {
+  if (typeof node === 'string') {
+    if (!looksLikeNumber(node)) acc.add(node);
+    return acc;
+  }
+  if (!node || typeof node !== 'object') return acc;
+  if (node.type === 'QuotedField' && typeof node.name === 'string') {
+    acc.add(node.name);
+  }
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) {
+      for (const v of value) collectEvalFieldNames(v, acc);
+    } else if (value && typeof value === 'object') {
+      collectEvalFieldNames(value, acc);
+    } else if (typeof value === 'string') {
+      // Only recurse into positional arg/operand slots, never metadata like
+      // `type` or an operator spelling.
+      if (value !== node.type && value !== node.op && value !== node.name) {
+        if (!looksLikeNumber(value)) acc.add(value);
+      }
+    }
+  }
+  return acc;
+}
+
+// Every Identifier name in a translated IR subtree.
+function collectIrIdentifierNames(node, acc = new Set()) {
+  if (!node || typeof node !== 'object') return acc;
+  if (node.type === 'Identifier' && typeof node.name === 'string') {
+    acc.add(node.name);
+  }
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) {
+      for (const v of value) collectIrIdentifierNames(v, acc);
+    } else if (value && typeof value === 'object') {
+      collectIrIdentifierNames(value, acc);
+    }
+  }
+  return acc;
+}
+
+// A lambda parameter name that shadows nothing else referenced in the body — a
+// lambda is lexically scoped and can read outer bindings, so a colliding
+// parameter would silently shadow one.
+function pickLambdaParam(field, body) {
+  const used = collectIrIdentifierNames(body);
+  for (const candidate of ['e', 'x', 'v', '_e', `${field}_e`]) {
+    if (!used.has(candidate)) return candidate;
+  }
+  return `_${field}_e`;
+}
+
 function walkEvalFunc(node, ir) {
   const name = node.name.toLowerCase();
   const args = node.args;
@@ -492,26 +654,44 @@ function walkEvalFunc(node, ir) {
       return coalesceArgs.reduce((acc, arg) => BinOp('OR', acc, arg));
     }
 
-    case 'trim': {
-      const child = walkEvalExpr(args[0], ir);
-      const gn = ir._currentAlias || '_t';
-      return child
-        ? Func('capture', [child, Regex(`^\\s*(?P<${gn}>.*\\S)\\s*$`)])
-        : null;
-    }
-    case 'ltrim': {
-      const child = walkEvalExpr(args[0], ir);
-      const gn = ir._currentAlias || '_t';
-      return child
-        ? Func('capture', [child, Regex(`^\\s*(?P<${gn}>.*)$`)])
-        : null;
-    }
+    case 'trim':
+    case 'ltrim':
     case 'rtrim': {
+      // AI-DEV: SPL's optional 2nd argument is a SET OF CHARACTERS to strip
+      // (`ltrim(code, "0")` strips leading zeros), NOT a trim type. Neither
+      // capture() nor NRQL trim() reproduces that, and ignoring the argument
+      // returns the UNTRIMMED value — silently wrong. It MUST stay
+      // `unsupported`; do not "fix" this by dropping the argument.
+      if (args.length > 1) {
+        ir.unsupported.push(messages.trim_charset_unsupported(name));
+        return null;
+      }
       const child = walkEvalExpr(args[0], ir);
+      if (!child) return null;
+
+      // Native NRQL trim() — strips whitespace directly instead of rebuilding
+      // the trim as a capture(). Worth gating for: it frees a capture() slot
+      // against NRQL's hard limit of 5 per query level, and it returns '' for
+      // an empty/all-whitespace input where the regex form cannot.
+      if (getPreview(ir).trim) {
+        const trimType =
+          name === 'ltrim' ? 'LEADING' : name === 'rtrim' ? 'TRAILING' : null;
+        return trimType
+          ? Func('trim', [child, Literal(trimType, 'string')])
+          : Func('trim', [child]);
+      }
+
       const gn = ir._currentAlias || '_t';
-      return child
-        ? Func('capture', [child, Regex(`^(?P<${gn}>.*\\S)\\s*$`)])
-        : null;
+      // `(?:.*\S)?` — the group is OPTIONAL so an empty or all-whitespace
+      // input yields '' like SPL, not a null capture (a bare `.*\S` requires
+      // a non-space character and fails the match outright).
+      const pattern =
+        name === 'ltrim'
+          ? `^\\s*(?P<${gn}>.*)$`
+          : name === 'rtrim'
+            ? `^(?P<${gn}>(?:.*\\S)?)\\s*$`
+            : `^\\s*(?P<${gn}>(?:.*\\S)?)\\s*$`;
+      return Func('capture', [child, Regex(pattern)]);
     }
 
     case 'lower':
@@ -739,12 +919,45 @@ function walkEvalFunc(node, ir) {
       ir.unsupported.push(messages.eval_mvjoin_unsupported());
       return walkEvalExpr(args[0], ir);
 
-    case 'mvappend':
+    case 'mvappend': {
+      // An array literal is the NRQL form of "these values as one collection".
+      // Caveat: SPL mvappend FLATTENS a nested multivalue argument, where
+      // `[a, b]` nests it — equivalent only for scalar arguments.
+      if (getPreview(ir).arrayMaps && args.length >= 2) {
+        const elements = [];
+        for (const a of args) {
+          const el = walkEvalExpr(a, ir);
+          if (!el) return null;
+          elements.push(el);
+        }
+        return ArrayLiteral(elements);
+      }
+      ir.unsupported.push(messages.eval_func_unsupported(name));
+      return null;
+    }
+
     case 'mvsort':
       // Not NRQL functions — emitting them verbatim is "Unknown function" on
       // New Relic (sandbox-verified for mvappend).
       ir.unsupported.push(messages.eval_func_unsupported(name));
       return null;
+
+    case 'mvfilter':
+      // SPL `mvfilter(<predicate>)` takes ONE argument; the multivalue field is
+      // named inside the predicate and becomes the lambda parameter.
+      if (args.length !== 1) {
+        ir.unsupported.push(messages.eval_func_unsupported(name));
+        return null;
+      }
+      return buildCollectionLambdaCall('filter', null, args[0], ir);
+
+    case 'mvmap':
+      // SPL `mvmap(<field>, <expr>)` — the collection is explicit.
+      if (args.length !== 2) {
+        ir.unsupported.push(messages.eval_func_unsupported(name));
+        return null;
+      }
+      return buildCollectionLambdaCall('map', args[0], args[1], ir);
 
     case 'mvindex': {
       if (args.length < 2) {
@@ -760,19 +973,41 @@ function walkEvalFunc(node, ir) {
     }
 
     case 'split': {
-      // Gap #13: NRQL split() only supports single-character delimiters
+      // AI-DEV: A delimiter NRQL cannot accept MUST be `unsupported`, never a
+      // warning. NRQL split() takes a delimiter of exactly one character and
+      // rejects anything else at compile time ("split delimiter must be one
+      // character"), so emitting split() anyway returns NRQL that does not
+      // run — a warning-and-emit here is the loud-failure rule inverted.
       const delimArg = args[1];
-      if (
-        delimArg &&
-        delimArg.type === 'StringLiteral' &&
-        delimArg.value.length > 1
-      ) {
-        ir.warnings.push(messages.split_multi_char_delimiter(delimArg.value));
+      if (delimArg) {
+        if (delimArg.type !== 'StringLiteral') {
+          // A runtime value can't be proven to be one character.
+          ir.unsupported.push(messages.split_dynamic_delimiter());
+          return null;
+        }
+        if (delimArg.value.length === 0) {
+          // Splunk splits into single characters; NRQL has no such form.
+          ir.unsupported.push(messages.split_empty_delimiter());
+          return null;
+        }
+        if (delimArg.value.length > 1) {
+          ir.unsupported.push(
+            messages.split_multi_char_delimiter(delimArg.value),
+          );
+          return null;
+        }
       }
-      return Func(
-        'split',
-        args.map((a) => walkEvalExpr(a, ir)).filter(Boolean),
-      );
+      const source = walkEvalExpr(args[0], ir);
+      if (!source) return null;
+      const splitArgs = [source];
+      if (delimArg) {
+        const delim = walkEvalExpr(delimArg, ir);
+        if (!delim) return null;
+        splitArgs.push(delim);
+      }
+      // NRQL caps split() at 256 elements and drops the rest silently.
+      ir.warnings.push(messages.split_element_cap());
+      return Func('split', splitArgs);
     }
 
     case 'pow':

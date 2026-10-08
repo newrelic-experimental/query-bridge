@@ -40,12 +40,15 @@ export function singleFacetField(nrql) {
  * Static enums and text variables (no sourceQuery) pass through untouched.
  *
  * @param {Variable[]} variables
+ * @param {{preview?: object}} [opts] opt-in NRQL Limited Preview gates,
+ *   forwarded verbatim to the translator.
  * @returns {Variable[]}
  */
-export function translateVariables(variables) {
+export function translateVariables(variables, opts = {}) {
+  const translateOptions = opts.preview ? { preview: opts.preview } : {};
   return variables.map((v) => {
     if (v.type !== 'enum' || !v.sourceQuery) return v;
-    const result = translateSplToNrql(v.sourceQuery);
+    const result = translateSplToNrql(v.sourceQuery, translateOptions);
     const clean = result.unsupported.length === 0 && result.errors.length === 0;
     const facet = clean ? singleFacetField(result.nrql) : null;
     if (facet) return { ...v, type: 'nrql', sourceQuery: result.nrql };

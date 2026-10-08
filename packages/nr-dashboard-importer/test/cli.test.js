@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { runImport, parseArgs } from '../bin/spl-dashboard.js';
+import { PREVIEW_FLAG_NAMES } from '@newrelic/query-bridge';
 
 const xml = `<form><label>CLI Dash</label><row><panel><chart>
   <title>T</title><search><query>index=web | stats count</query></search>
@@ -111,5 +112,73 @@ describe('parseArgs — --account validation', () => {
   });
   it('defaults account to null when --account is absent', () => {
     expect(parseArgs(['x.xml']).account).toBeNull();
+  });
+});
+
+describe('parseArgs — --preview validation', () => {
+  it('leaves preview undefined when no preview flag is given', () => {
+    expect(parseArgs(['x.xml']).preview).toBeUndefined();
+  });
+
+  it('parses a comma list in the --preview=a,b form', () => {
+    expect(parseArgs(['x.xml', '--preview=expand,split']).preview).toEqual({
+      expand: true,
+      split: true,
+    });
+  });
+
+  it('parses a comma list in the --preview a,b form', () => {
+    expect(parseArgs(['x.xml', '--preview', 'expand,split']).preview).toEqual({
+      expand: true,
+      split: true,
+    });
+  });
+
+  it('accumulates repeated --preview flags', () => {
+    expect(
+      parseArgs(['x.xml', '--preview=expand', '--preview=trim']).preview,
+    ).toEqual({ expand: true, trim: true });
+  });
+
+  it('enables every flag for --preview-all', () => {
+    const preview = parseArgs(['x.xml', '--preview-all']).preview;
+    expect(Object.keys(preview).sort()).toEqual([...PREVIEW_FLAG_NAMES].sort());
+    expect(Object.values(preview).every((v) => v === true)).toBe(true);
+  });
+
+  it('rejects an unknown preview flag by name instead of ignoring it', () => {
+    // AI-DEV: A typo'd CLI flag MUST fail loudly — silently ignoring it means
+    // the user believes a Beta gate is on and gets the GA translation instead.
+    // (The library-level `normalizePreview` ignores unknown keys on purpose;
+    // that is a version-skew concession, not the CLI contract.)
+    expect(() => parseArgs(['x.xml', '--preview=expnd'])).toThrow(/expnd/);
+  });
+
+  it('names the valid flags in the unknown-flag error', () => {
+    expect(() => parseArgs(['x.xml', '--preview=nope'])).toThrow(
+      /valid flags:/,
+    );
+  });
+});
+
+describe('runImport — preview pass-through', () => {
+  const trimXml = `<form><label>Trim Dash</label><row><panel><chart>
+  <title>T</title><search><query>index=web | eval x=trim(name) | stats count by x</query></search>
+  <option name="charting.chart">line</option>
+</chart></panel></row></form>`;
+
+  it('emits the GA capture() form when no preview flags are passed', () => {
+    const [out] = runImport(trimXml, { account: null });
+    expect(out.files['trim-dash.tf']).toContain('capture(name');
+    expect(out.files['trim-dash.tf']).not.toContain('trim(name)');
+  });
+
+  it('threads the trim gate through to the translated widget query', () => {
+    const [out] = runImport(trimXml, {
+      account: null,
+      preview: { trim: true },
+    });
+    expect(out.files['trim-dash.tf']).toContain('trim(name)');
+    expect(out.files['trim-dash.tf']).not.toContain('capture(name');
   });
 });

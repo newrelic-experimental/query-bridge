@@ -14,6 +14,7 @@ import { translateAstToIR } from './input/spl/splToIR.js';
 import { emitQuery } from './output/nrql/irToNrql.js';
 import { optimize } from './ir/optimize.js';
 import { messages } from './messages.js';
+import { normalizePreview } from './previewFlags.js';
 
 /**
  * The result of translating an SPL query to NRQL.
@@ -31,10 +32,17 @@ import { messages } from './messages.js';
 /**
  * Translate a Splunk SPL query into New Relic NRQL.
  *
+ * `options.preview` opts in to NRQL Limited Preview syntax (see
+ * `previewFlags.js`). Every gate defaults to off, so calling with one argument
+ * — as every caller did before gating existed — produces byte-identical output.
+ *
  * @param {string} spl - The SPL query string.
+ * @param {import('./previewFlags.js').TranslateOptions} [options] - Opt-in NRQL Beta gates.
  * @returns {TranslateResult} The NRQL plus any warnings/unsupported/errors.
  */
-export function translateSplToNrql(spl) {
+export function translateSplToNrql(spl, options = {}) {
+  const preview = normalizePreview(options);
+
   if (!spl || !spl.trim()) {
     return {
       nrql: 'FROM Log SELECT *',
@@ -62,9 +70,9 @@ export function translateSplToNrql(spl) {
   }
 
   // Pass 1: SPL AST → IR
-  const ir = translateAstToIR(ast);
+  const ir = translateAstToIR(ast, preview);
 
-  // Pass 2: Optimize IR
+  // Pass 2: Optimize IR (gates ride on the IR; see previewFlags.js)
   const optimized = optimize(ir);
 
   // Deduplicate messages (multiple commands can produce the same warning)

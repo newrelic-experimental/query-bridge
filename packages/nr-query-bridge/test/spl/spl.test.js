@@ -1654,7 +1654,7 @@ const cases = [
   // eval trim() → capture with regex (alias name used as group name to avoid collision)
   {
     spl: '* | eval x=trim(name)',
-    nrql: "FROM Log WITH capture(name, r'^\\s*(?P<x>.*\\S)\\s*$') AS x SELECT *",
+    nrql: "FROM Log WITH capture(name, r'^\\s*(?P<x>(?:.*\\S)?)\\s*$') AS x SELECT *",
     doc: 'eval-string',
     verified: 'human',
   },
@@ -3703,7 +3703,7 @@ const cases = [
   // Pattern 3: expand + aggregate by expanded field
   {
     spl: '* | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms',
-    warningFunc: ['facet_default_limit'],
+    warningFunc: ['facet_default_limit', 'split_element_cap'],
     unsupportedFunc: ['mvexpand_unsupported'],
     doc: 'unsupported-mvexpand',
     verified: 'llm',
@@ -4272,10 +4272,176 @@ const cases = [
   // Gap #13 — split() multi-char delimiter
   {
     spl: '* | eval parts = split(field, "},{")',
-    nrql: "FROM Log WITH split(field, '},{') AS parts SELECT *",
-    warningFunc: ['split_multi_char_delimiter'],
+    unsupportedFunc: ['split_multi_char_delimiter'],
     doc: 'fields-eval-arithmetic',
     verified: 'llm',
+  },
+  // ── NRQL Limited Preview gates (previewFlags.js) ──────────────────
+  // A delimiter NRQL cannot accept is `unsupported`, never a warning over NRQL
+  // that will not compile. Flag-independent — NRQL has no form for these.
+  {
+    spl: '* | eval p=split(f, sep)',
+    unsupportedFunc: ['split_dynamic_delimiter'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  {
+    spl: '* | eval p=split(f, "")',
+    unsupportedFunc: ['split_empty_delimiter'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // SPL's 2nd trim argument is a character SET, not a trim type; ignoring it
+  // returns the untrimmed value. Flag-independent.
+  {
+    spl: '* | eval x=ltrim(code, "0")',
+    unsupportedFunc: ['trim_charset_unsupported'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // Gate OFF (no `options`) — the regression lock for every gated construct.
+  {
+    spl: '* | eval perms=split(permissions, ",") | mvexpand perms',
+    warningFunc: ['split_element_cap'],
+    unsupportedFunc: ['mvexpand_unsupported'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // Gate ON: mvexpand over a provable within-event collection → EXPAND.
+  {
+    spl: '* | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms',
+    options: { preview: { expand: true, split: true } },
+    nrql: "FROM Log WITH split(permissions, ',') AS perms EXPAND perms AS perms_expanded SELECT count(*) FACET perms_expanded AS 'perms'",
+    warningFunc: [
+      'split_element_cap',
+      'expand_truncation_cap',
+      'facet_default_limit',
+    ],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // A bare attribute is NOT provably a collection: EXPAND over a scalar yields
+  // one row, which is not what Splunk's mvexpand does. Stays loud even gated.
+  {
+    spl: '* | mvexpand perms',
+    options: { preview: { expand: true } },
+    unsupportedFunc: ['mvexpand_unsupported'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // EXPAND + JOIN both multiply rows; the combination is a known preview defect.
+  {
+    spl: '* | eval p=split(tags, ",") | join host [search index=b | stats count by host] | mvexpand p',
+    options: { preview: { expand: true, split: true } },
+    unsupportedFunc: ['expand_with_join_unsupported'],
+    warningFunc: [
+      'split_element_cap',
+      'join_cardinality_limit',
+      'join_subsearch_warning',
+      'facet_default_limit',
+    ],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // NRQL EXPAND has no per-event element limit, so `limit=N` cannot be honored.
+  {
+    spl: '* | eval p=split(tags, ",") | mvexpand p limit=5 | stats count by p',
+    options: { preview: { expand: true, split: true } },
+    nrql: "FROM Log WITH split(tags, ',') AS p EXPAND p AS p_expanded SELECT count(*) FACET p_expanded AS 'p'",
+    warningFunc: [
+      'split_element_cap',
+      'expand_truncation_cap',
+      'expand_limit_ignored',
+      'facet_default_limit',
+    ],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // Native trim() instead of a capture() — frees a capture() slot against the
+  // 5-per-level limit, and returns '' for an all-whitespace input.
+  {
+    spl: '* | eval x=trim(name)',
+    options: { preview: { trim: true } },
+    nrql: 'FROM Log WITH trim(name) AS x SELECT *',
+    warningFunc: [],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  {
+    spl: '* | eval x=ltrim(name)',
+    options: { preview: { trim: true } },
+    nrql: "FROM Log WITH trim(name, 'LEADING') AS x SELECT *",
+    warningFunc: [],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  {
+    spl: '* | eval x=rtrim(name)',
+    options: { preview: { trim: true } },
+    nrql: "FROM Log WITH trim(name, 'TRAILING') AS x SELECT *",
+    warningFunc: [],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // mvfilter/mvmap over a within-event list → filter()/map() with a lambda.
+  {
+    spl: '* | eval p=split(tags, ",") | eval big=mvfilter(p>5)',
+    options: { preview: { lambdas: true, split: true } },
+    nrql: "FROM Log WITH split(tags, ',') AS p, filter(p, e -> (numeric(e) > 5)) AS big SELECT *",
+    warningFunc: ['split_element_cap'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  {
+    spl: '* | eval p=split(tags, ",") | eval d=mvmap(p, p*2)',
+    options: { preview: { lambdas: true, split: true } },
+    nrql: "FROM Log WITH split(tags, ',') AS p, map(p, e -> (numeric(e) * 2)) AS d SELECT *",
+    warningFunc: ['split_element_cap'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // No provable within-event collection → loud. A cross-event uniques()/values()
+  // list is rejected by NRQL in every form, so guessing here is silently wrong.
+  {
+    spl: '* | eval big=mvfilter(host>5)',
+    options: { preview: { lambdas: true } },
+    unsupportedFunc: ['mv_lambda_source_unknown'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  {
+    spl: '* | eval both=mvappend(a, b)',
+    options: { preview: { arrayMaps: true } },
+    nrql: 'FROM Log WITH [a, b] AS both SELECT *',
+    warningFunc: [],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // `bin f span=N | stats … by f` — FACET by a computed expression groups on the
+  // bucket directly, instead of histogram()-then-regroup (which is a second
+  // aggregation and fails compound_collapse). Gate OFF keeps that loud failure.
+  {
+    spl: '* | bin duration span=100 | stats count by duration',
+    unsupportedFunc: ['compound_collapse_unsupported'],
+    warningFunc: ['facet_default_limit'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  {
+    spl: '* | bin duration span=100 | stats count by duration',
+    options: { preview: { facetEvaluables: true } },
+    nrql: 'FROM Log SELECT count(*) FACET floor(numeric(duration) / 100) * 100',
+    warningFunc: ['bin_facet_expression', 'facet_default_limit'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  {
+    spl: '* | bucket x span=5 | stats avg(y) by x',
+    options: { preview: { facetEvaluables: true } },
+    nrql: 'FROM Log SELECT average(y) FACET floor(numeric(x) / 5) * 5',
+    warningFunc: ['bin_facet_expression', 'facet_default_limit'],
+    doc: 'nrql-preview',
+    verified: false,
   },
   // Gap #3 — cascading mvexpand
   {
@@ -6122,7 +6288,7 @@ const cases = [
   {
     spl: 'index=web | eval n=mvcount(split(body, ",")) | stats sum(n)',
     nrql: "FROM Log WITH length(split(body, ',')) AS n SELECT sum(n) WHERE index = 'web'",
-    warningFunc: [],
+    warningFunc: ['split_element_cap'],
     doc: 'eval-multivalue',
     verified: false,
   },
@@ -6662,7 +6828,10 @@ describe('translateSplToNrql', () => {
     const label = c.spl === null ? 'null' : c.spl || '(empty)';
     const testFn = c.skip ? it.skip : it;
     testFn(`[${i}] ${label.slice(0, 80)}`, () => {
-      const r = translateSplToNrql(c.spl);
+      // `options` opts a case in to NRQL Limited Preview gates. Omitted on
+      // almost every case, which is itself the regression lock: default-off
+      // output must stay byte-identical.
+      const r = translateSplToNrql(c.spl, c.options);
       expectReasonedResult(r);
 
       if ('nrql' in c) expect(r.nrql).toBe(c.nrql);
@@ -6728,7 +6897,11 @@ afterAll(() => {
   for (const c of cases) {
     if (!c.doc) continue;
     if (!groups[c.doc]) groups[c.doc] = [];
-    const r = translateSplToNrql(c.spl);
+    // AI-DEV: MUST pass `c.options`, exactly as the test runner above does. A
+    // preview-gated case translated here without its options renders its
+    // default-off output into SPL_TO_NRQL.md, so the generated doc disagrees
+    // with the asserted NRQL and the doc diff flaps on every run.
+    const r = translateSplToNrql(c.spl, c.options);
     const nrql = r.nrql || null;
     const warnings = r.warnings.length > 0 ? r.warnings : null;
     const unsupported = r.unsupported.length > 0 ? r.unsupported : null;

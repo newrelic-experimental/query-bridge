@@ -22,6 +22,7 @@ import {
 } from '../../ir/nodes.js';
 import { escapeStringWildcardForNrql } from '../../output/nrql/nrqlEncoding.js';
 import { messages } from '../../messages.js';
+import { getPreview, setPreview } from '../../previewFlags.js';
 // Circular import — safe because walkEvalExpr is only invoked at runtime (during
 // translation), never at module load. Mirrors evalHandlers.js's import of
 // translateSearchExpr from splToIR.js.
@@ -508,6 +509,7 @@ export function wrapAsSubquery(ir) {
     select: ir.select,
     facet: ir.facet,
     bindings: ir.bindings,
+    expand: ir.expand,
     where: ir.where,
     timeseries: ir.timeseries,
   };
@@ -522,6 +524,10 @@ export function wrapAsSubquery(ir) {
   const innerQuery = SelectQuery({
     dataSource: ir.dataSource,
     bindings: [...ir.bindings],
+    // EXPAND goes INNER with the bindings it reads: it fans the raw events out
+    // per element, which must happen before the aggregation that is being
+    // pushed down. Leaving it on the outer would try to expand aggregated rows.
+    expand: [...(ir.expand ?? [])],
     select: [...ir.select],
     where: [...ir.where],
     facet: innerFacet,
@@ -532,14 +538,53 @@ export function wrapAsSubquery(ir) {
     // aggregate. No-op when ir.timeseries is null (the common stats/where case).
     timeseries: ir.timeseries,
   });
+  // AI-DEV: The inner level is a NEW query, so it does not inherit the
+  // non-enumerable preview gates. Without this it would translate with every
+  // NRQL Beta gate off while its parent has them on. Do NOT remove.
+  setPreview(innerQuery, getPreview(ir));
 
   ir.dataSource = { type: 'SubquerySource', query: innerQuery };
   ir.select = [];
   ir.facet = [];
   ir.bindings = [];
+  ir.expand = [];
   ir.where = [];
   ir.timeseries = null;
   return () => Object.assign(ir, before);
+}
+
+// ── Within-event collections (NRQL LP lambdas / EXPAND) ─────
+
+// Functions whose result is a real collection WITHIN a single event. `split`
+// builds a list from a delimited string; `jparse` of a `[*]`/`[N]` path yields
+// a JSON array.
+const COLLECTION_FUNCS = new Set(['split', 'jparse']);
+
+/**
+ * The WITH binding that makes `field` a provable within-event collection, or
+ * null.
+ *
+ * AI-DEV: A bare event attribute MUST return null. NRQL's collection functions
+ * and EXPAND only work on a within-event list — a cross-event `uniques()`/
+ * `values()` result is rejected outright (validated: every form, including
+ * through a subquery) — and over a scalar they quietly do the wrong thing
+ * instead of failing. Do NOT relax this to "any identifier".
+ *
+ * @param {string} field - The SPL field name.
+ * @param {object} ir - The query level whose bindings to search.
+ * @returns {object|null} The binding, or null when not provably a collection.
+ */
+export function collectionBindingOf(field, ir) {
+  for (const binding of ir.bindings) {
+    if (binding.name !== field) continue;
+    const expr = binding.expr;
+    if (expr?.type === 'ArrayLiteral') return binding;
+    if (expr?.type === 'Function' && COLLECTION_FUNCS.has(expr.name)) {
+      return binding;
+    }
+    return null;
+  }
+  return null;
 }
 
 // ── Subsearch normalization ─────────────────────────────────

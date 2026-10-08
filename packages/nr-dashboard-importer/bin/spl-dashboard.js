@@ -14,6 +14,7 @@ import { translateWidgets } from '../src/translateWidgets.js';
 import { translateVariables } from '../src/translateVariables.js';
 import { emitTerraform, slugify } from '../src/emitTerraform.js';
 import { buildReport } from '../src/report.js';
+import { PREVIEW_FLAG_NAMES } from '@newrelic/query-bridge';
 
 // Provider regions the importer can target. `Staging` routes the New Relic
 // provider to staging-api.newrelic.com (internal). Validated at the CLI boundary;
@@ -25,7 +26,12 @@ const usage = `Usage:
   cat dash.xml | spl-dashboard          read from stdin
   spl-dashboard <file.xml> --out ./dir  output directory (default: .)
   spl-dashboard <file.xml> --account 12345  bake a literal account_id
-  spl-dashboard <file.xml> --region Staging  provider region: US (default), EU, JP, Staging`;
+  spl-dashboard <file.xml> --region Staging  provider region: US (default), EU, JP, Staging
+  spl-dashboard <file.xml> --preview=expand,split   opt in to NRQL Limited Preview syntax
+  spl-dashboard <file.xml> --preview-all            enable every preview flag
+
+Preview flags (each needs the matching NRQL Beta flag on the target account):
+  ${PREVIEW_FLAG_NAMES.join(', ')}`;
 
 function parseUnit(unit) {
   return unit.format === 'studio'
@@ -39,7 +45,7 @@ function parseUnit(unit) {
  * `{skipped, index, reason}` — one malformed entry never aborts its siblings. A
  * malformed envelope itself still throws at `detectFormat` (a loud, top-level error).
  * @param {string} input
- * @param {{account:number|null, region?:string}} opts
+ * @param {{account:number|null, region?:string, preview?:object}} opts
  * @returns {({skipped:false, slug:string, files:Record<string,string>}|{skipped:true, index:number, reason:string})[]}
  */
 export function runImport(input, opts) {
@@ -52,8 +58,13 @@ export function runImport(input, opts) {
       const multiSelectTokens = new Set(
         model.variables.filter((v) => v.multi).map((v) => v.name),
       );
-      const translated = translateWidgets(model.widgets, { multiSelectTokens });
-      const variables = translateVariables(model.variables);
+      const translated = translateWidgets(model.widgets, {
+        multiSelectTokens,
+        preview: opts.preview,
+      });
+      const variables = translateVariables(model.variables, {
+        preview: opts.preview,
+      });
       const emitModel = { ...model, widgets: translated, variables };
       const tf = emitTerraform(emitModel, {
         accountId: opts.account,
@@ -83,7 +94,7 @@ export function runImport(input, opts) {
 }
 
 export function parseArgs(argv) {
-  const opts = { out: '.', account: null, file: null };
+  const opts = { out: '.', account: null, file: null, preview: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out') opts.out = argv[++i];
@@ -95,6 +106,25 @@ export function parseArgs(argv) {
       const r = REGIONS[String(argv[++i]).toLowerCase()];
       if (!r) throw new Error('--region must be one of US, EU, JP, Staging');
       opts.region = r;
+    } else if (a === '--preview' || a.startsWith('--preview=')) {
+      // `--preview=a,b` or `--preview a,b`; repeatable.
+      const raw = a.startsWith('--preview=') ? a.slice(10) : argv[++i];
+      const names = String(raw ?? '')
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean);
+      const unknown = names.filter((n) => !PREVIEW_FLAG_NAMES.includes(n));
+      if (unknown.length > 0) {
+        throw new Error(
+          `--preview has unknown flag(s): ${unknown.join(', ')}; ` +
+            `valid flags: ${PREVIEW_FLAG_NAMES.join(', ')}`,
+        );
+      }
+      opts.preview = opts.preview ?? {};
+      for (const n of names) opts.preview[n] = true;
+    } else if (a === '--preview-all') {
+      opts.preview = opts.preview ?? {};
+      for (const n of PREVIEW_FLAG_NAMES) opts.preview[n] = true;
     } else if (a === '--format')
       i++; // accepted, terraform-only in Phase 1
     else if (!a.startsWith('-')) opts.file = a;
@@ -127,7 +157,11 @@ async function main() {
       console.log(usage);
       return;
     }
-    results = runImport(xml, { account: opts.account, region: opts.region });
+    results = runImport(xml, {
+      account: opts.account,
+      region: opts.region,
+      preview: opts.preview,
+    });
   } catch (e) {
     process.stderr.write(`error: ${e.message}\n`);
     process.exitCode = 1;

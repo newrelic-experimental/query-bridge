@@ -11,10 +11,15 @@
  * Re-exported public types.
  * @typedef {import('./translate.js').TranslateResult} TranslateResult
  * @typedef {import('./ir/nodes.js').IRNode} IRNode
+ * @typedef {import('./previewFlags.js').TranslateOptions} TranslateOptions
+ * @typedef {import('./previewFlags.js').PreviewFlags} PreviewFlags
  */
 
 // SPL → NRQL translator
 export { translateSplToNrql } from './translate.js';
+
+// Opt-in NRQL Limited Preview syntax gates
+export { PREVIEW_FLAG_NAMES } from './previewFlags.js';
 
 // Time parsing utility
 export { parseSplTime } from './input/spl/splTime.js';

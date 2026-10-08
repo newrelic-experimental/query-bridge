@@ -57,6 +57,33 @@ export const DualCheck = (field, op, value) => ({
   value,
 });
 
+// ── Collection / lambda nodes (NRQL Limited Preview; gated — previewFlags.js) ──
+
+/**
+ * A lambda: `x -> (body)`, or `(a, b) -> (body)` for arity > 1.
+ *
+ * A higher-order collection call needs no node of its own — `filter(xs, p)` is
+ * `Func('filter', [xs, Lambda(['x'], <predicate>)])`, which inherits the
+ * existing tree-walking and function emission.
+ *
+ * @param {string[]} params - Parameter names; must be unique (NRQL rejects repeats).
+ * @param {object} body - The body expression.
+ */
+export const Lambda = (params, body) => ({ type: 'Lambda', params, body });
+
+/** An array literal: `[a, b, c]`. */
+export const ArrayLiteral = (elements) => ({ type: 'ArrayLiteral', elements });
+
+/**
+ * A map literal: `{k: v, …}`.
+ *
+ * @param {Array<{key: string, value: object}>} entries
+ */
+export const MapLiteral = (entries) => ({ type: 'MapLiteral', entries });
+
+/** Bracket navigation: `base[key]` — an object key or a zero-based array index. */
+export const Index = (base, key) => ({ type: 'Index', base, key });
+
 // ── Eval AST nodes (consumed by walkEvalExpr; never emitted to NRQL directly) ──
 
 export const EvalArith = (op, left, right) => ({
@@ -93,12 +120,30 @@ export const OrderBy = (field, descending) => ({
   descending,
 });
 
+/**
+ * NRQL `EXPAND <collection> AS <alias>` — replay one event as one row per
+ * element of a collection. Emitted between WITH and SELECT.
+ *
+ * @param {object} source - The collection expression (an attribute, a WITH
+ *   binding reference, or a computed collection like `split(f, ',')`).
+ * @param {string} alias - The per-element binding name. MUST differ from the
+ *   source binding's name; the original attribute stays readable on every
+ *   replayed row, so reusing the name groups by the whole list instead.
+ */
+export const ExpandClause = (source, alias) => ({
+  type: 'ExpandClause',
+  source,
+  alias,
+});
+
 // ── Query-level nodes ─────────────────────────────────────────
 
 export const SelectQuery = (overrides = {}) => ({
   type: 'SelectQuery',
   dataSource: EventType(['Log']),
   bindings: [],
+  /** @type {IRNode[]} ExpandClause[] — NRQL EXPAND, emitted between WITH and SELECT */
+  expand: [],
   select: [],
   where: [],
   facet: [],

@@ -12,6 +12,7 @@
 import { transformTree } from './transform.js';
 import { Identifier, BinOp, Func, Literal, Wildcard, Alias } from './nodes.js';
 import { foldPostAggregationPass } from './foldPostAggregation.js';
+import { getPreview, setPreview } from '../previewFlags.js';
 
 // ── Pass 1: Double-NOT elimination ──────────────────────────
 
@@ -139,9 +140,20 @@ function applyFieldReplacements(ir) {
   // Plain-substitute everywhere except select/facet (emptied here so transformTree
   // skips them), then alias-substitute select/facet below. where/orderBy/bindings/
   // dataSource keep the pre-existing plain substitution.
-  const walked = transformTree({ ...ir, select: [], facet: [] }, sub);
+  // AI-DEV: `expand` is emptied too and restored VERBATIM. An EXPAND source is a
+  // collection expression, not an output column — substituting a rename into it
+  // repoints the fan-out at a different attribute. Do NOT fold it into the
+  // transformTree walk.
+  const walked = transformTree(
+    { ...ir, select: [], facet: [], expand: [] },
+    sub,
+  );
   walked.select = ir.select.map(aliasOutput);
   walked.facet = ir.facet.map(aliasOutput);
+  walked.expand = ir.expand ?? [];
+  // The spread above drops non-enumerable properties, so re-seed the preview
+  // gates onto the rebuilt query (see previewFlags.js).
+  setPreview(walked, getPreview(ir));
 
   const unreferenced = Object.entries(map).filter(([f]) => !substituted.has(f));
   if (unreferenced.length > 0) {
@@ -178,6 +190,16 @@ const passes = [
   applyFieldReplacements,
 ];
 
+/**
+ * Run every optimizer pass over the IR.
+ *
+ * A pass needing an NRQL Beta gate reads it with `getPreview(ir)` — the gates
+ * ride on the IR non-enumerably (see `previewFlags.js`), so no pass signature
+ * has to change to consult them.
+ *
+ * @param {object} ir
+ * @returns {object}
+ */
 export function optimize(ir) {
   return passes.reduce((node, pass) => pass(node), ir);
 }

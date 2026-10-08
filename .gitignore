@@ -7,3 +7,6 @@ tmp/
 docs/local/
 .superpowers/
 types/
+
+# Vendor pre-release docs — internal, must never reach a public repo
+new_functions/

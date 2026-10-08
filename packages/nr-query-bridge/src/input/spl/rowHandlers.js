@@ -14,19 +14,23 @@ import {
   Identifier,
   Literal,
   Func,
+  BinOp,
   Alias,
   OrderBy,
   Wildcard,
   Binding,
+  ExpandClause,
 } from '../../ir/nodes.js';
 import {
   mapFieldName,
   formatSpan,
   looksLikeNumber,
   rawEventIdentifier,
+  collectionBindingOf,
 } from './splExprUtils.js';
 import { recognizeWildcardRename, collectRefs } from './wildcardRename.js';
 import { messages } from '../../messages.js';
+import { getPreview } from '../../previewFlags.js';
 
 export function handleTable(cmd, ir) {
   if (ir._hasAggregation) {
@@ -369,12 +373,37 @@ export function handleBin(cmd, ir) {
       ir.select.push(Func('count', []));
     }
   } else if (cmd.field && (cmd.span || cmd.width)) {
-    // Numeric bin → histogram(field, width)
     const width = cmd.width || Number(cmd.span);
-    ir.select = [
-      Func('histogram', [Identifier(cmd.field), Literal(width, 'number')]),
-    ];
-    ir._hasAggregation = true;
+    const binned = Number.isFinite(width) && width !== 0;
+    if (getPreview(ir).facetEvaluables && binned) {
+      // `bin f span=N | stats … by f` groups by the bucket. `FACET <computed
+      // expression>` expresses that directly, so point later references at
+      // `floor(numeric(f)/N)*N` — Splunk's label is the bucket's LOWER BOUND,
+      // hence the `*N` rather than a bare bucket index.
+      //
+      // Deliberately does NOT set `_hasAggregation`: this is a row-wise
+      // bucketing, and marking it as an aggregation is what makes the following
+      // `stats` wrap as a subquery and fail `compound_collapse_unsupported`.
+      ir._fieldReplacements = ir._fieldReplacements || {};
+      ir._fieldReplacements[cmd.alias || cmd.field] = BinOp(
+        '*',
+        Func('floor', [
+          BinOp(
+            '/',
+            Func('numeric', [Identifier(cmd.field)]),
+            Literal(width, 'number'),
+          ),
+        ]),
+        Literal(width, 'number'),
+      );
+      ir.warnings.push(messages.bin_facet_expression(cmd.field, width));
+    } else {
+      // Numeric bin → histogram(field, width)
+      ir.select = [
+        Func('histogram', [Identifier(cmd.field), Literal(width, 'number')]),
+      ];
+      ir._hasAggregation = true;
+    }
   } else {
     ir.unsupported.push(messages.bin_unsupported());
   }
@@ -534,7 +563,56 @@ export function handleStrcat(cmd, ir) {
 }
 
 export function handleMvexpand(cmd, ir) {
-  ir.unsupported.push(messages.mvexpand_unsupported());
+  const preview = getPreview(ir);
+  const source = preview.expand ? collectionBindingOf(cmd.field, ir) : null;
+  if (!source) {
+    // No `Expand` opt-in, or the field is not a provable collection.
+    ir.unsupported.push(messages.mvexpand_unsupported());
+    return;
+  }
+
+  // AI-DEV: EXPAND combined with JOIN is a known Limited Preview defect. Stay
+  // loud until it is re-verified against a flag-enabled account rather than
+  // emitting a query whose row multiplication is undefined.
+  if (ir.join) {
+    ir.unsupported.push(messages.expand_with_join_unsupported());
+    return;
+  }
+
+  // The alias MUST differ from the source binding name: the original attribute
+  // stays readable on every replayed row, so reusing the name would leave
+  // downstream `stats ... by field` grouping on the whole list.
+  const alias = pickExpandAlias(cmd.field, ir);
+  ir.expand.push(ExpandClause(Identifier(source.name), alias));
+
+  // Point later references at the per-element binding. applyFieldReplacements
+  // relabels output columns back to the Splunk name (`perms_expanded AS
+  // 'perms'`) and leaves the EXPAND source itself alone.
+  ir._fieldReplacements = ir._fieldReplacements || {};
+  ir._fieldReplacements[cmd.field] = Identifier(alias);
+
+  // NRQL EXPAND is capped at 1:100 and TRUNCATES SILENTLY — the query keeps
+  // running, so without this the user cannot tell a long list was cut.
+  ir.warnings.push(messages.expand_truncation_cap());
+
+  // SPL `mvexpand field limit=N` caps elements per event; NRQL has no per-event
+  // EXPAND limit, only the fixed 1:100 cap.
+  if (cmd.limit != null) {
+    ir.warnings.push(messages.expand_limit_ignored(cmd.limit));
+  }
+}
+
+// A per-element binding name that collides with no existing binding, select
+// alias, or facet key.
+function pickExpandAlias(field, ir) {
+  const taken = new Set(ir.bindings.map((b) => b.name));
+  let candidate = `${field}_expanded`;
+  let n = 2;
+  while (taken.has(candidate)) {
+    candidate = `${field}_expanded${n}`;
+    n++;
+  }
+  return candidate;
 }
 
 export function handleUniq(_cmd, ir) {

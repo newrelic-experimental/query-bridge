@@ -40,6 +40,7 @@ import {
 } from './spathAutoExtract.js';
 import { isDedupCountDistinct } from './dedupCountDistinct.js';
 import { createBindingScope } from './bindingScope.js';
+import { setPreview } from '../../previewFlags.js';
 import { formatRexAsAparse } from './rexAparse.js';
 import { applyWildcardRenames } from './wildcardRename.js';
 import { handleEval, handleWhere, walkEvalExpr } from './evalHandlers.js';
@@ -207,8 +208,18 @@ function buildPhraseTokenMatch(value, unsupported) {
   return match;
 }
 
-export function translateAstToIR(ast) {
+/**
+ * SPL AST → IR.
+ *
+ * @param {object} ast - The parsed SPL AST.
+ * @param {Readonly<Record<string, boolean>>} [preview] - Normalized NRQL Beta
+ *   gates (see `previewFlags.js`). Passed explicitly to each command handler
+ *   rather than stored on the IR, so a `wrapAsSubquery` level cannot lose it.
+ * @returns {object} The IR.
+ */
+export function translateAstToIR(ast, preview = {}) {
   const ir = SelectQuery();
+  setPreview(ir, preview);
 
   // Search clause → WHERE
   if (ast.search) {

@@ -11,7 +11,7 @@
      fails loudly. Do NOT remove a tag from this list to silence that failure
      without either adding a real sentinel section or deleting the tag from its
      test cases. -->
-<!-- spl-table-tags: bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression, eval-like-apostrophe-regression, where-in-func-regression, regex-apostrophe-regression, regex-template-var-regression, compound-eval-eval, compound-eval-where, compound-eval-stats, compound-where-where, compound-stats-stats -->
+<!-- spl-table-tags: nrql-preview, bin-as-alias, stats-agg, quoted-field-name, eval-plus-arithmetic-regression, where-comparison-rhs, where-bang-negation, where-bang-regression, where-leading-dot-decimal, where-mvcount, sort-leniency, sort-typehint, sort-space-multikey, sort-leading-zero-regression, top-multifield, top-multifield-regression, timechart-by-options, timechart-by-options-regression, tokenizer-empty-list-item, tokenizer-in-space-separated, tokenizer-in-comma-regression, tokenizer-where-no-space, tokenizer-where-space-regression, tokenizer-stats-stray-comma, tokenizer-stats-multi-fn-regression, tokenizer-quote-boundary, tokenizer-quote-boundary-token, tokenizer-quote-boundary-macro, tokenizer-quote-boundary-spaced-regression, tokenizer-quote-boundary-or-regression, tokenizer-quote-boundary-paren-regression, eval-like-apostrophe-regression, where-in-func-regression, regex-apostrophe-regression, regex-template-var-regression, compound-eval-eval, compound-eval-where, compound-eval-stats, compound-where-where, compound-stats-stats -->
 
 See [CLI.md](CLI.md) for the command-line tool documentation.
 
@@ -609,13 +609,6 @@ NRQL: FROM Log WITH numeric(bytes) / 1024 AS kb SELECT kb AS 'kilobytes', *
 
 ```
 🤖 Confirmed by LLM
-SPL:  * | eval parts = split(field, "},{")
-NRQL: FROM Log WITH split(field, '},{') AS parts SELECT *
-🟡 `split()` with multi-character delimiter '},{' not supported; NRQL split() accepts single characters only
-```
-
-```
-🤖 Confirmed by LLM
 SPL:  * | eval combined = coalesce(msg, message)
 NRQL: FROM Log WITH (msg OR message) AS combined SELECT *
 ```
@@ -672,6 +665,12 @@ NRQL: FROM Log WITH round(a) + 1 AS r SELECT *
 ❓ Not confirmed
 SPL:  * | stats count, sum(throughput) as count by host | eval x = count * 2
 🔴 `eval` after stats: two aggregates resolve to the same subquery column 'count', which NRQL would silently collapse to one. Give them distinct aliases before the eval.
+```
+
+```
+🤖 Confirmed by LLM
+SPL:  * | eval parts = split(field, "},{")
+🔴 `split()` with multi-character delimiter '},{' has no NRQL equivalent; NRQL split() rejects a delimiter that is not exactly one character ("split delimiter must be one character")
 ```
 
 ```
@@ -1557,6 +1556,7 @@ SPL:  * | stats values(title) as title | mvexpand title
 ```
 🤖 Confirmed by LLM
 SPL:  * | eval perms=split(permissions, ",") | mvexpand perms | stats count by perms
+🟡 `split()` returns at most 256 elements in NRQL; a longer delimited value is silently truncated past the 256th item
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
 🔴 `mvexpand` is not supported; NRQL cannot expand multivalue fields into separate rows
 ```
@@ -3449,7 +3449,7 @@ NRQL: FROM Log WITH substring(name, -3) AS x SELECT *
 ```
 ✅ Confirmed by human
 SPL:  * | eval x=trim(name)
-NRQL: FROM Log WITH capture(name, r'^\s*(?P<x>.*\S)\s*$') AS x SELECT *
+NRQL: FROM Log WITH capture(name, r'^\s*(?P<x>(?:.*\S)?)\s*$') AS x SELECT *
 ```
 
 ```
@@ -3899,6 +3899,7 @@ NRQL: FROM Log WITH capture(data, r'^(?:[^,]*,){0}(?P<item>[^,]*)(?s:.*)$') AS x
 ❓ Not confirmed
 SPL:  index=web | eval n=mvcount(split(body, ",")) | stats sum(n)
 NRQL: FROM Log WITH length(split(body, ',')) AS n SELECT sum(n) WHERE index = 'web'
+🟡 `split()` returns at most 256 elements in NRQL; a longer delimited value is silently truncated past the 256th item
 ```
 
 ```

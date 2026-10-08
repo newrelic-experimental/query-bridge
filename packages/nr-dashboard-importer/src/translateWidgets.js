@@ -81,12 +81,15 @@ function rewriteMultiSelectComparisons(nrql, multiSelectTokens) {
  * unsupported/errors become markdown placeholders that preserve the original SPL.
  *
  * @param {Widget[]} widgets
- * @param {{multiSelectTokens?: Set<string>}} [opts] multiselect variable tokens
- *   whose `= {{tok}}` comparisons are rewritten to `IN ({{tok}})`.
+ * @param {{multiSelectTokens?: Set<string>, preview?: object}} [opts]
+ *   `multiSelectTokens`: multiselect variable tokens whose `= {{tok}}`
+ *   comparisons are rewritten to `IN ({{tok}})`. `preview`: opt-in NRQL
+ *   Limited Preview gates, forwarded verbatim to the translator.
  * @returns {(CleanWidget|PlaceholderWidget)[]}
  */
 export function translateWidgets(widgets, opts = {}) {
   const multiSelectTokens = opts.multiSelectTokens ?? new Set();
+  const translateOptions = opts.preview ? { preview: opts.preview } : {};
   return widgets.map((widget) => {
     // Literal-markdown widgets carry their body in `options.text` (e.g. a Studio
     // image rendered as `![](url)`) and have no SPL. Emit the text as a CLEAN
@@ -128,7 +131,7 @@ export function translateWidgets(widgets, opts = {}) {
       };
     }
 
-    const result = translateSplToNrql(widget.rawSpl);
+    const result = translateSplToNrql(widget.rawSpl, translateOptions);
     const failed = result.unsupported.length > 0 || result.errors.length > 0;
     if (failed) {
       return {

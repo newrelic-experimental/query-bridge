@@ -67,8 +67,16 @@ export function emitExpr(node) {
       if (node.name === 'count' && node.args.length === 0) {
         return 'count(*)';
       }
-      // filter(func, WHERE condition) has special NRQL syntax
-      if (node.name === 'filter' && node.args.length === 2) {
+      // AI-DEV: Two DIFFERENT NRQL functions are both named `filter` with two
+      // arguments. The GA aggregate is `filter(<agg>, WHERE <cond>)`; the
+      // Limited Preview collection function is `filter(<collection>, <lambda>)`
+      // and takes NO `WHERE` keyword. A Lambda second argument means the
+      // collection form — do NOT emit `WHERE` for it.
+      if (
+        node.name === 'filter' &&
+        node.args.length === 2 &&
+        node.args[1].type !== 'Lambda'
+      ) {
         return `filter(${emitExpr(node.args[0])}, WHERE ${emitExpr(node.args[1])})`;
       }
       // jparse(field, 'path'): non-plain keys need the all-bracketed path form.
@@ -82,6 +90,27 @@ export function emitExpr(node) {
         return `jparse(${emitExpr(node.args[0])}, '${escapeStringLiteralForNrql(path)}')`;
       }
       return `${node.name}(${node.args.map(emitExpr).join(', ')})`;
+
+    case 'Lambda': {
+      // The body is ALWAYS parenthesized: unconditionally valid, and it removes
+      // every question about how `->` binds against the body's own operators.
+      const params =
+        node.params.length === 1
+          ? node.params[0]
+          : `(${node.params.join(', ')})`;
+      return `${params} -> (${emitExpr(node.body)})`;
+    }
+
+    case 'ArrayLiteral':
+      return `[${node.elements.map(emitExpr).join(', ')}]`;
+
+    case 'MapLiteral':
+      return `{${node.entries
+        .map((e) => `${emitMapKey(e.key)}: ${emitExpr(e.value)}`)
+        .join(', ')}}`;
+
+    case 'Index':
+      return `${emitExpr(node.base)}[${emitExpr(node.key)}]`;
 
     case 'Alias':
       return `${emitExpr(node.expr)} AS '${escapeStringLiteralForNrql(node.name)}'`;
@@ -172,6 +201,15 @@ const NRQL_RESERVED_WORDS = new Set([
   'OFFSET',
   'SLIDE',
 ]);
+
+// A map-literal key. Bare when it is a plain identifier (`{a: 1}`), quoted
+// otherwise (`{'404': 'client error'}` — the inline-lookup form, where keys are
+// commonly numeric strings that cannot be bare).
+function emitMapKey(key) {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
+    ? key
+    : `'${escapeStringLiteralForNrql(key)}'`;
+}
 
 function smartEscape(name) {
   // Tuple destructuring names like (a, b) pass through as-is
@@ -286,6 +324,14 @@ function emitSelectQuery(q) {
       return `${expr} AS ${smartEscape(b.name)}`;
     });
     parts.push(`WITH ${binds.join(', ')}`);
+  }
+
+  // EXPAND — must sit between WITH and SELECT: an EXPAND source may reference a
+  // WITH binding, and the expanded alias may be selected/faceted below.
+  if (q.expand?.length > 0) {
+    for (const e of q.expand) {
+      parts.push(`EXPAND ${emitExpr(e.source)} AS ${smartEscape(e.alias)}`);
+    }
   }
 
   // SELECT
