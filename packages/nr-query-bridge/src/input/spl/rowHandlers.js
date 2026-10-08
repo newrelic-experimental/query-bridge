@@ -375,34 +375,53 @@ export function handleBin(cmd, ir) {
   } else if (cmd.field && (cmd.span || cmd.width)) {
     const width = cmd.width || Number(cmd.span);
     const binned = Number.isFinite(width) && width !== 0;
-    if (getPreview(ir).facetEvaluables && binned) {
-      // `bin f span=N | stats … by f` groups by the bucket. `FACET <computed
-      // expression>` expresses that directly, so point later references at
-      // `floor(numeric(f)/N)*N` — Splunk's label is the bucket's LOWER BOUND,
-      // hence the `*N` rather than a bare bucket index.
+    if (binned && cmd._groupedDownstream) {
+      // `bin f span=N | stats … by f` groups by the bucket, which `FACET
+      // <computed expression>` expresses directly. Point later references at
+      // the bucket expression.
       //
-      // Deliberately does NOT set `_hasAggregation`: this is a row-wise
+      // Splunk's group label is the bucket's LOWER BOUND, so `floor(f/N)*N` is
+      // the faithful form — but multiplying back is reported to need the
+      // `NrqlFacetEvaluables` flag where the bare `floor(f/N)` does not, so the
+      // ungated form emits the bucket INDEX and says so (`bucket_index_label`).
+      // Both are `FACET <expr>`, so that split is suspect; probe V-5 settles it
+      // and the warning goes away if the bare form turns out to need the flag
+      // too.
+      //
+      // AI-DEV: Deliberately does NOT set `_hasAggregation`: this is a row-wise
       // bucketing, and marking it as an aggregation is what makes the following
       // `stats` wrap as a subquery and fail `compound_collapse_unsupported`.
+      // That is exactly what the pre-PR-12 `histogram()` fallback did, which is
+      // why every `bin … | stats … by <field>` query was unsupported.
+      const bucket = Func('floor', [
+        BinOp(
+          '/',
+          Func('numeric', [Identifier(cmd.field)]),
+          Literal(width, 'number'),
+        ),
+      ]);
       ir._fieldReplacements = ir._fieldReplacements || {};
-      ir._fieldReplacements[cmd.alias || cmd.field] = BinOp(
-        '*',
-        Func('floor', [
-          BinOp(
-            '/',
-            Func('numeric', [Identifier(cmd.field)]),
-            Literal(width, 'number'),
-          ),
-        ]),
-        Literal(width, 'number'),
-      );
-      ir.warnings.push(messages.bin_facet_expression(cmd.field, width));
-    } else {
-      // Numeric bin → histogram(field, width)
+      if (getPreview(ir).facetEvaluables) {
+        ir._fieldReplacements[cmd.alias || cmd.field] = BinOp(
+          '*',
+          bucket,
+          Literal(width, 'number'),
+        );
+        ir.warnings.push(messages.bin_facet_expression(cmd.field, width));
+      } else {
+        ir._fieldReplacements[cmd.alias || cmd.field] = bucket;
+        ir.warnings.push(messages.bucket_index_label(cmd.field, width));
+      }
+    } else if (binned) {
+      // Nothing downstream groups by the bucket, so the row-wise rewrite would
+      // have no FACET to land in: keep the histogram() translation.
       ir.select = [
         Func('histogram', [Identifier(cmd.field), Literal(width, 'number')]),
       ];
       ir._hasAggregation = true;
+    } else {
+      // A span NRQL cannot bin on (non-numeric or zero width).
+      ir.unsupported.push(messages.bin_unsupported());
     }
   } else {
     ir.unsupported.push(messages.bin_unsupported());

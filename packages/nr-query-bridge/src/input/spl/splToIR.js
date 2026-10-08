@@ -281,6 +281,16 @@ export function translateAstToIR(ast, preview = {}) {
       );
     }
     if (cmd.type === 'MvexpandCommand') mvexpandCount++;
+    // `bin f span=N` becomes a FACET-by-bucket expression only when a later
+    // command actually GROUPS BY the binned field. A bare `bin` keeps its
+    // histogram() translation (human-verified), because nothing downstream
+    // turns the row-wise bucket into groups.
+    if (cmd.type === 'BinCommand') {
+      const name = cmd.alias || cmd.field;
+      cmd._groupedDownstream = ast.commands
+        .slice(i + 1)
+        .some((later) => (later.groupBy || []).includes(name));
+    }
     // Gap #2, #9: warn when dedup precedes aggregation
     if (
       sawDedup &&

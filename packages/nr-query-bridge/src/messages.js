@@ -367,6 +367,10 @@ export const messages = {
   bin_facet_expression: (field, width) =>
     `bin ${field} span=${width} translated as FACET floor(numeric(${field})/${width})*${width}; the group label is the bucket's lower bound, matching Splunk`,
 
+  // SPL: `* | bin duration span=100 | stats count by duration`
+  bucket_index_label: (field, width) =>
+    `bin ${field} span=${width} translated as FACET floor(numeric(${field})/${width}); the group label is the bucket INDEX, where Splunk labels each group with the bucket's lower bound — multiply by ${width} to compare, or enable the facetEvaluables preview flag to emit the lower bound directly`,
+
   // SPL: `* | eval parts = split(field, ",")`
   split_element_cap: () =>
     'split() returns at most 256 elements in NRQL; a longer delimited value is silently truncated past the 256th item',

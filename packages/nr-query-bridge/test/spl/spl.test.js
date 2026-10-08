@@ -4419,11 +4419,22 @@ const cases = [
   },
   // `bin f span=N | stats … by f` — FACET by a computed expression groups on the
   // bucket directly, instead of histogram()-then-regroup (which is a second
-  // aggregation and fails compound_collapse). Gate OFF keeps that loud failure.
+  // aggregation and failed compound_collapse). Ungated, the label is the bucket
+  // INDEX; `facetEvaluables` multiplies back to Splunk's lower bound.
   {
     spl: '* | bin duration span=100 | stats count by duration',
-    unsupportedFunc: ['compound_collapse_unsupported'],
+    nrql: 'FROM Log SELECT count(*) FACET floor(numeric(duration) / 100)',
+    warningFunc: ['bucket_index_label', 'facet_default_limit'],
+    doc: 'nrql-preview',
+    verified: false,
+  },
+  // A `bin` whose bucket nothing groups by keeps histogram() — the row-wise
+  // rewrite would have no FACET to land in, so the pre-existing
+  // histogram-then-regroup failure stands.
+  {
+    spl: '* | bin size span=10 | stats count by host',
     warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['compound_collapse_unsupported'],
     doc: 'nrql-preview',
     verified: false,
   },
