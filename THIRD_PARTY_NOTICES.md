@@ -64,7 +64,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### @nodable/entities
 
-This product includes source derived from [@nodable/entities](https://github.com/nodable/val-parsers) ([v3.0.0](https://github.com/nodable/val-parsers/tree/v3.0.0)), distributed under the [MIT License](https://github.com/nodable/val-parsers/blob/v3.0.0/README.md):
+This product includes source derived from [@nodable/entities](https://github.com/nodable/val-parsers) ([v3.1.0](https://github.com/nodable/val-parsers/tree/v3.1.0)), distributed under the [MIT License](https://github.com/nodable/val-parsers/blob/v3.1.0/README.md):
 
 ```
 MIT License
@@ -147,7 +147,7 @@ SOFTWARE.
 
 ### fast-xml-parser
 
-This product includes source derived from [fast-xml-parser](https://github.com/NaturalIntelligence/fast-xml-parser) ([v5.11.1](https://github.com/NaturalIntelligence/fast-xml-parser/tree/v5.11.1)), distributed under the [MIT License](https://github.com/NaturalIntelligence/fast-xml-parser/blob/v5.11.1/LICENSE):
+This product includes source derived from [fast-xml-parser](https://github.com/NaturalIntelligence/fast-xml-parser) ([v5.11.2](https://github.com/NaturalIntelligence/fast-xml-parser/tree/v5.11.2)), distributed under the [MIT License](https://github.com/NaturalIntelligence/fast-xml-parser/blob/v5.11.2/LICENSE):
 
 ```
 MIT License

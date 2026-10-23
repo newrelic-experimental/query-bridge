@@ -18,15 +18,15 @@
       "publisher": "Felix Gnass",
       "email": "fgnass@gmail.com"
     },
-    "@nodable/entities@3.0.0": {
+    "@nodable/entities@3.1.0": {
       "name": "@nodable/entities",
-      "version": "3.0.0",
-      "range": "3.0.0",
+      "version": "3.1.0",
+      "range": "3.1.0",
       "licenses": "MIT",
       "repoUrl": "https://github.com/nodable/val-parsers",
-      "versionedRepoUrl": "https://github.com/nodable/val-parsers/tree/v3.0.0",
+      "versionedRepoUrl": "https://github.com/nodable/val-parsers/tree/v3.1.0",
       "licenseFile": "node_modules/@nodable/entities/README.md",
-      "licenseUrl": "https://github.com/nodable/val-parsers/blob/v3.0.0/README.md",
+      "licenseUrl": "https://github.com/nodable/val-parsers/blob/v3.1.0/README.md",
       "licenseTextSource": "spdx",
       "publisher": "Amit Gupta",
       "url": "https://solothought.com"
@@ -57,15 +57,15 @@
       "publisher": "Amit Gupta",
       "url": "https://solothought.com"
     },
-    "fast-xml-parser@5.11.1": {
+    "fast-xml-parser@5.11.2": {
       "name": "fast-xml-parser",
-      "version": "5.11.1",
-      "range": "5.11.1",
+      "version": "5.11.2",
+      "range": "5.11.2",
       "licenses": "MIT",
       "repoUrl": "https://github.com/NaturalIntelligence/fast-xml-parser",
-      "versionedRepoUrl": "https://github.com/NaturalIntelligence/fast-xml-parser/tree/v5.11.1",
+      "versionedRepoUrl": "https://github.com/NaturalIntelligence/fast-xml-parser/tree/v5.11.2",
       "licenseFile": "node_modules/fast-xml-parser/LICENSE",
-      "licenseUrl": "https://github.com/NaturalIntelligence/fast-xml-parser/blob/v5.11.1/LICENSE",
+      "licenseUrl": "https://github.com/NaturalIntelligence/fast-xml-parser/blob/v5.11.2/LICENSE",
       "licenseTextSource": "file",
       "publisher": "Amit Gupta",
       "url": "https://solothought.com"
