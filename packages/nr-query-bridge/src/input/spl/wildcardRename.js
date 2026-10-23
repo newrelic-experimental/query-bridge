@@ -37,6 +37,10 @@ export function recognizeWildcardRename(from, to) {
  * Every Identifier name referenced in the consumer surfaces, not crossing into
  * subqueries. Used both to snapshot pre-rename names (ambiguity guard) and to find
  * downstream candidates. Mirrors transform.js's enumerate-every-property walk.
+ * Sibling: foldPostAggregation.js `collectIdentifiers` is the same deny-by-default node
+ * walk (Identifier→collect, stop at SubqueryExpr/SubquerySource, recurse every non-`type`
+ * key). Keep the traversal and subquery-boundary rule aligned across both unless there is a
+ * reason to diverge — they are not auto-synced.
  * @param {object} ir
  * @returns {Set<string>}
  */

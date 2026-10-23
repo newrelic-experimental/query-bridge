@@ -638,6 +638,9 @@ function hasRowwiseInner(query) {
 // reference cannot hide in a node type this function forgot to enumerate (Not, IsNull,
 // Like, Rlike, In, DualCheck, …). The only nodes we must NOT descend into are nested
 // subqueries — their references resolve against their OWN inner, not this query level.
+// Sibling: wildcardRename.js `collectRefs` is the same deny-by-default walk (seeded over
+// ir.select/where/facet/orderBy/bindings). Keep the traversal + boundary rule aligned across
+// both unless there is a reason to diverge — they are not auto-synced.
 function collectIdentifiers(node, acc) {
   if (!node || typeof node !== 'object') return;
   if (Array.isArray(node)) {
