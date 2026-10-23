@@ -38,7 +38,7 @@
   },
   "dependencies": {
     "@newrelic/query-bridge": "*",
-    "fast-xml-parser": "5.11.1",
+    "fast-xml-parser": "5.11.2",
     "turndown": ">=7.2.4"
   }
 }
