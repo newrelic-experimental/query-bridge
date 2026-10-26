@@ -38,8 +38,14 @@ describe('recognizeWildcardRename', () => {
   it('rejects a bare * as * (nothing to strip)', () => {
     expect(recognizeWildcardRename('*', '*')).toBe(null);
   });
-  it('rejects the re-prefix shape in Task 1 (added in Task 3)', () => {
-    expect(recognizeWildcardRename('*', 'fld_*')).toBe(null);
+  it('recognizes the re-prefix shape', () => {
+    expect(recognizeWildcardRename('*', 'fld_*')).toEqual({
+      direction: 'reprefix',
+      affix: 'fld_',
+    });
+  });
+  it('rejects a mid-string wildcard in the re-prefix target', () => {
+    expect(recognizeWildcardRename('*', 'fld_*_x')).toBe(null);
   });
 });
 
