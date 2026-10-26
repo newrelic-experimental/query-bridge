@@ -142,3 +142,22 @@ describe('translateWidgets — warnings attach but stay clean', () => {
     expect(Array.isArray(out[0].warnings)).toBe(true);
   });
 });
+
+describe('translateWidgets — means-all token in comparison LHS', () => {
+  it('translates a means-all multiselect panel to a real widget, not a placeholder', () => {
+    // `$cat$="*"` in field position used to poison the whole panel (parse error /
+    // unsupported_command). The translator now flips it to `'*' = {{cat}}` (B′), so
+    // the importer chokepoint produces a clean widget, not a markdown placeholder.
+    const widgets = [
+      createWidget({
+        title: 'By category',
+        vizType: 'bar',
+        rawSpl:
+          'index=web ($cat$="*" OR category="$cat$") | stats count by category',
+      }),
+    ];
+    const out = translateWidgets(widgets);
+    expect(out[0].outcome).toBe('clean');
+    expect(out[0].nrql).toContain("'*' = {{cat}}");
+  });
+});
