@@ -468,6 +468,17 @@ export const messages = {
     `dashboard variable ${token}'s values must include % wildcards (e.g. %value%); New Relic ` +
     'substitutes the value as-is and does not add wildcards.',
 
+  // SPL: `$tok$="*"` / `$tok$ = $other$` — a dashboard token in comparison FIELD
+  // position. New Relic substitutes a dashboard variable only in VALUE position,
+  // so a token can never stay in field position. An equality comparison with a
+  // non-token operand is flipped (B′, see means_all_token); a non-equality
+  // operator or a token-vs-token comparison can't flip → this loud clause-level
+  // unsupported (never a dead {{tok}} in field position).
+  token_lhs_unsupported: (token) =>
+    `$${token}$ is a dashboard variable on the field (left) side of a comparison, ` +
+    'but New Relic substitutes a variable only on the value (right) side, and this ' +
+    'comparison cannot be rearranged to put it there — so it cannot be translated.',
+
   // SPL: `app="$env:app$"` — Splunk's $env:…$ runtime-context namespace (current
   // app/page/user/locale + user-profile fields injected at render time). NR dashboards
   // expose no widget-level runtime-context token, and ':' cannot appear inside an NRQL

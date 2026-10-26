@@ -3594,6 +3594,24 @@ NRQL: FROM Log SELECT * WHERE index = 'web'
 ```
 
 ```
+❓ Not confirmed
+SPL:  * $cat$="*" | stats count
+🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
+```
+
+```
+❓ Not confirmed
+SPL:  * | where ($cat$="*" OR category="$cat$")
+🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
+```
+
+```
+❓ Not confirmed
+SPL:  * | where $cat$ = $other$
+🔴 $cat$ is a dashboard variable on the field (left) side of a comparison, but New Relic substitutes a variable only on the value (right) side, and this comparison cannot be rearranged to put it there — so it cannot be translated.
+```
+
+```
 🤖 Confirmed by LLM
 SPL:  index=web earliest=-24h latest=$tok.latest$ | stats count
 🟡 Latest=$tok.latest$ is a dashboard time variable resolved only at run time; it has no static value to translate. This has been dropped — the query will use the dashboard's default time range. To set a fixed bound, use a literal datetime (e.g. earliest=-24h or earliest="01/01/2024:00:00:00").
