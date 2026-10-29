@@ -531,7 +531,7 @@ NRQL: FROM Log WITH round(a) + 1 AS r SELECT *
 ```
 ❓ Not confirmed
 SPL:  * | stats count, sum(throughput) as count by host | eval x = count * 2
-🔴 `eval` after stats: two aggregates resolve to the same subquery column 'count', which NRQL would silently collapse to one. Give them distinct aliases before the eval.
+🔴 `two` aggregates resolve to the same subquery column 'count', which NRQL would silently collapse to one. Give them distinct aliases.
 ```
 
 ```
@@ -2935,37 +2935,43 @@ Shows the least common values of a field. Translates to NRQL `SELECT count(*) ..
 ```
 ❓ Not confirmed
 SPL:  * | rare status
-🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
+NRQL: FROM (FROM Log SELECT count(*) FACET status LIMIT MAX) SELECT status, count ORDER BY count ASC LIMIT 10
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct status the wrong groups may be kept
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | rare 5 uri_path
-🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
+NRQL: FROM (FROM Log SELECT count(*) FACET uri_path LIMIT MAX) SELECT uri_path, count ORDER BY count ASC LIMIT 5
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct uri_path the wrong groups may be kept
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | rare status by host
-🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
+NRQL: FROM (FROM Log SELECT count(*) FACET status, host LIMIT MAX) SELECT status, host, count ORDER BY count ASC LIMIT 10
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct status, host the wrong groups may be kept
 ```
 
 ```
 ❓ Not confirmed
 SPL:  status>=400 | rare 20 uri_path
-🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
+NRQL: FROM (FROM Log SELECT count(*) WHERE numeric(status) >= 400 FACET uri_path LIMIT MAX) SELECT uri_path, count ORDER BY count ASC LIMIT 20
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct uri_path the wrong groups may be kept
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | rare app limit=20
-🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
+NRQL: FROM (FROM Log SELECT count(*) FACET app LIMIT MAX) SELECT app, count ORDER BY count ASC LIMIT 20
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct app the wrong groups may be kept
 ```
 
 ```
 ❓ Not confirmed
 SPL:  * | rare limit=20 "details.error"
-🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
+NRQL: FROM (FROM Log SELECT count(*) FACET `details.error` LIMIT MAX) SELECT `details.error`, count ORDER BY count ASC LIMIT 20
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct details.error the wrong groups may be kept
 ```
 <!-- /spl-cases -->
 
@@ -3028,15 +3034,43 @@ NRQL: FROM Log SELECT count(*)
 
 ```
 ❓ Not confirmed
+SPL:  * | stats count by host | sort count
+NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, count ORDER BY count ASC
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct host the wrong groups may be kept
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count, avg(duration) as a by host | sort -a
+NRQL: FROM (FROM Log SELECT count(*), average(duration) AS 'a' FACET host LIMIT MAX) SELECT host, count, a ORDER BY a DESC
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct host the wrong groups may be kept
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count by host | sort host
+NRQL: FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, count ORDER BY host ASC
+🟡 `restructured` as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct host the wrong groups may be kept
+```
+
+```
+❓ Not confirmed
 SPL:  * | sort count desc
 NRQL: FROM Log SELECT * ORDER BY count DESC
 ```
 
 ```
 ❓ Not confirmed
-SPL:  * | stats count by host | sort count
+SPL:  * | stats count, sum(bytes) as count by host | sort count
 🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
-🔴 `cannot` order a faceted aggregation by 'count': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
+🔴 `two` aggregates resolve to the same subquery column 'count', which NRQL would silently collapse to one. Give them distinct aliases.
+```
+
+```
+❓ Not confirmed
+SPL:  * | stats count by host | sort -bytes
+🟡 NRQL FACET defaults to 10 groups; Splunk computes all groups by default. Add LIMIT N or LIMIT MAX to include more groups.
+🔴 `cannot` order a faceted aggregation by 'bytes': NRQL ignores ORDER BY on an aggregation (it ranks by the first aggregate, descending), so the requested order would silently return the wrong rows
 ```
 
 ```

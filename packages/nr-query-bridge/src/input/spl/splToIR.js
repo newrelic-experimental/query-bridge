@@ -209,8 +209,15 @@ export function translateAstToIR(ast) {
 
   // Gap #12: Splunk computes all groups by default; NRQL FACET defaults to 10.
   // Don't inject LIMIT MAX — it can cause performance issues in UI contexts.
-  // Warn so the user can decide.
-  if (ir.facet.length > 0 && ir.limit == null) {
+  // Warn so the user can decide. When an ORDER BY lands on a not-yet-unsupported
+  // faceted aggregation, defer this warning to orderByOnAggregationPass (which then
+  // owns it): the pass drops the warning when it restructures into a subquery (the
+  // inner gets LIMIT MAX, so the default-10 no longer applies) and re-emits it on the
+  // flat outcomes. An already-unsupported query is skipped by that pass, so the
+  // warning must still be emitted here.
+  const deferredToOrderByPass =
+    ir.orderBy != null && ir.unsupported.length === 0;
+  if (ir.facet.length > 0 && ir.limit == null && !deferredToOrderByPass) {
     ir.warnings.push(messages.facet_default_limit());
   }
 

@@ -2450,42 +2450,48 @@ const cases = [
   //
   //
   // rare emits ORDER BY count ASC on a faceted aggregation, which NRDB ignores (it
-  // ranks by the first aggregate, DESCENDING) → the late ORDER BY-on-aggregation pass
-  // flags it unsupported. Task 2 restructures these into a faithful subquery
-  // (FROM (… FACET … LIMIT MAX) SELECT …, count ORDER BY count ASC LIMIT N).
+  // ranks by the first aggregate, DESCENDING). The late ORDER BY-on-aggregation pass
+  // restructures it into a faithful subquery: the inner aggregates (FACET … LIMIT
+  // MAX), the row-wise outer orders ASC and takes the bottom N.
   {
     spl: '* | rare status',
-    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    nrql: 'FROM (FROM Log SELECT count(*) FACET status LIMIT MAX) SELECT status, count ORDER BY count ASC LIMIT 10',
+    warningFunc: ['subquery_facet_cap'],
     doc: 'reports-rare',
     verified: false,
   },
   {
     spl: '* | rare 5 uri_path',
-    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    nrql: 'FROM (FROM Log SELECT count(*) FACET uri_path LIMIT MAX) SELECT uri_path, count ORDER BY count ASC LIMIT 5',
+    warningFunc: ['subquery_facet_cap'],
     doc: 'reports-rare',
     verified: false,
   },
   {
     spl: '* | rare status by host',
-    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    nrql: 'FROM (FROM Log SELECT count(*) FACET status, host LIMIT MAX) SELECT status, host, count ORDER BY count ASC LIMIT 10',
+    warningFunc: ['subquery_facet_cap'],
     doc: 'reports-rare',
     verified: false,
   },
   {
     spl: 'status>=400 | rare 20 uri_path',
-    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    nrql: 'FROM (FROM Log SELECT count(*) WHERE numeric(status) >= 400 FACET uri_path LIMIT MAX) SELECT uri_path, count ORDER BY count ASC LIMIT 20',
+    warningFunc: ['subquery_facet_cap'],
     doc: 'reports-rare',
     verified: false,
   },
   {
     spl: '* | rare app limit=20',
-    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    nrql: 'FROM (FROM Log SELECT count(*) FACET app LIMIT MAX) SELECT app, count ORDER BY count ASC LIMIT 20',
+    warningFunc: ['subquery_facet_cap'],
     doc: 'reports-rare',
     verified: false,
   },
   {
     spl: '* | rare limit=20 "details.error"',
-    unsupportedFunc: ['order_on_aggregation_unsupported'],
+    nrql: 'FROM (FROM Log SELECT count(*) FACET `details.error` LIMIT MAX) SELECT `details.error`, count ORDER BY count ASC LIMIT 20',
+    warningFunc: ['subquery_facet_cap'],
     doc: 'reports-rare',
     verified: false,
   },
@@ -3521,8 +3527,41 @@ const cases = [
     doc: 'orderby-on-agg',
   },
   {
-    // ascending faceted order → unsupported (Task 2 restructures)
+    // ascending faceted order → restructured as a subquery (outer is row-wise, so
+    // NRDB honors ORDER BY there)
     spl: '* | stats count by host | sort count',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, count ORDER BY count ASC',
+    warningFunc: ['subquery_facet_cap'],
+    verified: false,
+    doc: 'orderby-on-agg',
+  },
+  {
+    // secondary aggregate, DESC → restructured; outer orders by the aliased aggregate
+    spl: '* | stats count, avg(duration) as a by host | sort -a',
+    nrql: "FROM (FROM Log SELECT count(*), average(duration) AS 'a' FACET host LIMIT MAX) SELECT host, count, a ORDER BY a DESC",
+    warningFunc: ['subquery_facet_cap'],
+    verified: false,
+    doc: 'orderby-on-agg',
+  },
+  {
+    // ordering by a facet key, ASC → restructured
+    spl: '* | stats count by host | sort host',
+    nrql: 'FROM (FROM Log SELECT count(*) FACET host LIMIT MAX) SELECT host, count ORDER BY host ASC',
+    warningFunc: ['subquery_facet_cap'],
+    verified: false,
+    doc: 'orderby-on-agg',
+  },
+  {
+    // two inner aggregates resolve to one exposed name 'count' → loud collision
+    spl: '* | stats count, sum(bytes) as count by host | sort count',
+    warningFunc: ['facet_default_limit'],
+    unsupportedFunc: ['subquery_name_collision'],
+    verified: false,
+    doc: 'orderby-on-agg',
+  },
+  {
+    // sort key not produced by the aggregation → loud unsupported (no faithful form)
+    spl: '* | stats count by host | sort -bytes',
     warningFunc: ['facet_default_limit'],
     unsupportedFunc: ['order_on_aggregation_unsupported'],
     verified: false,

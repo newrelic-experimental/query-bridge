@@ -140,7 +140,7 @@ export const messages = {
   // Two inner aggregates resolve to the same subquery column name; the engine keeps
   // only the last (silent drop). Loud unsupported rather than wrong data.
   subquery_name_collision: (name) =>
-    `eval after stats: two aggregates resolve to the same subquery column '${name}', which NRQL would silently collapse to one. Give them distinct aliases before the eval.`,
+    `two aggregates resolve to the same subquery column '${name}', which NRQL would silently collapse to one. Give them distinct aliases.`,
 
   // SPL: `* | stats count by host | eval pct = count * 100`
   // eval after stats projects facet keys + computed columns only (option A); the
@@ -189,6 +189,13 @@ export const messages = {
   // SPL: `* | stats count by host | reverse`
   order_reverse_after_aggregation: () =>
     `'reverse' after an aggregation cannot be translated: it flips Splunk's result order, which NRQL does not define for an aggregation`,
+
+  // SPL: `* | stats count by host | sort count` (or `* | rare host`)
+  // Restructured into a subquery so the row-wise outer can honor ORDER BY; the inner
+  // FACET is bounded by the 5000-row subquery result cap (NOT LIMIT MAX), so a
+  // non-implicit order over more than 5000 distinct groups may keep the wrong rows.
+  subquery_facet_cap: (keys) =>
+    `restructured as a subquery to honor ORDER BY on an aggregation; the inner FACET is bounded by the 5000-row subquery result cap, so for more than 5000 distinct ${keys} the wrong groups may be kept`,
 
   // SPL: `* | fillnull value=0`
   fillnull_no_fields: () =>
