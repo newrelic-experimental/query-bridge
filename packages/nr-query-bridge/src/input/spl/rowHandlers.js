@@ -63,9 +63,12 @@ export function handleHead(cmd, ir) {
 }
 
 export function handleTail(cmd, ir) {
-  if (ir._hasAggregation) ir._headBetweenAgg = true;
+  if (ir._hasAggregation) {
+    ir._headBetweenAgg = true;
+    ir._orderByKind = 'tail';
+  }
   ir.limit = cmd.count;
-  ir.orderBy = OrderBy(Identifier('timestamp'), false); // ASC = oldest first
+  ir.orderBy = OrderBy(Identifier('timestamp'), false); // event records: oldest first
 }
 
 export function handleRename(cmd, ir) {
@@ -157,10 +160,8 @@ export function handleBin(cmd, ir) {
 }
 
 export function handleReverse(cmd, ir) {
-  ir.orderBy = OrderBy(Identifier('timestamp'), false);
-  if (ir._hasAggregation) {
-    ir.warnings.push(messages.reverse_after_agg());
-  }
+  ir.orderBy = OrderBy(Identifier('timestamp'), false); // event records: oldest first
+  if (ir._hasAggregation) ir._orderByKind = 'reverse';
 }
 
 export function handleFillnull(cmd, ir) {

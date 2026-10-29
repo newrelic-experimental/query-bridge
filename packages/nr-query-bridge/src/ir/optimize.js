@@ -12,6 +12,7 @@
 import { transformTree } from './transform.js';
 import { Identifier, BinOp, Func, Literal, Wildcard, Alias } from './nodes.js';
 import { foldPostAggregationPass } from './foldPostAggregation.js';
+import { orderByOnAggregationPass } from './orderByOnAggregation.js';
 
 // ── Pass 1: Double-NOT elimination ──────────────────────────
 
@@ -176,6 +177,7 @@ const passes = [
   foldPostAggregationPass, // ← collapse over-nested post-aggregation chains; catch-all unsupported
   applyFillnull,
   applyFieldReplacements,
+  orderByOnAggregationPass, // ← ORDER BY on an aggregation: drop / unsupported (Task 2 adds restructure)
 ];
 
 export function optimize(ir) {

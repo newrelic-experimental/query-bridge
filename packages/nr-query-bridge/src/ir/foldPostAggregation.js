@@ -58,7 +58,7 @@ export function isFoldSafe(name) {
   return FOLD_SAFE_FUNCS.has(name);
 }
 
-function isAggregateExpr(node) {
+export function isAggregateExpr(node) {
   if (!node) return false;
   if (node.type === 'Alias') return isAggregateExpr(node.expr);
   if (node.type === 'Function') {
@@ -317,7 +317,7 @@ function isBareAggregateEntry(item) {
 
 // The column name a subquery exposes for one inner SELECT entry (bare func name,
 // stddev→standarddeviation; an alias re-keys it).
-function exposedNameOf(item) {
+export function exposedNameOf(item) {
   if (item.type === 'Alias') return item.name;
   if (item.type === 'Function')
     return item.name === 'stddev' ? 'standarddeviation' : item.name;
