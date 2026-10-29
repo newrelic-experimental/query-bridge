@@ -87,6 +87,21 @@ export const messages = {
   sort_single_field: () =>
     'NRQL ORDER BY supports only one field; additional sort fields ignored',
 
+  // SPL: `* | stats count by host | sort +count`
+  order_on_aggregation_unsupported: (field, firstAgg) =>
+    `sort by '${field}' on a faceted aggregation cannot be translated: NRQL ignores ORDER BY on a faceted aggregation (it always returns top-N descending by the first aggregate (in this case, \`${firstAgg}\`) — direction and key are both ignored), so this order would silently return the wrong rows`,
+
+  // SPL: `* | stats count by host | sort -count, +name` — a MULTI-key sort. The
+  // primary key may even match NRDB's implicit order, but the secondary key can
+  // never be applied, so the message must not blame the primary (that misdiagnoses
+  // a `-count` that is in fact the honorable order).
+  order_multi_field_on_aggregation_unsupported: (fields, firstAgg) =>
+    `sort by multiple keys (${fields}) on a faceted aggregation cannot be translated: NRQL supports only one ORDER BY key, and on a faceted aggregation even that is ignored — NRDB always returns top-N descending by the first aggregate (in this case, \`${firstAgg}\`). The additional sort key(s) cannot be applied, so this order would silently return the wrong rows`,
+
+  // SPL: `* | rare status` — rare wants the LEAST-common facet values (bottom-N).
+  rare_unsupported: () =>
+    'rare cannot be translated: it returns the least-common values (the bottom-N of a faceted aggregation), but NRQL FACET returns only the top-N descending by count and ignores ORDER BY on a faceted aggregation — so there is no faithful bottom-N, and translating it would silently return the most-common values instead (the opposite of rare)',
+
   // SPL: `* | rename * as prefix_*`
   rename_wildcard: (from, to) =>
     `Wildcard rename (${from} as ${to}) not supported in NRQL; rename specific fields`,

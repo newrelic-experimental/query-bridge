@@ -17,7 +17,6 @@ import {
   Alias,
   Wildcard,
   RawNrql,
-  OrderBy,
   JoinClause,
 } from '../../ir/nodes.js';
 import { mapFunction, formatSpan, wrapAsSubquery } from './splExprUtils.js';
@@ -126,7 +125,9 @@ export function handleTop(cmd, ir) {
     ir.facet.push(...cmd.groupBy.map(Identifier));
     ir.warnings.push(messages.top_groupby_warning());
   }
-  ir.orderBy = OrderBy(Identifier('count'), true);
+  // No ORDER BY: a faceted aggregation already returns top-N DESC by the first
+  // aggregate (count) implicitly — NRDB ignores an explicit ORDER BY on it, and the
+  // dashboard widget rejects the clause — so emitting it is redundant + render-failing.
 
   // limit=0 means unlimited in SPL
   ir.limit = cmd.count === 0 ? 'MAX' : cmd.count || 10;
@@ -139,14 +140,12 @@ export function handleTop(cmd, ir) {
 }
 
 export function handleRare(cmd, ir) {
-  ir.select = [Func('count', [])];
-  ir.facet = [Identifier(cmd.field)];
-  if (cmd.groupBy && cmd.groupBy.length > 0) {
-    ir.facet.push(...cmd.groupBy.map(Identifier));
-  }
-  ir.orderBy = OrderBy(Identifier('count'), false); // ASC for rare
-  ir.limit = cmd.count || 10;
-  ir._hasAggregation = true;
+  // rare needs the LEAST-common facet values (bottom-N). NRQL FACET returns only the
+  // top-N descending by count and IGNORES an explicit ORDER BY on a faceted aggregation
+  // — the `ORDER BY count ASC` this used to emit was silently dropped, so NRDB returned
+  // the MOST common values (the exact opposite of rare). There is no faithful bottom-N
+  // of a faceted aggregation in NRQL, so fail loud rather than return wrong data.
+  ir.unsupported.push(messages.rare_unsupported());
 }
 
 export function handleEventstats(cmd, ir) {

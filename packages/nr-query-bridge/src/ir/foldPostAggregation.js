@@ -12,6 +12,7 @@
  * (uniques/values) reference stays loud unsupported.
  */
 import { Func, Alias, Identifier, Literal, Binding } from './nodes.js';
+import { NRQL_AGGREGATE_FUNCS as NRQL_AGG_FUNCS } from './nrqlAggregates.js';
 import { messages } from '../messages.js';
 
 // Has a distributed (aggregate-capable) form in dirac DefaultNRQLProvider
@@ -36,24 +37,6 @@ const FOLD_SAFE_FUNCS = new Set([
   'getField',
   'extractfield',
 ]);
-const NRQL_AGG_FUNCS = new Set([
-  'count',
-  'sum',
-  'average',
-  'min',
-  'max',
-  'median',
-  'percentile',
-  'stddev',
-  'standarddeviation',
-  'uniqueCount',
-  'uniques',
-  'latest',
-  'earliest',
-  'rate',
-  'percentage',
-]);
-
 export function isFoldSafe(name) {
   return FOLD_SAFE_FUNCS.has(name);
 }
