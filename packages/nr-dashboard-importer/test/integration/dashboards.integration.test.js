@@ -141,6 +141,25 @@ describe('importer: core pipeline (working today)', () => {
     expect(tf).toContain('FROM Log SELECT count(*)');
   });
 
+  it('a chart panel fed raw events (SELECT *) is routed to a table widget', () => {
+    // A bare search translates to `SELECT *` (raw events); a line/bar/billboard
+    // renders blank for it, so the importer routes it to a table regardless of the
+    // Splunk viz type (render-fail prevention).
+    const xml = `<dashboard><label>Raw</label><row><panel><chart>
+      <title>Recent errors</title>
+      <search><query><![CDATA[index=web error]]></query></search>
+      <option name="charting.chart">line</option>
+    </chart></panel></row></dashboard>`;
+    const widgets = translateWidgets(parseSimpleXml(xml).widgets);
+    expect(widgets).toHaveLength(1);
+    expect(widgets[0].outcome).toBe('clean');
+    expect(widgets[0].vizType).toBe('table'); // routed from line
+    expect(widgets[0].nrql).toMatch(/SELECT \*/);
+    const tf = dashboardTf(runImport(xml, { account: 1 })[0].files);
+    expect(tf).toContain('widget_table {');
+    expect(tf).not.toContain('widget_line {');
+  });
+
   it('an unsupported command becomes a loud markdown placeholder, not a drop', () => {
     const xml = `<dashboard><label>MV</label><row><panel><table>
       <title>Tags</title>
