@@ -94,6 +94,14 @@ jobs:
       - run: npm test
       - run: npm run build:types
 
+      # Tokenless publish of the single public workspace. `publishConfig.access`
+      # is already "public" in the package.json; --access public is belt-and-suspenders.
+      # npm auto-generates build provenance because id-token: write is set.
+      - name: Publish to npm
+        run: npm publish --workspace @newrelic/query-bridge --access public
+
+      # Runs after the publish so a rejected publish leaves no tag or release
+      # behind to delete before the retry.
       - name: Create tag and release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -104,9 +112,3 @@ jobs:
           git tag "v${version}"
           git push --tags
           gh release create "v${version}" --generate-notes
-
-      # Tokenless publish of the single public workspace. `publishConfig.access`
-      # is already "public" in the package.json; --access public is belt-and-suspenders.
-      # npm auto-generates build provenance because id-token: write is set.
-      - name: Publish to npm
-        run: npm publish --workspace @newrelic/query-bridge --access public
